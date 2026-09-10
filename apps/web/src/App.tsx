@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { RouterProvider } from '@tanstack/react-router';
 import { NekoNative } from '@neko/bridge-web';
-import { fetchManifest } from './lib/api';
+import { fetchManifest, saveEpisodeProgress } from './lib/api';
 import { router } from './router';
 
 const NATIVE_ROUTES = ['/', '/catalogo', '/buscar', '/lista', '/salvos', '/conta'] as const;
@@ -21,11 +21,24 @@ export function App() {
     }).catch(() => undefined);
 
     const unsubscribe = NekoNative.subscribe((event) => {
+      if (event.type === 'player.closed') {
+        const episodeId = event.payload?.episodeId;
+        if (episodeId) {
+          void saveEpisodeProgress(
+            episodeId,
+            event.payload?.positionSeconds ?? 0,
+            event.payload?.durationSeconds ?? 0
+          ).catch(() => undefined);
+        }
+        return;
+      }
+
       if (event.type !== 'navigation.navigate') return;
       const route = event.payload.route;
       if (!isNativeRoute(route)) return;
       void router.navigate({ to: route });
     });
+
     const onResolved = () => {
       const route = window.location.pathname;
       if (route.startsWith('/anime/')) NekoNative.routeChanged('/catalogo');
@@ -36,5 +49,6 @@ export function App() {
     onResolved();
     return () => { unsubscribe(); off(); };
   }, []);
+
   return <RouterProvider router={router} />;
 }
