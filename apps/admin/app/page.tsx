@@ -11,30 +11,23 @@ export default function AdminHome() {
       <p style={{ color: '#a78bfa', fontSize: 12, fontWeight: 700, letterSpacing: '0.18em' }}>
         NEKO ADMIN
       </p>
-      <h1 style={{ marginTop: 8 }}>Fundação administrativa</h1>
+      <h1 style={{ marginTop: 8 }}>Painel NekoAnimes</h1>
       <p style={{ color: '#a1a1aa', maxWidth: 640 }}>
-        Esta tela valida a estrutura do Admin. Persistência, autenticação e publicação de
-        configurações entram na Etapa 3.
+        Configuração operacional da experiência entregue pelo aplicativo.
       </p>
 
       <div style={{ display: 'grid', gap: 16, marginTop: 28 }}>
         <section style={sectionStyle}>
           <h2 style={{ marginTop: 0 }}>Aplicativo</h2>
-          <label style={{ display: 'grid', gap: 8, maxWidth: 320 }}>
-            <span style={{ color: '#a1a1aa' }}>Modo</span>
-            <select disabled defaultValue="streaming" style={{ padding: 12, borderRadius: 10 }}>
-              <option value="streaming">Streaming</option>
-              <option value="news">Notícias</option>
-            </select>
-          </label>
+          <p style={{ color: '#a1a1aa' }}>Modo Streaming/Notícias e monetização versionada.</p>
+          <a href="/configuracao" style={{ color: '#c4b5fd', fontWeight: 700 }}>Abrir configurações →</a>
         </section>
 
         <section style={sectionStyle}>
-          <h2 style={{ marginTop: 0 }}>Monetização</h2>
-          <p style={{ color: '#a1a1aa' }}>
-            NekoAdOrchestrator previsto: AppLovin MAX, AdMob e Meta via mediação.
+          <h2 style={{ marginTop: 0 }}>Próximos módulos</h2>
+          <p style={{ color: '#a1a1aa', marginBottom: 0 }}>
+            Catálogo, providers, notícias, usuários e métricas entram nas etapas seguintes.
           </p>
-          <p style={{ marginBottom: 0 }}>Banner · App Open · Interstitial</p>
         </section>
       </div>
     </main>

@@ -25,6 +25,7 @@ export const AdFormatSettingsSchema = z.object({
 
 export const AppManifestSchema = z.object({
   schemaVersion: z.literal(1),
+  configVersion: z.number().int().positive(),
   mode: AppModeSchema,
   webAppUrl: z.string().url(),
   navigation: z.array(NavigationItemSchema).min(1).max(5),

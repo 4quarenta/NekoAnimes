@@ -11,9 +11,13 @@ async function bootstrap() {
   );
 
   const config = app.get(ConfigService);
+  const allowedOrigins = [
+    config.getOrThrow<string>('WEB_APP_URL'),
+    config.getOrThrow<string>('ADMIN_APP_URL')
+  ];
 
   app.enableCors({
-    origin: true,
+    origin: allowedOrigins,
     credentials: true
   });
   app.enableShutdownHooks();

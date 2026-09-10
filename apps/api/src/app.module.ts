@@ -7,6 +7,10 @@ import { HealthController } from './modules/health/health.controller';
 import { HealthService } from './modules/health/health.service';
 import { AppManifestController } from './modules/app-manifest/app-manifest.controller';
 import { AppManifestService } from './modules/app-manifest/app-manifest.service';
+import { AdminAppConfigController } from './modules/app-config/admin-app-config.controller';
+import { AdminKeyGuard } from './modules/app-config/admin-key.guard';
+import { AppConfigRepository } from './modules/app-config/app-config.repository';
+import { AppConfigService } from './modules/app-config/app-config.service';
 
 @Module({
   imports: [
@@ -18,7 +22,13 @@ import { AppManifestService } from './modules/app-manifest/app-manifest.service'
     DatabaseModule,
     RedisModule
   ],
-  controllers: [HealthController, AppManifestController],
-  providers: [HealthService, AppManifestService]
+  controllers: [HealthController, AppManifestController, AdminAppConfigController],
+  providers: [
+    HealthService,
+    AppManifestService,
+    AppConfigRepository,
+    AppConfigService,
+    AdminKeyGuard
+  ]
 })
 export class AppModule {}
