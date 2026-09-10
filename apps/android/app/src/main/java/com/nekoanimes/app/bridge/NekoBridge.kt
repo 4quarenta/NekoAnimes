@@ -35,10 +35,10 @@ class NekoBridge(
             setOf(BuildConfig.WEB_APP_ORIGIN),
             object : WebViewCompat.WebMessageListener {
                 override fun onPostMessage(view: WebView, message: WebMessageCompat, sourceOrigin: Uri, isMainFrame: Boolean, replyProxy: JavaScriptReplyProxy) {
-                    if (!isMainFrame || sourceOrigin.toString().trimEnd('/') != BuildConfig.WEB_APP_ORIGIN.trimEnd('/')) return
+                    if (!isMainFrame || !sameOrigin(sourceOrigin, Uri.parse(BuildConfig.WEB_APP_ORIGIN))) return
                     val raw = message.data ?: return
                     if (raw.toByteArray(Charsets.UTF_8).size > MAX_MESSAGE_BYTES) { Log.w(TAG, "Mensagem da bridge excedeu o limite"); return }
-                    handle(raw, replyProxy)
+                    handle(view, raw, replyProxy)
                 }
             }
         )
@@ -70,7 +70,7 @@ class NekoBridge(
         WebViewCompat.postWebMessage(webView, WebMessageCompat(message), Uri.parse(BuildConfig.WEB_APP_ORIGIN))
     }
 
-    private fun handle(raw: String, replyProxy: JavaScriptReplyProxy) {
+    private fun handle(view: WebView, raw: String, replyProxy: JavaScriptReplyProxy) {
         runCatching {
             val envelope = JSONObject(raw)
             val id = envelope.optString("id")
@@ -80,7 +80,7 @@ class NekoBridge(
             if (id.isBlank() || type.isBlank()) return@runCatching
             if (version != VERSION) { replyError(replyProxy, id, "UNSUPPORTED_VERSION", "Versão da bridge não suportada"); return@runCatching }
             when (type) {
-                "bridge.handshake" -> replyOk(replyProxy, id, JSONObject().put("bridgeVersion", VERSION))
+                "bridge.handshake" -> { replyOk(replyProxy, id, JSONObject().put("bridgeVersion", VERSION)); sendReady(view) }
                 "navigation.routeChanged" -> {
                     val route = payload.optString("route")
                     if (!isSafeRoute(route)) replyError(replyProxy, id, "INVALID_ROUTE", "Rota inválida") else { onRouteChanged(route); replyOk(replyProxy, id) }
@@ -109,6 +109,8 @@ class NekoBridge(
         replyProxy.postMessage(JSONObject().put("version", VERSION).put("id", id).put("type", "bridge.response").put("ok", false).put("error", JSONObject().put("code", code).put("message", message)).toString())
     }
 
-    private fun isSafeRoute(route: String): Boolean = route.startsWith("/") && route.length <= 512
+    private fun sameOrigin(a: Uri, b: Uri): Boolean = a.scheme.equals(b.scheme, true) && a.host.equals(b.host, true) && normalizedPort(a) == normalizedPort(b)
+    private fun normalizedPort(uri: Uri): Int = if (uri.port != -1) uri.port else if (uri.scheme.equals("https", true)) 443 else 80
+    private fun isSafeRoute(route: String): Boolean = route.startsWith("/") && route.length <= 512 && !route.contains("\\")
     private fun isSafeId(value: String): Boolean = value.isNotBlank() && value.length <= 128
 }
