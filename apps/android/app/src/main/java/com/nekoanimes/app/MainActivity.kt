@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import com.nekoanimes.app.bridge.NekoBridge
 import com.nekoanimes.app.data.AppManifestRepository
 import com.nekoanimes.app.model.AppManifest
+import com.nekoanimes.app.player.NekoPlayerScreen
 import com.nekoanimes.app.ui.NekoNavigationBar
 import com.nekoanimes.app.ui.NekoTheme
 import com.nekoanimes.app.web.WebViewHost
@@ -67,13 +68,26 @@ class MainActivity : ComponentActivity() {
 private fun AppShell(manifest: AppManifest) {
     var selectedRoute by remember(manifest.configVersion) { mutableStateOf("/") }
     var webView by remember(manifest.configVersion) { mutableStateOf<WebView?>(null) }
+    var playerEpisodeId by remember(manifest.configVersion) { mutableStateOf<String?>(null) }
 
     val bridge = remember(manifest.configVersion) {
         NekoBridge(
             onRouteChanged = { route -> selectedRoute = route },
-            onOpenPlayer = { episodeId -> Log.i("NekoPlayer", "Solicitação de player: $episodeId") },
+            onOpenPlayer = { episodeId -> playerEpisodeId = episodeId },
             onAppEvent = { name, placement -> Log.i("NekoAppEvent", "Evento=$name placement=$placement") }
         )
+    }
+
+    val playing = playerEpisodeId
+    if (playing != null) {
+        NekoPlayerScreen(
+            episodeId = playing,
+            onClose = {
+                playerEpisodeId = null
+                webView?.let { bridge.sendPlayerClosed(it, playing) }
+            }
+        )
+        return
     }
 
     BackHandler(enabled = webView?.canGoBack() == true) { webView?.goBack() }
