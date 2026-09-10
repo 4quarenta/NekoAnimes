@@ -1,19 +1,20 @@
 name: Android CI
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'apps/android/**'
-      - '.github/workflows/android-ci.yml'
+  workflow_dispatch:
   pull_request:
     paths:
       - 'apps/android/**'
       - '.github/workflows/android-ci.yml'
 
+concurrency:
+  group: android-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-debug:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     defaults:
       run:
         working-directory: apps/android
