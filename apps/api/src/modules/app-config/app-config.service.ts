@@ -17,9 +17,7 @@ export class AppConfigService {
     private readonly config: ConfigService
   ) {}
 
-  async getSettings() {
-    return this.repository.get();
-  }
+  async getSettings() { return this.repository.get(); }
 
   async updateSettings(input: AppConfigUpdate) {
     const updated = await this.repository.update(input);
@@ -37,28 +35,25 @@ export class AppConfigService {
 
     const settings = await this.repository.get();
     const manifest = this.buildManifest(settings);
-
-    try {
-      await this.redis.setJson(MANIFEST_CACHE_KEY, manifest, MANIFEST_CACHE_TTL_SECONDS);
-    } catch (error) {
-      this.logger.debug(`Não foi possível gravar cache do manifest: ${this.message(error)}`);
-    }
-
+    try { await this.redis.setJson(MANIFEST_CACHE_KEY, manifest, MANIFEST_CACHE_TTL_SECONDS); }
+    catch (error) { this.logger.debug(`Não foi possível gravar cache do manifest: ${this.message(error)}`); }
     return manifest;
   }
 
   private buildManifest(settings: Awaited<ReturnType<AppConfigRepository['get']>>) {
+    const account = { id: 'account', label: 'Conta', icon: 'account', route: '/conta' };
     const streamingNavigation = [
       { id: 'home', label: 'Início', icon: 'home', route: '/' },
       { id: 'catalog', label: 'A–Z', icon: 'catalog', route: '/catalogo' },
       { id: 'search', label: 'Buscar', icon: 'search', route: '/buscar' },
-      { id: 'library', label: 'Lista', icon: 'library', route: '/lista' }
+      { id: 'library', label: 'Lista', icon: 'library', route: '/lista' },
+      account
     ];
-
     const newsNavigation = [
       { id: 'home', label: 'Início', icon: 'home', route: '/' },
       { id: 'search', label: 'Buscar', icon: 'search', route: '/buscar' },
-      { id: 'saved', label: 'Salvos', icon: 'bookmark', route: '/salvos' }
+      { id: 'saved', label: 'Salvos', icon: 'bookmark', route: '/salvos' },
+      account
     ];
 
     return {
@@ -78,14 +73,9 @@ export class AppConfigService {
   }
 
   private async invalidateManifestCache() {
-    try {
-      await this.redis.del(MANIFEST_CACHE_KEY);
-    } catch (error) {
-      this.logger.debug(`Não foi possível invalidar cache do manifest: ${this.message(error)}`);
-    }
+    try { await this.redis.del(MANIFEST_CACHE_KEY); }
+    catch (error) { this.logger.debug(`Não foi possível invalidar cache do manifest: ${this.message(error)}`); }
   }
 
-  private message(error: unknown) {
-    return error instanceof Error ? error.message : String(error);
-  }
+  private message(error: unknown) { return error instanceof Error ? error.message : String(error); }
 }
