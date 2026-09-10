@@ -1,7 +1,7 @@
 import { Controller, Get, Param, ParseIntPipe, Query } from '@nestjs/common';
 import { CatalogService } from './catalog.service';
 
-@Controller('catalog')
+@Controller('v1/catalog')
 export class CatalogController {
   constructor(private readonly catalog: CatalogService) {}
 
