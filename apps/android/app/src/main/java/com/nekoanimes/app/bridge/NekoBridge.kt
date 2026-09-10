@@ -21,7 +21,7 @@ class NekoBridge(
         private const val BRIDGE_NAME = "NekoNativeBridge"
         private const val VERSION = 1
         private const val MAX_MESSAGE_BYTES = 32 * 1024
-        private val CAPABILITIES = listOf("navigation", "player.open", "app.event")
+        private val CAPABILITIES = listOf("navigation", "player.open", "player.progress", "app.event")
     }
 
     fun attach(webView: WebView) {
@@ -29,25 +29,15 @@ class NekoBridge(
             Log.w(TAG, "WEB_MESSAGE_LISTENER indisponível neste WebView")
             return
         }
-
         WebViewCompat.addWebMessageListener(
             webView,
             BRIDGE_NAME,
             setOf(BuildConfig.WEB_APP_ORIGIN),
             object : WebViewCompat.WebMessageListener {
-                override fun onPostMessage(
-                    view: WebView,
-                    message: WebMessageCompat,
-                    sourceOrigin: Uri,
-                    isMainFrame: Boolean,
-                    replyProxy: JavaScriptReplyProxy
-                ) {
+                override fun onPostMessage(view: WebView, message: WebMessageCompat, sourceOrigin: Uri, isMainFrame: Boolean, replyProxy: JavaScriptReplyProxy) {
                     if (!isMainFrame || sourceOrigin.toString().trimEnd('/') != BuildConfig.WEB_APP_ORIGIN.trimEnd('/')) return
                     val raw = message.data ?: return
-                    if (raw.toByteArray(Charsets.UTF_8).size > MAX_MESSAGE_BYTES) {
-                        Log.w(TAG, "Mensagem da bridge excedeu o limite")
-                        return
-                    }
+                    if (raw.toByteArray(Charsets.UTF_8).size > MAX_MESSAGE_BYTES) { Log.w(TAG, "Mensagem da bridge excedeu o limite"); return }
                     handle(raw, replyProxy)
                 }
             }
@@ -59,32 +49,20 @@ class NekoBridge(
         sendEvent(webView, "navigation.navigate", JSONObject().put("route", route))
     }
 
-    fun sendPlayerClosed(webView: WebView, episodeId: String? = null) {
+    fun sendPlayerClosed(webView: WebView, episodeId: String? = null, positionSeconds: Int = 0, durationSeconds: Int = 0) {
         val payload = JSONObject()
         if (!episodeId.isNullOrBlank()) payload.put("episodeId", episodeId)
+        payload.put("positionSeconds", positionSeconds.coerceAtLeast(0))
+        payload.put("durationSeconds", durationSeconds.coerceAtLeast(0))
         sendEvent(webView, "player.closed", payload)
     }
 
     private fun sendReady(webView: WebView) {
-        sendEvent(
-            webView,
-            "bridge.ready",
-            JSONObject()
-                .put("platform", "android")
-                .put("bridgeVersion", VERSION)
-                .put("capabilities", JSONArray(CAPABILITIES))
-        )
+        sendEvent(webView, "bridge.ready", JSONObject().put("platform", "android").put("bridgeVersion", VERSION).put("capabilities", JSONArray(CAPABILITIES)))
     }
 
     private fun sendEvent(webView: WebView, type: String, payload: JSONObject) {
-        send(
-            webView,
-            JSONObject()
-                .put("version", VERSION)
-                .put("type", type)
-                .put("payload", payload)
-                .toString()
-        )
+        send(webView, JSONObject().put("version", VERSION).put("type", type).put("payload", payload).toString())
     }
 
     private fun send(webView: WebView, message: String) {
@@ -99,74 +77,36 @@ class NekoBridge(
             val version = envelope.optInt("version", -1)
             val type = envelope.optString("type")
             val payload = envelope.optJSONObject("payload") ?: JSONObject()
-
             if (id.isBlank() || type.isBlank()) return@runCatching
-            if (version != VERSION) {
-                replyError(replyProxy, id, "UNSUPPORTED_VERSION", "Versão da bridge não suportada")
-                return@runCatching
-            }
-
+            if (version != VERSION) { replyError(replyProxy, id, "UNSUPPORTED_VERSION", "Versão da bridge não suportada"); return@runCatching }
             when (type) {
-                "bridge.handshake" -> {
-                    replyOk(replyProxy, id, JSONObject().put("bridgeVersion", VERSION))
-                    // replyProxy responds directly to the sender; ready is also broadcast for subscribers.
-                    // The WebView instance is not needed for request acknowledgement.
-                }
+                "bridge.handshake" -> replyOk(replyProxy, id, JSONObject().put("bridgeVersion", VERSION))
                 "navigation.routeChanged" -> {
                     val route = payload.optString("route")
-                    if (!isSafeRoute(route)) {
-                        replyError(replyProxy, id, "INVALID_ROUTE", "Rota inválida")
-                    } else {
-                        onRouteChanged(route)
-                        replyOk(replyProxy, id)
-                    }
+                    if (!isSafeRoute(route)) replyError(replyProxy, id, "INVALID_ROUTE", "Rota inválida") else { onRouteChanged(route); replyOk(replyProxy, id) }
                 }
                 "player.open" -> {
                     val episodeId = payload.optString("episodeId")
-                    if (!isSafeId(episodeId)) {
-                        replyError(replyProxy, id, "INVALID_EPISODE", "episodeId inválido")
-                    } else {
-                        onOpenPlayer(episodeId)
-                        replyOk(replyProxy, id)
-                    }
+                    if (!isSafeId(episodeId)) replyError(replyProxy, id, "INVALID_EPISODE", "episodeId inválido") else { onOpenPlayer(episodeId); replyOk(replyProxy, id) }
                 }
                 "app.event" -> {
                     val name = payload.optString("name")
                     val placement = payload.optString("placement").ifBlank { null }
-                    if (!isSafeId(name)) {
-                        replyError(replyProxy, id, "INVALID_EVENT", "Evento inválido")
-                    } else {
-                        onAppEvent(name, placement)
-                        replyOk(replyProxy, id)
-                    }
+                    if (!isSafeId(name)) replyError(replyProxy, id, "INVALID_EVENT", "Evento inválido") else { onAppEvent(name, placement); replyOk(replyProxy, id) }
                 }
                 else -> replyError(replyProxy, id, "UNKNOWN_METHOD", "Método não suportado")
             }
-        }.onFailure {
-            Log.w(TAG, "Mensagem inválida recebida da SPA", it)
-        }
+        }.onFailure { Log.w(TAG, "Mensagem inválida recebida da SPA", it) }
     }
 
     private fun replyOk(replyProxy: JavaScriptReplyProxy, id: String, payload: JSONObject? = null) {
-        val response = JSONObject()
-            .put("version", VERSION)
-            .put("id", id)
-            .put("type", "bridge.response")
-            .put("ok", true)
+        val response = JSONObject().put("version", VERSION).put("id", id).put("type", "bridge.response").put("ok", true)
         if (payload != null) response.put("payload", payload)
         replyProxy.postMessage(response.toString())
     }
 
     private fun replyError(replyProxy: JavaScriptReplyProxy, id: String, code: String, message: String) {
-        replyProxy.postMessage(
-            JSONObject()
-                .put("version", VERSION)
-                .put("id", id)
-                .put("type", "bridge.response")
-                .put("ok", false)
-                .put("error", JSONObject().put("code", code).put("message", message))
-                .toString()
-        )
+        replyProxy.postMessage(JSONObject().put("version", VERSION).put("id", id).put("type", "bridge.response").put("ok", false).put("error", JSONObject().put("code", code).put("message", message)).toString())
     }
 
     private fun isSafeRoute(route: String): Boolean = route.startsWith("/") && route.length <= 512
