@@ -4,7 +4,7 @@ import { NekoNative } from '@neko/bridge-web';
 import { fetchManifest } from './lib/api';
 import { router } from './router';
 
-const NATIVE_ROUTES = ['/', '/catalogo', '/buscar', '/lista', '/salvos'] as const;
+const NATIVE_ROUTES = ['/', '/catalogo', '/buscar', '/lista', '/salvos', '/conta'] as const;
 type NativeRoute = (typeof NATIVE_ROUTES)[number];
 function isNativeRoute(route: string): route is NativeRoute { return (NATIVE_ROUTES as readonly string[]).includes(route); }
 function isStreamingOnly(route: string) { return route === '/catalogo' || route === '/lista' || route.startsWith('/anime/'); }
