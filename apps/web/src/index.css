@@ -3,26 +3,58 @@
 :root {
   color-scheme: dark;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  background: #0d0d11;
+  background: #0b0b0e;
   color: #f4f4f5;
+  --neko-bg: #0b0b0e;
+  --neko-surface: #131318;
+  --neko-surface-2: #19191f;
+  --neko-line: #27272f;
+  --neko-muted: #92929f;
+  --neko-text: #f4f4f5;
+  --neko-accent: #8b5cf6;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
+html, body, #root { min-height: 100%; margin: 0; }
+body { background: var(--neko-bg); }
+button, input { font: inherit; }
+button { color: inherit; }
 
-html,
-body,
-#root {
-  min-height: 100%;
-  margin: 0;
-}
+.neko-screen { width: min(100%, 42rem); min-height: 100vh; margin: 0 auto; padding: 28px 22px 42px; }
+.neko-eyebrow { margin: 0 0 8px; color: #b9a4ff; font-size: 11px; font-weight: 800; letter-spacing: .2em; text-transform: uppercase; }
+.neko-header h1 { margin: 0; font-size: clamp(28px, 8vw, 38px); line-height: 1.08; letter-spacing: -.035em; }
+.neko-header p { max-width: 31rem; margin: 10px 0 0; color: var(--neko-muted); font-size: 14px; line-height: 1.55; }
+.neko-section { margin-top: 34px; }
+.neko-section-title { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 10px; }
+.neko-section-title h2 { margin: 0; color: #d7d7dc; font-size: 13px; font-weight: 700; }
+.neko-link { border: 0; background: none; color: #b9a4ff; font-size: 12px; font-weight: 700; cursor: pointer; }
+.neko-list { border-top: 1px solid var(--neko-line); border-bottom: 1px solid var(--neko-line); }
+.neko-row { display: flex; width: 100%; min-height: 64px; align-items: center; justify-content: space-between; gap: 18px; padding: 12px 2px; border: 0; border-bottom: 1px solid var(--neko-line); background: transparent; text-align: left; }
+.neko-row:last-child { border-bottom: 0; }
+.neko-row-button { cursor: pointer; }
+.neko-row-copy { display: grid; gap: 5px; min-width: 0; }
+.neko-row-copy strong { overflow: hidden; font-size: 15px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.neko-row-copy small { color: var(--neko-muted); font-size: 12px; }
+.neko-row-trailing { flex: none; color: #aaaab5; font-size: 13px; }
+.neko-search-launcher, .neko-search { display: flex; width: 100%; min-height: 50px; align-items: center; gap: 10px; margin-top: 24px; padding: 0 16px; border: 1px solid var(--neko-line); border-radius: 15px; background: var(--neko-surface); color: var(--neko-muted); }
+.neko-search-launcher { cursor: pointer; text-align: left; }
+.neko-search input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--neko-text); }
+.neko-search input::placeholder { color: #747480; }
+.neko-letter-preview { display: grid; grid-template-columns: repeat(7, 1fr); gap: 7px; }
+.neko-letter-preview span, .neko-letter-strip button { display: grid; aspect-ratio: 1; place-items: center; border: 1px solid var(--neko-line); border-radius: 12px; background: var(--neko-surface); font-size: 13px; font-weight: 700; }
+.neko-letter-strip { display: grid; grid-template-columns: repeat(7, 1fr); gap: 7px; margin-top: 26px; }
+.neko-letter-strip button { cursor: pointer; }
+.neko-letter-strip button.is-active { border-color: var(--neko-accent); background: #211a33; color: #d9ccff; }
+.neko-empty { margin-top: 36px; padding: 28px 20px; border: 1px dashed var(--neko-line); border-radius: 16px; text-align: center; }
+.neko-empty strong { font-size: 14px; }
+.neko-empty p { margin: 7px 0 0; color: var(--neko-muted); font-size: 12px; line-height: 1.5; }
+.neko-results { margin-top: 26px; }
+.neko-error { color: #fda4af; font-size: 14px; }
+.neko-skeleton { width: 75%; height: 36px; margin-top: 18px; border-radius: 10px; background: var(--neko-surface-2); animation: neko-pulse 1.2s ease-in-out infinite alternate; }
+.neko-skeleton.short { width: 45%; height: 16px; margin-top: 12px; }
+@keyframes neko-pulse { to { opacity: .45; } }
 
-body {
-  background: #0d0d11;
-}
-
-button,
-input {
-  font: inherit;
+@media (min-width: 640px) {
+  .neko-screen { padding-top: 42px; }
+  .neko-letter-strip { grid-template-columns: repeat(13, 1fr); }
 }
