@@ -5,6 +5,10 @@
 
     <application
         android:allowBackup="false"
+        android:usesCleartextTraffic="false"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:icon="@drawable/ic_neko_launcher"
+        android:roundIcon="@drawable/ic_neko_launcher"
         android:label="NekoAnimes"
         android:supportsRtl="true"
         android:theme="@style/Theme.NekoAnimes">
