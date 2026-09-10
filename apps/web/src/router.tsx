@@ -6,6 +6,7 @@ import { LibraryPage } from './screens/LibraryPage';
 import { AnimeDetailPage } from './screens/AnimeDetailPage';
 import { NewsArticlePage } from './screens/NewsArticlePage';
 import { SavedNewsPage } from './screens/SavedNewsPage';
+import { AccountPage } from './screens/AccountPage';
 
 const rootRoute = createRootRoute({ component: () => <Outlet /> });
 const homeRoute = createRoute({ getParentRoute: () => rootRoute, path: '/', component: HomePage });
@@ -13,10 +14,11 @@ const catalogRoute = createRoute({ getParentRoute: () => rootRoute, path: '/cata
 const searchRoute = createRoute({ getParentRoute: () => rootRoute, path: '/buscar', component: SearchPage });
 const libraryRoute = createRoute({ getParentRoute: () => rootRoute, path: '/lista', component: LibraryPage });
 const savedRoute = createRoute({ getParentRoute: () => rootRoute, path: '/salvos', component: SavedNewsPage });
+const accountRoute = createRoute({ getParentRoute: () => rootRoute, path: '/conta', component: AccountPage });
 const animeDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: '/anime/$slug', component: AnimeDetailPage });
 const newsArticleRoute = createRoute({ getParentRoute: () => rootRoute, path: '/noticias/$slug', component: NewsArticlePage });
 
-const routeTree = rootRoute.addChildren([homeRoute, catalogRoute, searchRoute, libraryRoute, savedRoute, animeDetailRoute, newsArticleRoute]);
+const routeTree = rootRoute.addChildren([homeRoute, catalogRoute, searchRoute, libraryRoute, savedRoute, accountRoute, animeDetailRoute, newsArticleRoute]);
 export const router = createRouter({ routeTree });
 
 declare module '@tanstack/react-router' {
