@@ -1,6 +1,7 @@
 package com.nekoanimes.app.ui
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
@@ -42,5 +43,6 @@ private fun iconFor(icon: String) = when (icon) {
     "search" -> Icons.Default.Search
     "library" -> Icons.Default.Favorite
     "bookmark" -> Icons.Default.Bookmark
+    "account" -> Icons.Default.AccountCircle
     else -> Icons.Default.List
 }
