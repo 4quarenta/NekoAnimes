@@ -71,18 +71,12 @@ private fun AppShell(manifest: AppManifest) {
     val bridge = remember(manifest.configVersion) {
         NekoBridge(
             onRouteChanged = { route -> selectedRoute = route },
-            onOpenPlayer = { episodeId ->
-                Log.i("NekoPlayer", "Solicitação de player: $episodeId")
-            },
-            onAdEvent = { event, placement ->
-                Log.i("NekoAds", "Evento=$event placement=$placement")
-            }
+            onOpenPlayer = { episodeId -> Log.i("NekoPlayer", "Solicitação de player: $episodeId") },
+            onAppEvent = { name, placement -> Log.i("NekoAppEvent", "Evento=$name placement=$placement") }
         )
     }
 
-    BackHandler(enabled = webView?.canGoBack() == true) {
-        webView?.goBack()
-    }
+    BackHandler(enabled = webView?.canGoBack() == true) { webView?.goBack() }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -108,9 +102,7 @@ private fun AppShell(manifest: AppManifest) {
 
 @Composable
 private fun LoadingScreen() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        CircularProgressIndicator()
-    }
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
 }
 
 @Composable
