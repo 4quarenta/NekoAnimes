@@ -1,0 +1,29 @@
+{
+  "name": "nekoanimes",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/web",
+    "apps/api",
+    "apps/admin",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev --workspace @neko/web",
+    "dev:api": "npm run start:dev --workspace @neko/api",
+    "dev:admin": "npm run dev --workspace @neko/admin",
+    "build:web": "npm run build --workspace @neko/web",
+    "build:api": "npm run build --workspace @neko/api",
+    "build:admin": "npm run build --workspace @neko/admin",
+    "build": "npm run build:web && npm run build:api && npm run build:admin",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "prettier": "^3.6.0",
+    "typescript": "^5.9.0"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

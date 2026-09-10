@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.next/
+.vite/
+coverage/
+.env
+.env.*
+!.env.example
+.DS_Store
+.idea/
+*.iml
+.gradle/
+local.properties
+apps/android/app/build/
+apps/android/build/
+*.jks
+*.keystore

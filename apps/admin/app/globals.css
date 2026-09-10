@@ -1,0 +1,10 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  background: #0d0d11;
+  color: #f4f4f5;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: #0d0d11; }
+button, select, input { font: inherit; }
