@@ -11,24 +11,23 @@ import { AdminAppConfigController } from './modules/app-config/admin-app-config.
 import { AdminKeyGuard } from './modules/app-config/admin-key.guard';
 import { AppConfigRepository } from './modules/app-config/app-config.repository';
 import { AppConfigService } from './modules/app-config/app-config.service';
+import { CatalogController } from './modules/catalog/catalog.controller';
+import { CatalogService } from './modules/catalog/catalog.service';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({
-      isGlobal: true,
-      cache: true,
-      validate: validateEnvironment
-    }),
+    ConfigModule.forRoot({ isGlobal: true, cache: true, validate: validateEnvironment }),
     DatabaseModule,
     RedisModule
   ],
-  controllers: [HealthController, AppManifestController, AdminAppConfigController],
+  controllers: [HealthController, AppManifestController, AdminAppConfigController, CatalogController],
   providers: [
     HealthService,
     AppManifestService,
     AppConfigRepository,
     AppConfigService,
-    AdminKeyGuard
+    AdminKeyGuard,
+    CatalogService
   ]
 })
 export class AppModule {}
