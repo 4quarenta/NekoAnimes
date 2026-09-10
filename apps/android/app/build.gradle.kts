@@ -15,6 +15,11 @@ android {
         versionName = "0.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("String", "MAX_SDK_KEY", "\"${providers.gradleProperty("MAX_SDK_KEY").orElse("").get()}\"")
+        buildConfigField("String", "MAX_BANNER_AD_UNIT_ID", "\"${providers.gradleProperty("MAX_BANNER_AD_UNIT_ID").orElse("").get()}\"")
+        buildConfigField("String", "MAX_APP_OPEN_AD_UNIT_ID", "\"${providers.gradleProperty("MAX_APP_OPEN_AD_UNIT_ID").orElse("").get()}\"")
+        buildConfigField("String", "MAX_INTERSTITIAL_AD_UNIT_ID", "\"${providers.gradleProperty("MAX_INTERSTITIAL_AD_UNIT_ID").orElse("").get()}\"")
     }
 
     buildTypes {
@@ -55,8 +60,6 @@ android {
 }
 
 dependencies {
-    // Keep the Android 16 production baseline. Compose 1.12+ requires compileSdk 37,
-    // so this BOM is intentionally pinned to the last API-36-compatible stable line.
     val composeBom = platform("androidx.compose:compose-bom:2026.06.00")
 
     implementation(composeBom)
@@ -78,6 +81,9 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:1.11.0")
     implementation("androidx.media3:media3-exoplayer-dash:1.11.0")
     implementation("androidx.media3:media3-ui:1.11.0")
+
+    implementation("com.applovin:applovin-sdk:13.6.4")
+    implementation("com.google.android.ump:user-messaging-platform:4.0.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
