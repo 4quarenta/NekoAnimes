@@ -17,5 +17,36 @@ import { MetadataController } from './modules/providers/metadata.controller';
 import { MetadataService } from './modules/providers/metadata.service';
 import { MalProvider } from './modules/providers/mal.provider';
 import { AniListProvider } from './modules/providers/anilist.provider';
-@Module({imports:[ConfigModule.forRoot({isGlobal:true,cache:true,validate:validateEnvironment}),DatabaseModule,RedisModule],controllers:[HealthController,AppManifestController,AdminAppConfigController,CatalogController,MetadataController],providers:[HealthService,AppManifestService,AppConfigRepository,AppConfigService,AdminKeyGuard,CatalogService,MetadataService,MalProvider,AniListProvider]})
+import { NewsController } from './modules/news/news.controller';
+import { AdminNewsController } from './modules/news/admin-news.controller';
+import { NewsService } from './modules/news/news.service';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true, cache: true, validate: validateEnvironment }),
+    DatabaseModule,
+    RedisModule
+  ],
+  controllers: [
+    HealthController,
+    AppManifestController,
+    AdminAppConfigController,
+    CatalogController,
+    MetadataController,
+    NewsController,
+    AdminNewsController
+  ],
+  providers: [
+    HealthService,
+    AppManifestService,
+    AppConfigRepository,
+    AppConfigService,
+    AdminKeyGuard,
+    CatalogService,
+    MetadataService,
+    MalProvider,
+    AniListProvider,
+    NewsService
+  ]
+})
 export class AppModule {}
