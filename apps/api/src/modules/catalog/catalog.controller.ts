@@ -27,4 +27,9 @@ export class CatalogController {
   ) {
     return this.catalog.seasonEpisodes(seasonId, offset, limit);
   }
+
+  @Get('episodes/:episodeId/playback')
+  playback(@Param('episodeId') episodeId: string) {
+    return this.catalog.playback(episodeId);
+  }
 }
