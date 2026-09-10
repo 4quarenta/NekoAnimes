@@ -1,13 +1,17 @@
 name: JS CI
 
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
   pull_request:
+
+concurrency:
+  group: js-ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   typecheck-and-build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v5
