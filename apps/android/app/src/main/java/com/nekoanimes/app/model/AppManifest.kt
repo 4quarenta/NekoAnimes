@@ -5,7 +5,8 @@ data class AppManifest(
     val configVersion: Int,
     val mode: String,
     val webAppUrl: String,
-    val navigation: List<NavigationItem>
+    val navigation: List<NavigationItem>,
+    val ads: AdsConfig
 )
 
 data class NavigationItem(
@@ -13,4 +14,24 @@ data class NavigationItem(
     val label: String,
     val icon: String,
     val route: String
+)
+
+data class AdsConfig(
+    val enabled: Boolean,
+    val engine: String,
+    val banner: BannerAdConfig,
+    val appOpen: AppOpenAdConfig,
+    val interstitial: InterstitialAdConfig
+)
+
+data class BannerAdConfig(val enabled: Boolean)
+data class AppOpenAdConfig(
+    val enabled: Boolean,
+    val minIntervalMinutes: Int,
+    val skipFirstOpens: Int
+)
+data class InterstitialAdConfig(
+    val enabled: Boolean,
+    val minIntervalMinutes: Int,
+    val maxPerSession: Int
 )
