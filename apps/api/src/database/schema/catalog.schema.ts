@@ -1,4 +1,4 @@
-import { integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
+import { boolean, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from 'drizzle-orm/pg-core';
 
 export const anime = pgTable('anime', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -41,3 +41,14 @@ export const episodes = pgTable('episodes', {
   airedAt: timestamp('aired_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
 }, (table) => [uniqueIndex('season_episode_number_uq').on(table.seasonId, table.number)]);
+
+export const episodeSources = pgTable('episode_sources', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  episodeId: uuid('episode_id').notNull().references(() => episodes.id, { onDelete: 'cascade' }),
+  url: text('url').notNull(),
+  mimeType: text('mime_type'),
+  label: text('label'),
+  headers: jsonb('headers').$type<Record<string, string>>().notNull().default({}),
+  isDefault: boolean('is_default').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull()
+});
