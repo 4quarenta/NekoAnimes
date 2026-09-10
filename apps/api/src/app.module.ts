@@ -13,21 +13,9 @@ import { AppConfigRepository } from './modules/app-config/app-config.repository'
 import { AppConfigService } from './modules/app-config/app-config.service';
 import { CatalogController } from './modules/catalog/catalog.controller';
 import { CatalogService } from './modules/catalog/catalog.service';
-
-@Module({
-  imports: [
-    ConfigModule.forRoot({ isGlobal: true, cache: true, validate: validateEnvironment }),
-    DatabaseModule,
-    RedisModule
-  ],
-  controllers: [HealthController, AppManifestController, AdminAppConfigController, CatalogController],
-  providers: [
-    HealthService,
-    AppManifestService,
-    AppConfigRepository,
-    AppConfigService,
-    AdminKeyGuard,
-    CatalogService
-  ]
-})
+import { MetadataController } from './modules/providers/metadata.controller';
+import { MetadataService } from './modules/providers/metadata.service';
+import { MalProvider } from './modules/providers/mal.provider';
+import { AniListProvider } from './modules/providers/anilist.provider';
+@Module({imports:[ConfigModule.forRoot({isGlobal:true,cache:true,validate:validateEnvironment}),DatabaseModule,RedisModule],controllers:[HealthController,AppManifestController,AdminAppConfigController,CatalogController,MetadataController],providers:[HealthService,AppManifestService,AppConfigRepository,AppConfigService,AdminKeyGuard,CatalogService,MetadataService,MalProvider,AniListProvider]})
 export class AppModule {}
