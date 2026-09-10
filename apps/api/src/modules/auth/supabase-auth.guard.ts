@@ -15,25 +15,46 @@ export class SupabaseAuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const authorization = request.headers.authorization;
     const raw = Array.isArray(authorization) ? authorization[0] : authorization;
-    const token = raw?.startsWith('Bearer ') ? raw.slice(7).trim() : '';
-    if (!token) throw new UnauthorizedException('Autenticação necessária');
+    const match = /^Bearer\s+([^\s]+)$/i.exec(raw ?? '');
+    const token = match?.[1] ?? '';
+
+    if (!token || token.length > 8192) throw new UnauthorizedException('Autenticação necessária');
 
     const url = this.config.get<string>('SUPABASE_URL');
     const publishableKey = this.config.get<string>('SUPABASE_PUBLISHABLE_KEY');
     if (!url || !publishableKey) throw new ServiceUnavailableException('Autenticação ainda não configurada');
 
-    const response = await fetch(`${url.replace(/\/$/, '')}/auth/v1/user`, {
-      headers: {
-        apikey: publishableKey,
-        authorization: `Bearer ${token}`
+    let endpoint: URL;
+    try {
+      endpoint = new URL('/auth/v1/user', url);
+      if (endpoint.protocol !== 'https:' && this.config.get<string>('NODE_ENV') === 'production') {
+        throw new Error('Supabase precisa usar HTTPS em produção');
       }
-    });
+    } catch {
+      throw new ServiceUnavailableException('Configuração de autenticação inválida');
+    }
+
+    let response: Response;
+    try {
+      response = await fetch(endpoint, {
+        headers: {
+          apikey: publishableKey,
+          authorization: `Bearer ${token}`,
+          accept: 'application/json'
+        },
+        signal: AbortSignal.timeout(5_000)
+      });
+    } catch {
+      throw new ServiceUnavailableException('Serviço de autenticação indisponível');
+    }
+
     if (!response.ok) throw new UnauthorizedException('Sessão inválida ou expirada');
 
     const user = await response.json() as { id?: string; email?: string };
-    if (!user.id) throw new UnauthorizedException('Usuário inválido');
+    if (!user.id || !/^[0-9a-f-]{36}$/i.test(user.id)) throw new UnauthorizedException('Usuário inválido');
+
     request.userId = user.id;
-    request.userEmail = user.email;
+    request.userEmail = typeof user.email === 'string' ? user.email : undefined;
     return true;
   }
 }
