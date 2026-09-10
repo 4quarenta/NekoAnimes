@@ -20,6 +20,9 @@ import { AniListProvider } from './modules/providers/anilist.provider';
 import { NewsController } from './modules/news/news.controller';
 import { AdminNewsController } from './modules/news/admin-news.controller';
 import { NewsService } from './modules/news/news.service';
+import { SupabaseAuthGuard } from './modules/auth/supabase-auth.guard';
+import { UserDataController } from './modules/user-data/user-data.controller';
+import { UserDataService } from './modules/user-data/user-data.service';
 
 @Module({
   imports: [
@@ -34,7 +37,8 @@ import { NewsService } from './modules/news/news.service';
     CatalogController,
     MetadataController,
     NewsController,
-    AdminNewsController
+    AdminNewsController,
+    UserDataController
   ],
   providers: [
     HealthService,
@@ -46,7 +50,9 @@ import { NewsService } from './modules/news/news.service';
     MetadataService,
     MalProvider,
     AniListProvider,
-    NewsService
+    NewsService,
+    SupabaseAuthGuard,
+    UserDataService
   ]
 })
 export class AppModule {}
