@@ -3,6 +3,12 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val releaseStoreFile = providers.environmentVariable("NEKO_RELEASE_STORE_FILE")
+val releaseStorePassword = providers.environmentVariable("NEKO_RELEASE_STORE_PASSWORD")
+val releaseKeyAlias = providers.environmentVariable("NEKO_RELEASE_KEY_ALIAS")
+val releaseKeyPassword = providers.environmentVariable("NEKO_RELEASE_KEY_PASSWORD")
+val hasReleaseSigning = releaseStoreFile.isPresent && releaseStorePassword.isPresent && releaseKeyAlias.isPresent && releaseKeyPassword.isPresent
+
 android {
     namespace = "com.nekoanimes.app"
     compileSdk = 36
@@ -11,8 +17,8 @@ android {
         applicationId = "com.nekoanimes.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 10000
+        versionName = "1.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -22,16 +28,35 @@ android {
         buildConfigField("String", "MAX_INTERSTITIAL_AD_UNIT_ID", "\"${providers.gradleProperty("MAX_INTERSTITIAL_AD_UNIT_ID").orElse("").get()}\"")
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("release") {
+                storeFile = file(releaseStoreFile.get())
+                storePassword = releaseStorePassword.get()
+                keyAlias = releaseKeyAlias.get()
+                keyPassword = releaseKeyPassword.get()
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+                enableV4Signing = true
+            }
+        }
+    }
+
     buildTypes {
         debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
             buildConfigField("String", "WEB_APP_URL", "\"http://10.0.2.2:5173\"")
             buildConfigField("String", "WEB_APP_ORIGIN", "\"http://10.0.2.2:5173\"")
             buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:3000\"")
         }
 
         release {
+            isDebuggable = false
             isMinifyEnabled = true
             isShrinkResources = true
+            if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
 
             buildConfigField("String", "WEB_APP_URL", "\"https://app.nekoanimes.com\"")
             buildConfigField("String", "WEB_APP_ORIGIN", "\"https://app.nekoanimes.com\"")
