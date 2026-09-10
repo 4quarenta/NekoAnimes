@@ -44,7 +44,6 @@ class MainActivity : ComponentActivity() {
                 val repository = remember { AppManifestRepository(applicationContext) }
                 var shellState by remember { mutableStateOf<ShellState>(ShellState.Loading) }
                 var retryKey by remember { mutableIntStateOf(0) }
-
                 LaunchedEffect(retryKey) {
                     shellState = ShellState.Loading
                     shellState = repository.load().fold(
@@ -52,7 +51,6 @@ class MainActivity : ComponentActivity() {
                         onFailure = { ShellState.Error(it.message ?: "Falha ao carregar configuração") }
                     )
                 }
-
                 when (val state = shellState) {
                     ShellState.Loading -> LoadingScreen()
                     is ShellState.Error -> ErrorScreen(state.message) { retryKey += 1 }
@@ -96,10 +94,10 @@ private fun AppShell(manifest: AppManifest) {
     if (playing != null) {
         NekoPlayerScreen(
             episodeId = playing,
-            onClose = {
+            onClose = { positionSeconds, durationSeconds ->
                 playerEpisodeId = null
                 ads.onAppEvent("episode_closed", "player")
-                webView?.let { bridge.sendPlayerClosed(it, playing) }
+                webView?.let { bridge.sendPlayerClosed(it, playing, positionSeconds, durationSeconds) }
             }
         )
         return
