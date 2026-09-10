@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { and, asc, eq, ilike, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, or, sql } from 'drizzle-orm';
 import { DatabaseService } from '../../database/database.service';
-import { anime, animeExternalIds, animeSeasons, episodes } from '../../database/schema';
+import { anime, animeExternalIds, animeSeasons, episodes, episodeSources } from '../../database/schema';
 
 @Injectable()
 export class CatalogService {
@@ -62,5 +62,35 @@ export class CatalogService {
     ]);
 
     return { season, items, offset: safeOffset, limit: safeLimit, total: countRows[0]?.count ?? 0 };
+  }
+
+  async playback(episodeId: string) {
+    const [episode] = await this.database.db.select().from(episodes).where(eq(episodes.id, episodeId)).limit(1);
+    if (!episode) throw new NotFoundException('Episódio não encontrado');
+
+    const sources = await this.database.db
+      .select({
+        id: episodeSources.id,
+        url: episodeSources.url,
+        mimeType: episodeSources.mimeType,
+        label: episodeSources.label,
+        headers: episodeSources.headers,
+        isDefault: episodeSources.isDefault
+      })
+      .from(episodeSources)
+      .where(eq(episodeSources.episodeId, episodeId))
+      .orderBy(desc(episodeSources.isDefault), asc(episodeSources.label));
+
+    if (!sources.length) throw new NotFoundException('Fonte de reprodução indisponível');
+
+    return {
+      episode: {
+        id: episode.id,
+        number: episode.number,
+        title: episode.title,
+        durationSeconds: episode.durationSeconds
+      },
+      sources
+    };
   }
 }
