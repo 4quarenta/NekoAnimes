@@ -32,12 +32,21 @@ import kotlinx.coroutines.withContext
 @Composable
 internal fun NekoPlayerScreen(
     episodeId: String,
-    onClose: () -> Unit
+    onClose: (positionSeconds: Int, durationSeconds: Int) -> Unit
 ) {
     val context = LocalContext.current
     var state by remember(episodeId) { mutableStateOf<PlayerState>(PlayerState.Loading) }
+    var activePlayer by remember(episodeId) { mutableStateOf<ExoPlayer?>(null) }
 
-    BackHandler { onClose() }
+    fun closeWithProgress() {
+        val player = activePlayer
+        val position = ((player?.currentPosition ?: 0L) / 1000L).coerceAtLeast(0L).toInt()
+        val durationMs = player?.duration ?: 0L
+        val duration = if (durationMs > 0) (durationMs / 1000L).toInt() else 0
+        onClose(position, duration)
+    }
+
+    BackHandler { closeWithProgress() }
 
     LaunchedEffect(episodeId) {
         state = runCatching {
@@ -49,16 +58,8 @@ internal fun NekoPlayerScreen(
     }
 
     when (val current = state) {
-        PlayerState.Loading -> Box(
-            modifier = Modifier.fillMaxSize().background(Color.Black),
-            contentAlignment = Alignment.Center
-        ) { CircularProgressIndicator() }
-
-        is PlayerState.Error -> Box(
-            modifier = Modifier.fillMaxSize().background(Color.Black),
-            contentAlignment = Alignment.Center
-        ) { Text(current.message, color = Color.White) }
-
+        PlayerState.Loading -> Box(modifier = Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        is PlayerState.Error -> Box(modifier = Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) { Text(current.message, color = Color.White) }
         is PlayerState.Ready -> {
             val descriptor = current.descriptor
             val player = remember(descriptor.episodeId) {
@@ -72,31 +73,25 @@ internal fun NekoPlayerScreen(
                         setHandleAudioBecomingNoisy(true)
                         val itemBuilder = MediaItem.Builder()
                             .setUri(Uri.parse(descriptor.source.url))
-                            .setMediaMetadata(
-                                MediaMetadata.Builder()
-                                    .setTitle(descriptor.title ?: "Episódio ${descriptor.episodeNumber}")
-                                    .build()
-                            )
+                            .setMediaMetadata(MediaMetadata.Builder().setTitle(descriptor.title ?: "Episódio ${descriptor.episodeNumber}").build())
                         descriptor.source.mimeType?.let { itemBuilder.setMimeType(normalizeMime(it)) }
                         setMediaItem(itemBuilder.build())
                         prepare()
                         playWhenReady = true
                     }
             }
+            activePlayer = player
 
             DisposableEffect(player) {
-                onDispose { player.release() }
+                onDispose {
+                    if (activePlayer === player) activePlayer = null
+                    player.release()
+                }
             }
 
             AndroidView(
                 modifier = Modifier.fillMaxSize().background(Color.Black),
-                factory = { viewContext ->
-                    PlayerView(viewContext).apply {
-                        this.player = player
-                        useController = true
-                        keepScreenOn = true
-                    }
-                },
+                factory = { viewContext -> PlayerView(viewContext).apply { this.player = player; useController = true; keepScreenOn = true } },
                 update = { it.player = player }
             )
         }
