@@ -1,7 +1,11 @@
-export type NekoBridgeEvent = {
-  type: string;
-  payload?: unknown;
-};
+import {
+  BridgeEventSchema,
+  type BridgeEvent,
+  type BridgeNativeEvent,
+  NEKO_BRIDGE_VERSION
+} from '@neko/contracts';
+
+export type NekoBridgeEvent = BridgeEvent;
 
 declare global {
   interface Window {
@@ -20,35 +24,53 @@ function createId(): string {
     `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+function post(type: string, payload: unknown): boolean {
+  if (typeof window === 'undefined' || !window.NekoNativeBridge) return false;
+
+  window.NekoNativeBridge.postMessage(JSON.stringify({
+    version: NEKO_BRIDGE_VERSION,
+    id: createId(),
+    type,
+    payload
+  }));
+  return true;
+}
+
 export const NekoNative = {
   isAvailable(): boolean {
     return typeof window !== 'undefined' && Boolean(window.NekoNativeBridge);
   },
 
-  emit(type: string, payload?: unknown): boolean {
-    if (!this.isAvailable()) return false;
-
-    window.NekoNativeBridge!.postMessage(
-      JSON.stringify({
-        id: createId(),
-        type,
-        payload
-      })
-    );
-
-    return true;
+  handshake(webVersion = 'dev'): boolean {
+    return post('bridge.handshake', { webVersion });
   },
 
+  routeChanged(route: string): boolean {
+    return post('navigation.routeChanged', { route });
+  },
+
+  // Compatibility alias used by the current SPA.
   navigate(route: string): boolean {
-    return this.emit('navigation.routeChanged', { route });
+    return this.routeChanged(route);
+  },
+
+  player: {
+    open(episodeId: string): boolean {
+      return post('player.open', { episodeId });
+    }
   },
 
   openPlayer(episodeId: string): boolean {
-    return this.emit('player.open', { episodeId });
+    return this.player.open(episodeId);
   },
 
+  appEvent(name: string, placement?: string): boolean {
+    return post('app.event', { name, placement });
+  },
+
+  // Compatibility alias until monetization migrates to semantic app events.
   adEvent(event: string, placement?: string): boolean {
-    return this.emit('ads.event', { event, placement });
+    return this.appEvent(event, placement);
   },
 
   subscribe(listener: Listener): () => void {
@@ -62,13 +84,13 @@ if (typeof window !== 'undefined') {
     if (typeof message.data !== 'string') return;
 
     try {
-      const event = JSON.parse(message.data) as NekoBridgeEvent;
-      if (!event || typeof event.type !== 'string') return;
-      listeners.forEach((listener) => listener(event));
+      const parsed = BridgeEventSchema.safeParse(JSON.parse(message.data));
+      if (!parsed.success) return;
+      listeners.forEach((listener) => listener(parsed.data));
     } catch {
-      // Ignora mensagens que não fazem parte do protocolo Neko.
+      // Ignore messages outside the Neko protocol.
     }
   });
 }
 
-export {};
+export type { BridgeNativeEvent };
