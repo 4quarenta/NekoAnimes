@@ -3,6 +3,14 @@ export type NekoBridgeEvent = {
   payload?: unknown;
 };
 
+declare global {
+  interface Window {
+    NekoNativeBridge?: {
+      postMessage(message: string): void;
+    };
+  }
+}
+
 type Listener = (event: NekoBridgeEvent) => void;
 
 const listeners = new Set<Listener>();
@@ -62,3 +70,5 @@ if (typeof window !== 'undefined') {
     }
   });
 }
+
+export {};
