@@ -1,5 +1,6 @@
 package com.nekoanimes.app.web
 
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.webkit.WebResourceRequest
@@ -27,6 +28,9 @@ fun WebViewHost(
                 settings.domStorageEnabled = true
                 settings.allowFileAccess = false
                 settings.allowContentAccess = false
+                settings.javaScriptCanOpenWindowsAutomatically = false
+                settings.setSupportMultipleWindows(false)
+                settings.userAgentString = "${settings.userAgentString} NekoAnimes/Android"
 
                 webViewClient = object : WebViewClient() {
                     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
@@ -34,7 +38,11 @@ fun WebViewHost(
                         return if (isAllowedWebAppUrl(target)) {
                             false
                         } else {
-                            context.startActivity(Intent(Intent.ACTION_VIEW, target))
+                            try {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, target))
+                            } catch (_: ActivityNotFoundException) {
+                                // Sem handler externo: a navegação continua bloqueada no WebView.
+                            }
                             true
                         }
                     }
