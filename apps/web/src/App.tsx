@@ -1,15 +1,25 @@
 import { useEffect } from 'react';
 import { RouterProvider } from '@tanstack/react-router';
 import { NekoNative } from '@neko/bridge-web';
+import { fetchManifest } from './lib/api';
 import { router } from './router';
 
 const NATIVE_ROUTES = ['/', '/catalogo', '/buscar', '/lista', '/salvos'] as const;
 type NativeRoute = (typeof NATIVE_ROUTES)[number];
 function isNativeRoute(route: string): route is NativeRoute { return (NATIVE_ROUTES as readonly string[]).includes(route); }
+function isStreamingOnly(route: string) { return route === '/catalogo' || route === '/lista' || route.startsWith('/anime/'); }
+function isNewsOnly(route: string) { return route === '/salvos' || route.startsWith('/noticias/'); }
 
 export function App() {
   useEffect(() => {
     NekoNative.handshake(import.meta.env.VITE_APP_VERSION ?? 'dev');
+
+    void fetchManifest().then((manifest) => {
+      const route = window.location.pathname;
+      if (manifest.mode === 'news' && isStreamingOnly(route)) void router.navigate({ to: '/' });
+      if (manifest.mode === 'streaming' && isNewsOnly(route)) void router.navigate({ to: '/' });
+    }).catch(() => undefined);
+
     const unsubscribe = NekoNative.subscribe((event) => {
       if (event.type !== 'navigation.navigate') return;
       const route = event.payload.route;
