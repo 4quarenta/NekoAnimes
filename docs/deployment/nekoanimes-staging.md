@@ -11,6 +11,23 @@ This document records the isolated staging topology. It does not contain Supabas
 - PostgreSQL: dedicated Supabase project named `NekoAnimes` (must not be created in SICC)
 - Hyperdrive: dedicated config pointing only to the NekoAnimes PostgreSQL database
 
+## Current provisioning blocker
+
+The connected Supabase account currently exposes only the `SICC` organization and
+its existing projects. NekoAnimes must not be placed there. Create the isolated
+organization/project manually before continuing:
+
+1. Open the Supabase Dashboard and open the organization selector in the top-left.
+2. Choose `New organization` (the label may appear as `Create organization`).
+3. Name the organization `NekoAnimes` and select the Free plan.
+4. Inside that new organization, choose `New project`.
+5. Name the project `NekoAnimes`, select the Free plan, and choose `sa-east-1`
+   when available; do not enable paid add-ons.
+6. Return to this task so the new organization can be detected and the database,
+   migrations, Auth, and Hyperdrive can be configured automatically.
+
+Do not select `SICC` or either of its existing projects during these steps.
+
 ## GitHub configuration required
 
 Repository secrets:
