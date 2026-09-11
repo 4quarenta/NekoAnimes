@@ -1,1 +1,0 @@
-Trigger Android CI to generate a debug APK artifact for device testing.
