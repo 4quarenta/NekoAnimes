@@ -1,0 +1,23 @@
+{
+  "name": "@neko/api-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.2",
+    "hono": "^4.13.7",
+    "pg": "8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@types/pg": "^8.23.1",
+    "typescript": "^5.9.0",
+    "wrangler": "^4.131.1"
+  }
+}

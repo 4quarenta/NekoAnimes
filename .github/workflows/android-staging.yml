@@ -1,0 +1,90 @@
+name: Android staging
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/android/**'
+      - '.github/workflows/android-staging.yml'
+
+concurrency:
+  group: neko-android-staging
+  cancel-in-progress: false
+
+jobs:
+  build-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: apps/android
+    env:
+      NEKO_WEB_APP_URL: https://nekoanimes-staging.pages.dev
+      NEKO_WEB_APP_ORIGIN: https://nekoanimes-staging.pages.dev
+      NEKO_API_BASE_URL: ${{ vars.NEKO_API_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.4.1'
+          cache-provider: basic
+      - name: Build direct debug against staging
+        run: |
+          gradle --no-daemon :app:assembleDirectDebug \
+            -PnekoWebAppUrl="$NEKO_WEB_APP_URL" \
+            -PnekoWebAppOrigin="$NEKO_WEB_APP_ORIGIN" \
+            -PnekoApiBaseUrl="$NEKO_API_BASE_URL"
+      - name: Prepare release files
+        id: files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/neko-staging"
+          cp app/build/outputs/apk/direct/debug/app-direct-debug.apk "$RUNNER_TEMP/neko-staging/NekoAnimes-v1.0.0.apk"
+          cp app/build/outputs/apk/direct/debug/app-direct-debug.apk "$RUNNER_TEMP/neko-staging/NekoAnimes-v1.0.0-staging.apk"
+          cd "$RUNNER_TEMP/neko-staging"
+          sha256sum NekoAnimes-v1.0.0.apk > NekoAnimes-v1.0.0.apk.sha256
+          sha256sum NekoAnimes-v1.0.0-staging.apk > NekoAnimes-v1.0.0-staging.apk.sha256
+          echo "sha256=$(cut -d' ' -f1 NekoAnimes-v1.0.0.apk.sha256)" >> "$GITHUB_OUTPUT"
+      - name: Upload GitHub artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nekoanimes-v1.0.0-staging
+          path: ${{ runner.temp }}/neko-staging/*
+          if-no-files-found: error
+      - name: Publish APK to R2
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: r2 object put nekoanimes-releases-staging/android/v1.0.0/NekoAnimes-v1.0.0.apk --file ${{ runner.temp }}/neko-staging/NekoAnimes-v1.0.0.apk --content-type application/vnd.android.package-archive
+      - name: Publish APK checksum to R2
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: r2 object put nekoanimes-releases-staging/android/v1.0.0/NekoAnimes-v1.0.0.apk.sha256 --file ${{ runner.temp }}/neko-staging/NekoAnimes-v1.0.0.apk.sha256 --content-type text/plain
+      - name: Create GitHub staging prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        working-directory: ${{ github.workspace }}
+        run: |
+          gh release create v1.0.0-staging \
+            "${{ runner.temp }}/neko-staging/NekoAnimes-v1.0.0-staging.apk" \
+            "${{ runner.temp }}/neko-staging/NekoAnimes-v1.0.0-staging.apk.sha256" \
+            --prerelease --title "NekoAnimes v1.0.0 staging" \
+            --notes "Staging direct APK for physical Android smoke tests." \
+            --repo "${{ github.repository }}" || \
+          gh release upload v1.0.0-staging \
+            "${{ runner.temp }}/neko-staging/NekoAnimes-v1.0.0-staging.apk" \
+            "${{ runner.temp }}/neko-staging/NekoAnimes-v1.0.0-staging.apk.sha256" --clobber

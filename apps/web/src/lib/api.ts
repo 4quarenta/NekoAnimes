@@ -1,7 +1,7 @@
 import { AppManifestSchema, type AppManifest } from '@neko/contracts';
 import { supabase } from './supabase';
 
-const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
+const API_URL = import.meta.env.VITE_API_BASE_URL ?? import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
 
 async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, { cache: 'no-store' });

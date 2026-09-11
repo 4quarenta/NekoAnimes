@@ -8,6 +8,7 @@ val releaseStorePassword = providers.environmentVariable("NEKO_RELEASE_STORE_PAS
 val releaseKeyAlias = providers.environmentVariable("NEKO_RELEASE_KEY_ALIAS")
 val releaseKeyPassword = providers.environmentVariable("NEKO_RELEASE_KEY_PASSWORD")
 val hasReleaseSigning = releaseStoreFile.isPresent && releaseStorePassword.isPresent && releaseKeyAlias.isPresent && releaseKeyPassword.isPresent
+fun nekoUrl(property: String, fallback: String) = providers.gradleProperty(property).orElse(fallback).get()
 
 android {
     namespace = "com.nekoanimes.app"
@@ -60,9 +61,9 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
-            buildConfigField("String", "WEB_APP_URL", "\"http://10.0.2.2:5173\"")
-            buildConfigField("String", "WEB_APP_ORIGIN", "\"http://10.0.2.2:5173\"")
-            buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:3000\"")
+            buildConfigField("String", "WEB_APP_URL", "\"${nekoUrl("nekoWebAppUrl", "http://10.0.2.2:5173")}\"")
+            buildConfigField("String", "WEB_APP_ORIGIN", "\"${nekoUrl("nekoWebAppOrigin", "http://10.0.2.2:5173")}\"")
+            buildConfigField("String", "API_BASE_URL", "\"${nekoUrl("nekoApiBaseUrl", "http://10.0.2.2:3000")}\"")
         }
 
         release {
@@ -71,9 +72,9 @@ android {
             isShrinkResources = true
             if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
 
-            buildConfigField("String", "WEB_APP_URL", "\"https://app.nekoanimes.com\"")
-            buildConfigField("String", "WEB_APP_ORIGIN", "\"https://app.nekoanimes.com\"")
-            buildConfigField("String", "API_BASE_URL", "\"https://api.nekoanimes.com\"")
+            buildConfigField("String", "WEB_APP_URL", "\"${nekoUrl("nekoWebAppUrl", "https://app.nekoanimes.com")}\"")
+            buildConfigField("String", "WEB_APP_ORIGIN", "\"${nekoUrl("nekoWebAppOrigin", "https://app.nekoanimes.com")}\"")
+            buildConfigField("String", "API_BASE_URL", "\"${nekoUrl("nekoApiBaseUrl", "https://api.nekoanimes.com")}\"")
 
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

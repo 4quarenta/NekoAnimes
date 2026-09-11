@@ -5,6 +5,7 @@
   "workspaces": [
     "apps/web",
     "apps/api",
+    "apps/api-worker",
     "apps/admin",
     "packages/*"
   ],
@@ -14,8 +15,9 @@
     "dev:admin": "npm run dev --workspace @neko/admin",
     "build:web": "npm run build --workspace @neko/web",
     "build:api": "npm run build --workspace @neko/api",
+    "build:api-worker": "npm run build --workspace @neko/api-worker",
     "build:admin": "npm run build --workspace @neko/admin",
-    "build": "npm run build:web && npm run build:api && npm run build:admin",
+    "build": "npm run build:web && npm run build:api && npm run build:api-worker && npm run build:admin",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "format": "prettier --write ."
   },

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { fetchManifest, fetchNews } from '../lib/api';
+import { fetchCatalog, fetchManifest, fetchNews } from '../lib/api';
 import { AppScreen, Eyebrow, EmptyState, ScreenHeader, Section, TextRow } from '../components/AppScreen';
 
 function formatDate(value: string) {
@@ -11,6 +11,7 @@ export function HomePage() {
   const navigate = useNavigate();
   const manifest = useQuery({ queryKey: ['app-manifest'], queryFn: fetchManifest });
   const news = useQuery({ queryKey: ['news-home'], queryFn: () => fetchNews({ limit: 30 }), enabled: manifest.data?.mode === 'news' });
+  const catalog = useQuery({ queryKey: ['catalog-home'], queryFn: () => fetchCatalog({ limit: 6 }), enabled: manifest.data?.mode === 'streaming' });
 
   if (manifest.isPending) return <AppScreen><div className="neko-skeleton" /><div className="neko-skeleton short" /></AppScreen>;
   if (manifest.isError) return <AppScreen><p className="neko-error">Não foi possível carregar a configuração.</p></AppScreen>;
@@ -53,10 +54,11 @@ export function HomePage() {
         <span>⌕</span><span>Buscar anime...</span>
       </button>
       <Section title="Continuar assistindo" action={<button className="neko-link" onClick={() => void navigate({ to: '/lista' })}>Ver lista</button>}>
-        <div className="neko-list"><TextRow title="Anime Alpha" meta="T1 · Episódio 4" trailing="42%" /><TextRow title="Anime Beta" meta="T2 · Episódio 8" trailing="71%" /></div>
+        <div className="neko-list"><TextRow title="Entre na conta para sincronizar" meta="Seu progresso aparecerá aqui" trailing="›" onClick={() => void navigate({ to: '/conta' })} /></div>
       </Section>
-      <Section title="Lançamentos de hoje">
-        <div className="neko-list"><TextRow title="Anime Gamma" meta="Episódio 7 · 18:30" trailing="›" /><TextRow title="Anime Delta" meta="Episódio 11 · 21:00" trailing="›" /></div>
+      <Section title="Catálogo em destaque" action={<button className="neko-link" onClick={() => void navigate({ to: '/catalogo' })}>Ver tudo</button>}>
+        {catalog.isPending ? <div className="neko-skeleton short" /> : null}
+        {catalog.data?.items.length ? <div className="neko-list">{catalog.data.items.map((item) => <TextRow key={item.id} title={item.title} meta={[item.year, item.genres[0], item.status].filter(Boolean).join(' · ')} trailing="›" onClick={() => void navigate({ to: '/anime/$slug', params: { slug: item.slug } })} />)}</div> : null}
       </Section>
       <Section title="Explorar A–Z" action={<button className="neko-link" onClick={() => void navigate({ to: '/catalogo' })}>Abrir catálogo</button>}>
         <div className="neko-letter-preview">{'ABCDEFG'.split('').map((letter) => <span key={letter}>{letter}</span>)}</div>

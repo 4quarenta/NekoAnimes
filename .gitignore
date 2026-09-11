@@ -1,8 +1,14 @@
 node_modules/
+*.tsbuildinfo
 dist/
 .next/
 .vite/
 coverage/
+apps/*/dist/
+apps/*/.next/
+apps/android/.gradle/
+apps/android/app/build/
+apps/android/local.properties
 .env
 .env.*
 !.env.example
@@ -11,7 +17,7 @@ coverage/
 *.iml
 .gradle/
 local.properties
-apps/android/app/build/
 apps/android/build/
 *.jks
 *.keystore
+.wrangler/
