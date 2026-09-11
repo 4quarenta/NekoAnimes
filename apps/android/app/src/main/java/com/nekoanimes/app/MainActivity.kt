@@ -34,6 +34,7 @@ import com.nekoanimes.app.model.AppManifest
 import com.nekoanimes.app.player.NekoPlayerScreen
 import com.nekoanimes.app.ui.NekoNavigationBar
 import com.nekoanimes.app.ui.NekoTheme
+import com.nekoanimes.app.update.NekoUpdatePrompt
 import com.nekoanimes.app.web.WebViewHost
 
 class MainActivity : ComponentActivity() {
@@ -64,6 +65,8 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun AppShell(manifest: AppManifest) {
     val activity = LocalContext.current as Activity
+    NekoUpdatePrompt(activity)
+
     var selectedRoute by remember(manifest.configVersion) { mutableStateOf("/") }
     var webView by remember(manifest.configVersion) { mutableStateOf<WebView?>(null) }
     var playerEpisodeId by remember(manifest.configVersion) { mutableStateOf<String?>(null) }
