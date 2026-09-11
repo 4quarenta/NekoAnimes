@@ -2,6 +2,14 @@ name: Android Release
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (ex: v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+permissions:
+  contents: write
 
 concurrency:
   group: android-release
@@ -39,7 +47,7 @@ jobs:
           test -n "$NEKO_RELEASE_KEYSTORE_BASE64"
           echo "$NEKO_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/neko-release.jks"
 
-      - name: Build signed APK and AAB
+      - name: Build direct APK and Play AAB
         env:
           NEKO_RELEASE_STORE_FILE: ${{ runner.temp }}/neko-release.jks
           NEKO_RELEASE_STORE_PASSWORD: ${{ secrets.NEKO_RELEASE_STORE_PASSWORD }}
@@ -49,18 +57,46 @@ jobs:
           ORG_GRADLE_PROJECT_MAX_BANNER_AD_UNIT_ID: ${{ secrets.MAX_BANNER_AD_UNIT_ID }}
           ORG_GRADLE_PROJECT_MAX_APP_OPEN_AD_UNIT_ID: ${{ secrets.MAX_APP_OPEN_AD_UNIT_ID }}
           ORG_GRADLE_PROJECT_MAX_INTERSTITIAL_AD_UNIT_ID: ${{ secrets.MAX_INTERSTITIAL_AD_UNIT_ID }}
-        run: gradle --no-daemon :app:assembleRelease :app:bundleRelease
+        run: gradle --no-daemon :app:assembleDirectRelease :app:bundlePlayRelease
 
-      - name: Upload signed APK
+      - name: Prepare named release files
+        id: files
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${{ inputs.tag }}"
+          VERSION="${VERSION#v}"
+          mkdir -p "$RUNNER_TEMP/neko-release"
+          cp app/build/outputs/apk/direct/release/app-direct-release.apk "$RUNNER_TEMP/neko-release/NekoAnimes-v${VERSION}.apk"
+          cp app/build/outputs/bundle/playRelease/app-play-release.aab "$RUNNER_TEMP/neko-release/NekoAnimes-v${VERSION}.aab"
+          cd "$RUNNER_TEMP/neko-release"
+          sha256sum "NekoAnimes-v${VERSION}.apk" > "NekoAnimes-v${VERSION}.apk.sha256"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: nekoanimes-release-apk
-          path: apps/android/app/build/outputs/apk/release/app-release.apk
+          name: nekoanimes-v${{ steps.files.outputs.version }}
+          path: |
+            ${{ runner.temp }}/neko-release/NekoAnimes-v${{ steps.files.outputs.version }}.apk
+            ${{ runner.temp }}/neko-release/NekoAnimes-v${{ steps.files.outputs.version }}.apk.sha256
+            ${{ runner.temp }}/neko-release/NekoAnimes-v${{ steps.files.outputs.version }}.aab
           if-no-files-found: error
 
-      - name: Upload Play Store AAB
-        uses: actions/upload-artifact@v4
-        with:
-          name: nekoanimes-release-aab
-          path: apps/android/app/build/outputs/bundle/release/app-release.aab
-          if-no-files-found: error
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          VERSION: ${{ steps.files.outputs.version }}
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$RUNNER_TEMP/neko-release/NekoAnimes-v${VERSION}.apk"
+          SHA="$RUNNER_TEMP/neko-release/NekoAnimes-v${VERSION}.apk.sha256"
+          AAB="$RUNNER_TEMP/neko-release/NekoAnimes-v${VERSION}.aab"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$APK" "$SHA" "$AAB" --clobber
+          else
+            gh release create "$TAG" "$APK" "$SHA" "$AAB" --title "NekoAnimes $TAG" --notes "Android direct APK and Google Play AAB."
+          fi
