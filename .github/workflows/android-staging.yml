@@ -2,11 +2,6 @@ name: Android staging
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'apps/android/**'
-      - '.github/workflows/android-staging.yml'
 
 concurrency:
   group: neko-android-staging
@@ -38,6 +33,9 @@ jobs:
         with:
           gradle-version: '9.4.1'
           cache-provider: basic
+      - name: Validate staging configuration
+        shell: bash
+        run: test -n "$NEKO_API_BASE_URL"
       - name: Build direct debug against staging
         run: |
           gradle --no-daemon :app:assembleDirectDebug \

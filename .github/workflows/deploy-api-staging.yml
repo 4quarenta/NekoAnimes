@@ -2,14 +2,6 @@ name: Deploy API staging
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'apps/api-worker/**'
-      - 'apps/api/src/database/schema/**'
-      - 'apps/api/drizzle/**'
-      - 'package.json'
-      - '.github/workflows/deploy-api-staging.yml'
 
 concurrency:
   group: neko-api-staging
@@ -41,12 +33,12 @@ jobs:
           set -euo pipefail
           test -n "$SUPABASE_URL"
           test -n "$SUPABASE_KEY"
-          test -n "$APK_URL"
-          test -n "$APK_SHA256"
           printf '%s' "$SUPABASE_URL" | npx wrangler secret put SUPABASE_URL --config apps/api-worker/wrangler.jsonc
           printf '%s' "$SUPABASE_KEY" | npx wrangler secret put SUPABASE_PUBLISHABLE_KEY --config apps/api-worker/wrangler.jsonc
-          printf '%s' "$APK_URL" | npx wrangler secret put ANDROID_APK_URL --config apps/api-worker/wrangler.jsonc
-          printf '%s' "$APK_SHA256" | npx wrangler secret put ANDROID_APK_SHA256 --config apps/api-worker/wrangler.jsonc
+          if [[ -n "$APK_URL" && -n "$APK_SHA256" ]]; then
+            printf '%s' "$APK_URL" | npx wrangler secret put ANDROID_APK_URL --config apps/api-worker/wrangler.jsonc
+            printf '%s' "$APK_SHA256" | npx wrangler secret put ANDROID_APK_SHA256 --config apps/api-worker/wrangler.jsonc
+          fi
       - name: Validate Worker bundle
         run: npx wrangler deploy --config apps/api-worker/wrangler.jsonc --dry-run
       - name: Deploy Worker
