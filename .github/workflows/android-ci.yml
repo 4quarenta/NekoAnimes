@@ -36,12 +36,12 @@ jobs:
           gradle-version: '9.4.1'
           cache-provider: basic
 
-      - name: Build debug APK
-        run: gradle --no-daemon :app:assembleDebug
+      - name: Build direct debug APK
+        run: gradle --no-daemon :app:assembleDirectDebug
 
-      - name: Upload debug APK
+      - name: Upload direct debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: nekoanimes-debug-apk
-          path: apps/android/app/build/outputs/apk/debug/app-debug.apk
+          name: nekoanimes-direct-debug-apk
+          path: apps/android/app/build/outputs/apk/direct/debug/app-direct-debug.apk
           if-no-files-found: error

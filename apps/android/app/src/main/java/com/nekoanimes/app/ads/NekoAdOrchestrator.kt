@@ -14,11 +14,11 @@ import com.applovin.sdk.AppLovinSdkInitializationConfiguration
 import com.google.android.ump.ConsentRequestParameters
 import com.google.android.ump.UserMessagingPlatform
 import com.nekoanimes.app.BuildConfig
-import com.nekoanimes.app.model.AdConfig
+import com.nekoanimes.app.model.AdsConfig
 
 class NekoAdOrchestrator(
     private val activity: Activity,
-    private val config: AdConfig
+    private val config: AdsConfig
 ) : MaxAdListener {
     private val prefs = activity.getSharedPreferences("neko_ads", Context.MODE_PRIVATE)
     private var initialized = false

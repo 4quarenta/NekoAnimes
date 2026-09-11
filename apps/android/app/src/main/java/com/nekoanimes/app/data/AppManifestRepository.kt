@@ -3,7 +3,7 @@ package com.nekoanimes.app.data
 import android.content.Context
 import android.net.Uri
 import com.nekoanimes.app.BuildConfig
-import com.nekoanimes.app.model.AdConfig
+import com.nekoanimes.app.model.AdsConfig
 import com.nekoanimes.app.model.AppManifest
 import com.nekoanimes.app.model.AppOpenAdConfig
 import com.nekoanimes.app.model.BannerAdConfig
@@ -66,7 +66,7 @@ class AppManifestRepository(context: Context) {
         require(engine in setOf("max", "admob", "levelplay")) { "Motor de anúncios inválido" }
         val appOpenJson = adsJson.getJSONObject("appOpen")
         val interstitialJson = adsJson.getJSONObject("interstitial")
-        val ads = AdConfig(
+        val ads = AdsConfig(
             enabled = adsJson.getBoolean("enabled"),
             engine = engine,
             banner = BannerAdConfig(adsJson.getJSONObject("banner").getBoolean("enabled")),

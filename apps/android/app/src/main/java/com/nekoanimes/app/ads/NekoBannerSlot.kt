@@ -11,10 +11,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.applovin.mediation.ads.MaxAdView
 import com.nekoanimes.app.BuildConfig
-import com.nekoanimes.app.model.AdConfig
+import com.nekoanimes.app.model.AdsConfig
 
 @Composable
-fun NekoBannerSlot(config: AdConfig, modifier: Modifier = Modifier) {
+fun NekoBannerSlot(config: AdsConfig, modifier: Modifier = Modifier) {
     if (!config.enabled || config.engine != "max" || !config.banner.enabled || BuildConfig.MAX_BANNER_AD_UNIT_ID.isBlank()) return
 
     val context = LocalContext.current
