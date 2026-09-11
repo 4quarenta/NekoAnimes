@@ -23,6 +23,7 @@ import { NewsService } from './modules/news/news.service';
 import { SupabaseAuthGuard } from './modules/auth/supabase-auth.guard';
 import { UserDataController } from './modules/user-data/user-data.controller';
 import { UserDataService } from './modules/user-data/user-data.service';
+import { AppUpdateController } from './modules/app-update/app-update.controller';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { UserDataService } from './modules/user-data/user-data.service';
   controllers: [
     HealthController,
     AppManifestController,
+    AppUpdateController,
     AdminAppConfigController,
     CatalogController,
     MetadataController,
