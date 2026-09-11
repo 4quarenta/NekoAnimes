@@ -19,7 +19,6 @@ android {
         targetSdk = 36
         versionCode = 10000
         versionName = "1.0.0"
-
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "MAX_SDK_KEY", "\"${providers.gradleProperty("MAX_SDK_KEY").orElse("").get()}\"")
@@ -40,6 +39,20 @@ android {
                 enableV3Signing = true
                 enableV4Signing = true
             }
+        }
+    }
+
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("direct") {
+            dimension = "distribution"
+            buildConfigField("boolean", "SELF_UPDATE_ENABLED", "true")
+            buildConfigField("String", "DISTRIBUTION_CHANNEL", "\"direct\"")
+        }
+        create("play") {
+            dimension = "distribution"
+            buildConfigField("boolean", "SELF_UPDATE_ENABLED", "false")
+            buildConfigField("String", "DISTRIBUTION_CHANNEL", "\"play\"")
         }
     }
 
