@@ -9,6 +9,7 @@ import android.webkit.WebViewClient
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.nekoanimes.app.BuildConfig
 import com.nekoanimes.app.bridge.NekoBridge
 import java.net.URI
@@ -23,37 +24,48 @@ fun WebViewHost(
     AndroidView(
         modifier = modifier,
         factory = { context ->
-            WebView(context).apply {
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                settings.allowFileAccess = false
-                settings.allowContentAccess = false
-                settings.javaScriptCanOpenWindowsAutomatically = false
-                settings.setSupportMultipleWindows(false)
-                settings.userAgentString = "${settings.userAgentString} NekoAnimes/Android"
+            SwipeRefreshLayout(context).apply {
+                setColorSchemeColors(0xFF8B5CF6.toInt())
+                val container = this
+                val webView = WebView(context).apply {
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    settings.allowFileAccess = false
+                    settings.allowContentAccess = false
+                    settings.javaScriptCanOpenWindowsAutomatically = false
+                    settings.setSupportMultipleWindows(false)
+                    settings.userAgentString = "${settings.userAgentString} NekoAnimes/Android"
 
-                webViewClient = object : WebViewClient() {
-                    override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                        val target = request.url
-                        return if (isAllowedWebAppUrl(target)) {
-                            false
-                        } else {
-                            try {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, target))
-                            } catch (_: ActivityNotFoundException) {
-                                // Sem handler externo: a navegação continua bloqueada no WebView.
+                    webViewClient = object : WebViewClient() {
+                        override fun onPageFinished(view: WebView, url: String?) {
+                            container.isRefreshing = false
+                        }
+
+                        override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                            val target = request.url
+                            return if (isAllowedWebAppUrl(target)) {
+                                false
+                            } else {
+                                try {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, target))
+                                } catch (_: ActivityNotFoundException) {
+                                    // Sem handler externo: a navegação continua bloqueada no WebView.
+                                }
+                                true
                             }
-                            true
                         }
                     }
+
+                    loadUrl(url)
                 }
 
-                bridge.attach(this)
-                onWebViewReady(this)
-                loadUrl(url)
+                addView(webView, SwipeRefreshLayout.LayoutParams(-1, -1))
+                setOnRefreshListener { webView.reload() }
+                bridge.attach(webView)
+                onWebViewReady(webView)
             }
         },
-        update = { onWebViewReady(it) }
+        update = { onWebViewReady(it.getChildAt(0) as WebView) }
     )
 }
 

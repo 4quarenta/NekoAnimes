@@ -2,7 +2,9 @@ package com.nekoanimes.app
 
 import android.app.Activity
 import android.os.Bundle
+import android.os.SystemClock
 import android.webkit.WebView
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -13,11 +15,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -71,6 +76,8 @@ private fun AppShell(manifest: AppManifest) {
     var webView by remember(manifest.configVersion) { mutableStateOf<WebView?>(null) }
     var playerEpisodeId by remember(manifest.configVersion) { mutableStateOf<String?>(null) }
     var adsBootstrapped by remember(manifest.configVersion) { mutableStateOf(false) }
+    var lastBackPressedAt by remember { mutableLongStateOf(0L) }
+    var showExitDialog by remember { mutableStateOf(false) }
 
     val ads = remember(manifest.configVersion) { NekoAdOrchestrator(activity, manifest.ads) }
     val bridge = remember(manifest.configVersion) {
@@ -106,7 +113,37 @@ private fun AppShell(manifest: AppManifest) {
         return
     }
 
-    BackHandler(enabled = webView?.canGoBack() == true) { webView?.goBack() }
+    BackHandler {
+        val currentWebView = webView
+        if (currentWebView?.canGoBack() == true) {
+            lastBackPressedAt = 0L
+            currentWebView.goBack()
+            return@BackHandler
+        }
+
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastBackPressedAt <= 1_500L) {
+            lastBackPressedAt = 0L
+            showExitDialog = true
+        } else {
+            lastBackPressedAt = now
+            Toast.makeText(activity, "Pressione voltar novamente para sair", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    if (showExitDialog) {
+        AlertDialog(
+            onDismissRequest = { showExitDialog = false },
+            title = { Text("Sair do NekoAnimes?") },
+            text = { Text("Deseja fechar o aplicativo?") },
+            confirmButton = {
+                Button(onClick = { activity.finish() }) { Text("Sair") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExitDialog = false }) { Text("Cancelar") }
+            }
+        )
+    }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),

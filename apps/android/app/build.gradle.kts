@@ -116,6 +116,7 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
 
     implementation("androidx.webkit:webkit:1.17.0")
+    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.2.0")
     implementation("androidx.media3:media3-exoplayer:1.11.0")
     implementation("androidx.media3:media3-exoplayer-hls:1.11.0")
     implementation("androidx.media3:media3-exoplayer-dash:1.11.0")
