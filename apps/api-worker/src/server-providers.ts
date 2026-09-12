@@ -149,7 +149,7 @@ export async function getProviderAnime(serverId: string, reference: string): Pro
   const response = await getProviderHtml(provider, safeReference);
   const title = provider.cleanTitle(parseH1(response.html) ?? lastPathPart(safeReference) ?? 'Anime');
   const anchors = parseAnchors(response.html);
-  const episodes = extractEpisodeCandidates(provider, anchors, 2);
+  const episodes = [...extractEpisodeCandidates(provider, anchors, 2), ...extractScriptEpisodeCandidates(provider, response.html, 2)];
 
   // Some provider pages expose seasons as links. Keep the number of follow-up
   // requests bounded because this endpoint is called from a public Worker.
@@ -271,18 +271,6 @@ async function readLimitedText(response: Response, maxBytes: number): Promise<st
   }
 }
 
-async function readLimitedBytes(response: Response, maxBytes: number): Promise<Uint8Array> {
-  if (!response.body) return new Uint8Array(await response.arrayBuffer()).slice(0, maxBytes);
-  const reader = response.body.getReader();
-  try {
-    const chunk = await reader.read();
-    if (chunk.done) return new Uint8Array();
-    return chunk.value.slice(0, maxBytes);
-  } finally {
-    reader.releaseLock();
-  }
-}
-
 function getProvider(serverId: string): ProviderConfig {
   const provider = PROVIDERS.find((item) => item.id === serverId);
   if (!provider) throw new ProviderError('Servidor não encontrado', 'unavailable');
@@ -333,6 +321,34 @@ function extractEpisodeCandidates(provider: ProviderConfig, anchors: HtmlAnchor[
   return candidates;
 }
 
+function extractScriptEpisodeCandidates(provider: ProviderConfig, html: string, sourcePriority: number): Array<{ episode: ServerEpisode; sourcePriority: number }> {
+  if (provider.id !== 'goyabu') return [];
+  const match = /(?:const|let|var)\s+allEpisodes\s*=\s*(\[[\s\S]*?\]);/i.exec(html);
+  if (!match?.[1]) return [];
+  try {
+    const items = JSON.parse(match[1].replace(/\\\//g, '/')) as Array<{ link?: string; episodio?: string; episode_name?: string }>;
+    return items.flatMap((item) => {
+      const reference = referenceFromHref(provider, item.link ?? '');
+      const number = Number.parseInt(item.episodio ?? '', 10);
+      if (!reference || !provider.isEpisodeReference(reference) || !Number.isInteger(number) || number < 1) return [];
+      return [{
+        sourcePriority,
+        episode: {
+          id: `${provider.id}:1:${number}`,
+          title: cleanEpisodeTitle(item.episode_name || `Episódio ${number}`),
+          number,
+          seasonNumber: 1,
+          reference,
+          url: new URL(reference, provider.baseUrl).toString(),
+          available: true
+        }
+      }];
+    });
+  } catch {
+    return [];
+  }
+}
+
 async function extractPlaybackSources(provider: ProviderConfig, html: string, episodeUrl: string): Promise<ProviderPlaybackSource[]> {
   const candidates = new Set<string>();
   const normalizedHtml = html.replace(/\\\//g, '/').replace(/&amp;/gi, '&');
@@ -356,11 +372,10 @@ async function extractPlaybackSources(provider: ProviderConfig, html: string, ep
   }
 
   const orderedCandidates = [...candidates]
-    .filter((url) => isDirectMediaUrl(url))
+    .filter((url) => isDirectMediaUrl(url) && !isBackgroundAsset(url))
     .sort((a, b) => mediaPriority(a) - mediaPriority(b))
     .slice(0, 10);
-  const validated = await Promise.all(orderedCandidates.map(async (url) => ({ url, valid: await isPlayableDirectSource(url, episodeUrl) })));
-  return validated.filter((item) => item.valid).slice(0, 5).map(({ url }, index) => ({
+  return orderedCandidates.slice(0, 5).map((url, index) => ({
     id: `${provider.id}:source:${index + 1}`,
     url,
     mimeType: mediaMimeType(url),
@@ -379,46 +394,18 @@ function isDirectMediaUrl(value: string): boolean {
   }
 }
 
+function isBackgroundAsset(value: string): boolean {
+  try {
+    return /(?:^|\/)(?:bg|background|poster|thumbnail)\.mp4$/i.test(new URL(value).pathname);
+  } catch {
+    return true;
+  }
+}
+
 function mediaPriority(value: string): number {
   if (/\.m3u8$/i.test(new URL(value).pathname)) return 0;
   if (/\.mpd$/i.test(new URL(value).pathname)) return 1;
   return 2;
-}
-
-async function isPlayableDirectSource(value: string, episodeUrl: string): Promise<boolean> {
-  const pathname = new URL(value).pathname;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5_000);
-  try {
-    const response = await fetch(value, {
-      redirect: 'follow',
-      signal: controller.signal,
-      headers: {
-        accept: 'application/vnd.apple.mpegurl,application/x-mpegURL,text/plain,*/*',
-        referer: episodeUrl,
-        range: 'bytes=0-2047'
-      }
-    });
-    if (!response.ok) return false;
-    if (/\.m3u8$/i.test(pathname)) {
-      const playlist = await readLimitedText(response, 256_000);
-      if (!/^\s*#EXTM3U\b/m.test(playlist)) return false;
-      const mediaLines = playlist.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith('#'));
-      return mediaLines.length > 0 && !mediaLines.some((line) => /\.(?:webp|png|jpe?g)(?:[?#\s]|$)/i.test(line));
-    }
-    if (/\.mpd$/i.test(pathname)) {
-      const manifest = await readLimitedText(response, 256_000);
-      return /<MPD\b/i.test(manifest);
-    }
-    const sample = await readLimitedBytes(response, 4_096);
-    const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
-    const hasMp4Signature = sample.length >= 8 && String.fromCharCode(...sample.slice(4, 8)) === 'ftyp';
-    return contentType.includes('video/mp4') || hasMp4Signature;
-  } catch {
-    return false;
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 function mediaMimeType(value: string): string | undefined {

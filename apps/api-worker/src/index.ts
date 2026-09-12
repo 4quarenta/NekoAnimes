@@ -132,6 +132,33 @@ app.get('/v1/servers/search', async (c) => {
   }
 });
 
+// Discovery is intentionally separate from playback resolution. This route
+// expands the search matches into seasons and episodes, but never visits an
+// episode page or extracts playback sources.
+app.get('/v1/servers/resolve/:query', async (c) => {
+  const query = decodeURIComponent(c.req.param('query')).trim();
+  validateProviderQuery(query);
+  const search = await Promise.all(listServerDescriptors().map(async (server) => {
+    try {
+      const matches = await searchProvider(server.id, query);
+      return { server, status: matches.length ? 'ok' as const : 'unavailable' as const, matches };
+    } catch (error) {
+      return { server, status: providerStatus(error), matches: [], error: providerErrorCode(error) };
+    }
+  }));
+  const servers = await Promise.all(search.map(async (result) => {
+    const match = result.matches[0];
+    if (!match || result.status !== 'ok') return { server: result.server, status: result.status, available: false, error: result.error };
+    try {
+      const detail = await getProviderAnime(result.server.id, match.reference);
+      return { server: result.server, status: 'ok' as const, available: true, anime: match, seasons: detail.seasons };
+    } catch (error) {
+      return { server: result.server, status: providerStatus(error), available: false, anime: match, error: providerErrorCode(error) };
+    }
+  }));
+  return c.json({ query, servers, fetchedAt: new Date().toISOString() });
+});
+
 app.get('/v1/servers/resolve/:query/:season/:episode', async (c) => {
   const query = decodeURIComponent(c.req.param('query')).trim();
   validateProviderQuery(query);
@@ -157,14 +184,76 @@ app.get('/v1/servers/resolve/:query/:season/:episode', async (c) => {
     try {
       const detail = await getProviderAnime(result.server.id, match.reference);
       const episode = detail.seasons.find((item) => item.number === seasonNumber)?.episodes.find((item) => item.number === episodeNumber);
-      if (!episode) return { server: result.server, status: 'ok' as const, available: false, anime: match, sources: [] };
-      const providerEpisode = await getProviderEpisode(result.server.id, episode.reference);
-      return { server: result.server, status: 'ok' as const, available: Boolean(providerEpisode.playback.sources.length), anime: match, episode: { ...episode, sources: providerEpisode.playback.sources }, sources: providerEpisode.playback.sources };
+      return { server: result.server, status: 'ok' as const, available: Boolean(episode), anime: match, ...(episode ? { episode } : {}) };
     } catch (error) {
       return { server: result.server, status: providerStatus(error), available: false, anime: match, error: providerErrorCode(error) };
     }
   }));
   return c.json({ query, season: seasonNumber, episode: episodeNumber, servers, fetchedAt: new Date().toISOString() }, 200);
+});
+
+// Once a provider is selected, this is the provider-scoped catalog step. The
+// optional ref comes directly from /servers/search and avoids searching again.
+app.get('/v1/servers/:serverId/resolve/:query', async (c) => {
+  const serverId = c.req.param('serverId');
+  assertServerId(serverId);
+  const query = decodeURIComponent(c.req.param('query')).trim();
+  validateProviderQuery(query);
+  const requestedReference = c.req.query('ref')?.trim();
+  try {
+    const match = requestedReference ? undefined : (await searchProvider(serverId, query))[0];
+    if (!requestedReference && !match) throw new HTTPException(404, { message: 'Anime não encontrado neste provider' });
+    const detail = await getProviderAnime(serverId, requestedReference ?? match!.reference);
+    return c.json({
+      query,
+      server: detail.server,
+      anime: detail.anime,
+      match: match ?? { serverId, serverName: detail.server.name, title: detail.anime.title, reference: detail.anime.reference, url: detail.anime.url, confidence: 1 },
+      seasons: detail.seasons,
+      fetchedAt: detail.fetchedAt
+    });
+  } catch (error) {
+    throw error instanceof HTTPException ? error : providerHttpException(error);
+  }
+});
+
+app.get('/v1/servers/:serverId/resolve/:query/:season/:episode', async (c) => {
+  const serverId = c.req.param('serverId');
+  assertServerId(serverId);
+  const query = decodeURIComponent(c.req.param('query')).trim();
+  validateProviderQuery(query);
+  const seasonNumber = positiveProviderInt(c.req.param('season'), 'Temporada inválida');
+  const episodeNumber = positiveProviderInt(c.req.param('episode'), 'Episódio inválido');
+
+  try {
+    const requestedReference = c.req.query('ref')?.trim();
+    const match = requestedReference ? undefined : (await searchProvider(serverId, query))[0];
+    if (!requestedReference && !match) throw new HTTPException(404, { message: 'Anime não encontrado neste provider' });
+    const detail = await getProviderAnime(serverId, requestedReference ?? match!.reference);
+    const anime = {
+      serverId,
+      serverName: detail.server.name,
+      title: detail.anime.title,
+      reference: detail.anime.reference,
+      url: detail.anime.url,
+      confidence: 1
+    };
+    const episode = detail.seasons.find((item) => item.number === seasonNumber)?.episodes.find((item) => item.number === episodeNumber);
+    if (!episode) throw new HTTPException(404, { message: 'Episódio não encontrado neste provider' });
+    const providerEpisode = await getProviderEpisode(serverId, episode.reference);
+    return c.json({
+      query,
+      season: seasonNumber,
+      episodeNumber,
+      server: detail.server,
+      anime,
+      episode: { ...episode, sources: providerEpisode.playback.sources },
+      sources: providerEpisode.playback.sources,
+      fetchedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    throw error instanceof HTTPException ? error : providerHttpException(error);
+  }
 });
 
 app.get('/v1/servers/:serverId/anime', async (c) => {

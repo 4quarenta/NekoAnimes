@@ -29,12 +29,18 @@ fica preservado para o runtime tradicional/produção.
 - Catálogo: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/catalog/anime>
 - Notícias: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/news>
 - Providers: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/servers>
-- Resolução de episódio: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/servers/resolve/Bleach/1/1>
+- Busca de anime nos providers: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/servers/search?q=Bleach>
+- Temporadas e episódios de todos os matches: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/servers/resolve/Bleach>
+- Temporadas e episódios de um provider (use `ref` da busca): <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/servers/animesdigital/resolve/Bleach?ref=%2Fanime%2Fa%2Fbleach>
+- Disponibilidade do episódio nos providers, sem sources: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/servers/resolve/Bleach/1/1>
+- Sources do episódio de um provider: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/servers/animesdigital/resolve/Bleach/1/1>
 - Atualização Android: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/app-update/android>
 
 Para validar providers e sources do episódio de teste:
 
-- Resolução: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/servers/resolve/Mob%20Psycho%20100/1/1>
+- Busca: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/servers/search?q=Mob%20Psycho%20100>
+- Episódios: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/servers/resolve/Mob%20Psycho%20100>
+- Sources Animes Digital: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/servers/animesdigital/resolve/Mob%20Psycho%20100/1/1>
 - Animes Digital: <https://animesdigital.org/>
 - Animes Online: <https://animesonlinecc.to/>
 - Goyabu: <https://goyabu.io/>
@@ -115,13 +121,16 @@ referência do anime em cada provider aos IDs MAL, AniList e TMDB; IDs não
 confirmados ficam `null` e a entrada permanece em revisão. Não elevamos uma
 correspondência heurística a 100% sem essa validação.
 
-Ao resolver um episódio, o Worker busca a página do episódio no provider e
-extrai somente URLs HTTPS explícitas com extensão `.m3u8`, `.mp4` ou `.mpd`,
-incluindo parâmetros explícitos `d`, `file` ou `source` de iframes. As sources
-encontradas são devolvidas em `sources` e a primeira é aberta pelo player
-nativo. O Worker não segue iframes arbitrários nem tenta contornar DRM,
-anti-bot ou autenticação. A disponibilidade é por episódio: um provider pode
-estar saudável e ainda não expor uma source direta na página consultada.
+O fluxo de providers é em três etapas: `/servers/search?q=...` retorna os
+matches; `/servers/:serverId/resolve/:query` carrega temporadas e episódios
+do provider selecionado; e `/servers/:serverId/resolve/:query/:season/:episode`
+visita a página do episódio selecionado e extrai somente URLs HTTPS explícitas
+com extensão `.m3u8`, `.mp4` ou `.mpd`, incluindo parâmetros explícitos `d`,
+`file` ou `source` de iframes. O endpoint global com temporada/episódio apenas
+compara disponibilidade e nunca extrai sources de todos os providers. O Worker
+não segue iframes arbitrários nem tenta contornar DRM, anti-bot ou autenticação.
+Um provider pode aparecer na busca e na lista de episódios, mas não expor uma
+source direta no episódio consultado.
 
 ## GitHub Actions
 

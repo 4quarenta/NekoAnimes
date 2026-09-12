@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { NekoNative } from '@neko/bridge-web';
 import {
   fetchAnime,
   fetchEpisodes,
+  fetchServerProviderResolution,
   fetchServerResolution,
   setLibraryItem,
   type Episode
@@ -21,6 +22,7 @@ export function AnimeDetailPage() {
   const [libraryState, setLibraryState] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [selectedEpisode, setSelectedEpisode] = useState<{ number: number; title: string | null; seasonNumber: number } | null>(null);
   const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
+  const [selectedServerReference, setSelectedServerReference] = useState<string | null>(null);
   const selectedSeasonId = seasonId ?? anime.data?.seasons[0]?.id ?? null;
   const episodeQuery = useQuery({
     queryKey: ['episodes', selectedSeasonId, visible],
@@ -33,6 +35,22 @@ export function AnimeDetailPage() {
     enabled: Boolean(anime.data?.title && selectedEpisode),
     staleTime: 10 * 60 * 1000
   });
+  const providerResolution = useQuery({
+    queryKey: ['server-provider-resolution', selectedServerId, anime.data?.title, selectedEpisode?.seasonNumber, selectedEpisode?.number],
+    queryFn: () => fetchServerProviderResolution(selectedServerId!, anime.data!.title, selectedEpisode!.seasonNumber, selectedEpisode!.number, selectedServerReference!),
+    enabled: Boolean(selectedServerId && selectedServerReference && anime.data?.title && selectedEpisode),
+    staleTime: 10 * 60 * 1000
+  });
+
+  useEffect(() => {
+    const resolution = providerResolution.data;
+    const source = resolution?.sources.find((item) => item.isDefault) ?? resolution?.sources[0];
+    if (!resolution || !source) return;
+    setSelectedEpisode(null);
+    setSelectedServerId(null);
+    setSelectedServerReference(null);
+    NekoNative.player.open(resolution.episode.id, source);
+  }, [providerResolution.data]);
 
   if (anime.isPending) return <AppScreen><div className="neko-skeleton" /></AppScreen>;
   if (anime.isError) return <AppScreen><p className="neko-error">Anime não encontrado.</p></AppScreen>;
@@ -42,6 +60,7 @@ export function AnimeDetailPage() {
   function openEpisode(episode: Episode) {
     const seasonNumber = item.seasons.find((season) => season.id === episode.seasonId)?.number ?? 1;
     setSelectedServerId(null);
+    setSelectedServerReference(null);
     setSelectedEpisode({ number: episode.number, title: episode.title, seasonNumber });
   }
 
@@ -101,7 +120,7 @@ export function AnimeDetailPage() {
           <div className="neko-server-dialog" role="dialog" aria-modal="true" aria-labelledby="neko-server-title">
           <header className="neko-server-dialog-header">
             <h2 id="neko-server-title">Escolher servidor</h2>
-            <button className="neko-filter-close" type="button" aria-label="Fechar seletor de servidor" onClick={() => setSelectedEpisode(null)}>×</button>
+            <button className="neko-filter-close" type="button" aria-label="Fechar seletor de servidor" onClick={() => { setSelectedEpisode(null); setSelectedServerId(null); setSelectedServerReference(null); }}>×</button>
           </header>
           <div className="neko-server-dialog-body">
             <p className="neko-account-copy">Episódio {selectedEpisode.number}{selectedEpisode.title ? ` · ${selectedEpisode.title}` : ''}</p>
@@ -112,20 +131,19 @@ export function AnimeDetailPage() {
                 <div className="neko-list">
                   {serverResolution.data.servers.filter((result) => result.available).map((result) => {
                     const selected = selectedServerId === result.server.id;
-                    const source = result.sources?.find((item) => item.isDefault) ?? result.sources?.[0];
                     return <TextRow
                       key={result.server.id}
                       title={result.server.name}
-                      meta={source ? 'Abrir player' : 'Fonte não disponível'}
-                      trailing={selected ? '✓' : '▶'}
+                      meta={selected && providerResolution.isPending ? 'Consultando sources…' : 'Listar sources do episódio'}
+                        trailing={selected ? '…' : '▶'}
                       onClick={() => {
-                        if (!source || !result.episode) return;
                         setSelectedServerId(result.server.id);
-                        setSelectedEpisode(null);
-                        NekoNative.player.open(result.episode.id, source);
+                        setSelectedServerReference(result.anime?.reference ?? null);
                       }}
                     />;
                   })}
+                  {selectedServerId && providerResolution.isError ? <p className="neko-error">Não foi possível consultar as sources deste provider.</p> : null}
+                  {selectedServerId && providerResolution.data && providerResolution.data.sources.length === 0 ? <p className="neko-error">Este episódio não possui uma source de vídeo utilizável neste provider.</p> : null}
                 </div>
               ) : <div className="neko-account-notice"><strong>Nenhum servidor disponível</strong><p>Este episódio não foi localizado nos providers configurados para staging.</p></div>
             ) : null}

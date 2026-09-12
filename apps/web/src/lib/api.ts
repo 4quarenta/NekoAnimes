@@ -47,6 +47,7 @@ export type ServerEpisode = { id: string; title: string; number: number; seasonN
 export type ServerSeason = { id: string; number: number; title: string; episodes: ServerEpisode[] };
 export type ServerAnimeDetail = { server: ServerDescriptor; anime: { title: string; reference: string; url: string; year?: number }; seasons: ServerSeason[]; fetchedAt: string };
 export type ServerResolution = { query: string; season: number; episode: number; servers: Array<{ server: ServerDescriptor; status: 'ok' | 'unavailable' | 'timeout' | 'error'; available: boolean; anime?: ServerAnimeMatch; episode?: ServerEpisode; sources?: ServerPlaybackSource[]; error?: 'provider_unavailable' | 'provider_timeout' }>; fetchedAt: string };
+export type ServerProviderResolution = { query: string; season: number; episodeNumber: number; server: ServerDescriptor; anime: ServerAnimeMatch; episode: ServerEpisode; sources: ServerPlaybackSource[]; fetchedAt: string };
 
 export function fetchCatalog(params: { letter?: string; query?: string; limit?: number } = {}) { const search = new URLSearchParams(); if (params.letter) search.set('letter', params.letter); if (params.query) search.set('q', params.query); if (params.limit) search.set('limit', String(params.limit)); const suffix = search.size ? `?${search}` : ''; return getJson<{ items: CatalogAnime[]; count: number }>(`/v1/catalog/anime${suffix}`); }
 export function fetchAnime(slug: string) { return getJson<AnimeDetail>(`/v1/catalog/anime/${encodeURIComponent(slug)}`); }
@@ -56,6 +57,7 @@ export function fetchNewsArticle(slug: string) { return getJson<NewsArticle>(`/v
 export function fetchServerSearch(query: string) { return getJson<ServerSearchResponse>(`/v1/servers/search?q=${encodeURIComponent(query)}`); }
 export function fetchServerAnime(serverId: string, reference: string) { const search = new URLSearchParams({ ref: reference }); return getJson<ServerAnimeDetail>(`/v1/servers/${encodeURIComponent(serverId)}/anime?${search}`); }
 export function fetchServerResolution(query: string, season: number, episode: number) { return getJson<ServerResolution>(`/v1/servers/resolve/${encodeURIComponent(query)}/${season}/${episode}`); }
+export function fetchServerProviderResolution(serverId: string, query: string, season: number, episode: number, reference?: string) { const suffix = reference ? `?ref=${encodeURIComponent(reference)}` : ''; return getJson<ServerProviderResolution>(`/v1/servers/${encodeURIComponent(serverId)}/resolve/${encodeURIComponent(query)}/${season}/${episode}${suffix}`); }
 
 export function fetchMe() { return authJson<{ id: string; email: string | null }>('/v1/me'); }
 export function fetchLibrary() { return authJson<LibraryItem[]>('/v1/me/library'); }
