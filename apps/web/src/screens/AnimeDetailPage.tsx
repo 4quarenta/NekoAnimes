@@ -44,7 +44,7 @@ export function AnimeDetailPage() {
         {item.genres.slice(0, 3).map((genre) => <span key={genre}>{genre}</span>)}
         {item.scoreBasisPoints ? <span>★ {(item.scoreBasisPoints / 100).toFixed(2)}</span> : null}
       </div>
-      <button className="neko-primary-button" type="button" disabled={libraryState !== 'idle'} onClick={() => void addToLibrary()}>
+      <button className="neko-primary-button neko-library-button" type="button" disabled={libraryState !== 'idle'} onClick={() => void addToLibrary()}>
         {libraryState === 'saving' ? 'Adicionando...' : libraryState === 'saved' ? '✓ Na sua lista' : '+ Adicionar à minha lista'}
       </button>
       {item.synopsis ? <p className="neko-synopsis">{item.synopsis}</p> : null}
