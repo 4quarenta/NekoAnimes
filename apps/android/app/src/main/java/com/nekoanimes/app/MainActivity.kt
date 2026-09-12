@@ -136,6 +136,12 @@ private fun AppShell(manifest: AppManifest) {
     val playing = playerRequest
 
     BackHandler(enabled = playing == null) {
+        if (drawerState.isOpen) {
+            lastBackPressedAt = 0L
+            drawerScope.launch { drawerState.close() }
+            return@BackHandler
+        }
+
         val currentWebView = webView
         if (currentWebView?.canGoBack() == true) {
             lastBackPressedAt = 0L
