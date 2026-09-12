@@ -40,9 +40,12 @@ As migrations autoritativas de staging são:
 
 1. `apps/api-worker/migrations/0001_initial.sql`
 2. `apps/api-worker/migrations/0002_staging_seed.sql`
+3. `apps/api-worker/migrations/0003_staging_test_video.sql`
 
 O seed contém 5 animes, 6 temporadas, 23 episódios e 3 notícias. O catálogo
-não contém links de streaming piratas. Episódios sem fonte retornam erro
+não contém links de streaming piratas. O primeiro episódio do catálogo possui
+o trailer de Sintel, um vídeo de teste com licença CC BY 3.0, para validar o
+player nativo. Os demais episódios continuam sem fonte e retornam erro
 controlado de fonte indisponível.
 
 O login de staging é local ao Worker, com usuários e sessões armazenados no D1.
