@@ -3,6 +3,7 @@ package com.nekoanimes.app.player
 import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.net.Uri
+import com.nekoanimes.app.BuildConfig
 import com.nekoanimes.app.bridge.PlayerSourceOverride
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -97,6 +98,9 @@ internal fun NekoPlayerScreen(
             val descriptor = current.descriptor
             val player = remember(descriptor.episodeId) {
                 val httpFactory = DefaultHttpDataSource.Factory()
+                    .setUserAgent("NekoAnimes/${BuildConfig.VERSION_NAME}")
+                    .setConnectTimeoutMs(10_000)
+                    .setReadTimeoutMs(15_000)
                     .setAllowCrossProtocolRedirects(false)
                     .setDefaultRequestProperties(descriptor.source.headers)
                 ExoPlayer.Builder(context)

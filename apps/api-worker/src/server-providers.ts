@@ -186,7 +186,7 @@ export async function getProviderEpisode(serverId: string, reference: string) {
   const number = parseEpisodeNumber(title, safeReference);
   if (!number) throw new ProviderError('Número do episódio não identificado', 'unavailable');
   const seasonNumber = parseSeasonNumber(title, safeReference) ?? 1;
-  const sources = extractPlaybackSources(provider, response.html, response.url);
+  const sources = await extractPlaybackSources(provider, response.html, response.url);
 
   return {
     server: provider,
@@ -271,6 +271,18 @@ async function readLimitedText(response: Response, maxBytes: number): Promise<st
   }
 }
 
+async function readLimitedBytes(response: Response, maxBytes: number): Promise<Uint8Array> {
+  if (!response.body) return new Uint8Array(await response.arrayBuffer()).slice(0, maxBytes);
+  const reader = response.body.getReader();
+  try {
+    const chunk = await reader.read();
+    if (chunk.done) return new Uint8Array();
+    return chunk.value.slice(0, maxBytes);
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 function getProvider(serverId: string): ProviderConfig {
   const provider = PROVIDERS.find((item) => item.id === serverId);
   if (!provider) throw new ProviderError('Servidor não encontrado', 'unavailable');
@@ -321,11 +333,14 @@ function extractEpisodeCandidates(provider: ProviderConfig, anchors: HtmlAnchor[
   return candidates;
 }
 
-function extractPlaybackSources(provider: ProviderConfig, html: string, episodeUrl: string): ProviderPlaybackSource[] {
+async function extractPlaybackSources(provider: ProviderConfig, html: string, episodeUrl: string): Promise<ProviderPlaybackSource[]> {
   const candidates = new Set<string>();
   const normalizedHtml = html.replace(/\\\//g, '/').replace(/&amp;/gi, '&');
   const directPattern = /(?:https?:)?\/\/[^\s"'<>\\]+\.(?:m3u8|mp4|mpd)(?:\?[^\s"'<>\\]*)?/gi;
-  for (const match of normalizedHtml.matchAll(directPattern)) candidates.add(match[0].startsWith('//') ? `https:${match[0]}` : match[0]);
+  for (const match of normalizedHtml.matchAll(directPattern)) {
+    const candidate = match[0].startsWith('//') ? `https:${match[0]}` : match[0];
+    if (isDirectMediaUrl(candidate)) candidates.add(candidate);
+  }
 
   const iframePattern = /<iframe\b[^>]*\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/gi;
   for (const match of normalizedHtml.matchAll(iframePattern)) {
@@ -340,7 +355,12 @@ function extractPlaybackSources(provider: ProviderConfig, html: string, episodeU
     }
   }
 
-  return [...candidates].filter((url) => isDirectMediaUrl(url)).slice(0, 5).map((url, index) => ({
+  const orderedCandidates = [...candidates]
+    .filter((url) => isDirectMediaUrl(url))
+    .sort((a, b) => mediaPriority(a) - mediaPriority(b))
+    .slice(0, 10);
+  const validated = await Promise.all(orderedCandidates.map(async (url) => ({ url, valid: await isPlayableDirectSource(url, episodeUrl) })));
+  return validated.filter((item) => item.valid).slice(0, 5).map(({ url }, index) => ({
     id: `${provider.id}:source:${index + 1}`,
     url,
     mimeType: mediaMimeType(url),
@@ -353,16 +373,58 @@ function extractPlaybackSources(provider: ProviderConfig, html: string, episodeU
 function isDirectMediaUrl(value: string): boolean {
   try {
     const url = new URL(value);
-    return url.protocol === 'https:' && /\.(?:m3u8|mp4|mpd)(?:$|[?#])/i.test(url.pathname + url.search + url.hash);
+    return url.protocol === 'https:' && /\.(?:m3u8|mp4|mpd)$/i.test(url.pathname);
   } catch {
     return false;
   }
 }
 
+function mediaPriority(value: string): number {
+  if (/\.m3u8$/i.test(new URL(value).pathname)) return 0;
+  if (/\.mpd$/i.test(new URL(value).pathname)) return 1;
+  return 2;
+}
+
+async function isPlayableDirectSource(value: string, episodeUrl: string): Promise<boolean> {
+  const pathname = new URL(value).pathname;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5_000);
+  try {
+    const response = await fetch(value, {
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: {
+        accept: 'application/vnd.apple.mpegurl,application/x-mpegURL,text/plain,*/*',
+        referer: episodeUrl,
+        range: 'bytes=0-2047'
+      }
+    });
+    if (!response.ok) return false;
+    if (/\.m3u8$/i.test(pathname)) {
+      const playlist = await readLimitedText(response, 256_000);
+      if (!/^\s*#EXTM3U\b/m.test(playlist)) return false;
+      const mediaLines = playlist.split(/\r?\n/).map((line) => line.trim()).filter((line) => line && !line.startsWith('#'));
+      return mediaLines.length > 0 && !mediaLines.some((line) => /\.(?:webp|png|jpe?g)(?:[?#\s]|$)/i.test(line));
+    }
+    if (/\.mpd$/i.test(pathname)) {
+      const manifest = await readLimitedText(response, 256_000);
+      return /<MPD\b/i.test(manifest);
+    }
+    const sample = await readLimitedBytes(response, 4_096);
+    const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+    const hasMp4Signature = sample.length >= 8 && String.fromCharCode(...sample.slice(4, 8)) === 'ftyp';
+    return contentType.includes('video/mp4') || hasMp4Signature;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function mediaMimeType(value: string): string | undefined {
-  if (/\.m3u8(?:$|[?#])/i.test(value)) return 'application/vnd.apple.mpegurl';
-  if (/\.mpd(?:$|[?#])/i.test(value)) return 'application/dash+xml';
-  if (/\.mp4(?:$|[?#])/i.test(value)) return 'video/mp4';
+  if (/\.m3u8$/i.test(new URL(value).pathname)) return 'application/vnd.apple.mpegurl';
+  if (/\.mpd$/i.test(new URL(value).pathname)) return 'application/dash+xml';
+  if (/\.mp4$/i.test(new URL(value).pathname)) return 'video/mp4';
   return undefined;
 }
 
