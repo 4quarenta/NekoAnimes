@@ -6,7 +6,6 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.DrawerState
@@ -26,8 +25,7 @@ import com.nekoanimes.app.model.NavigationItem
 fun NekoNavigationBar(
     items: List<NavigationItem>,
     selectedRoute: String,
-    onSelected: (NavigationItem) -> Unit,
-    onOpenMenu: () -> Unit
+    onSelected: (NavigationItem) -> Unit
 ) {
     NavigationBar {
         items.forEach { item ->
@@ -39,13 +37,6 @@ fun NekoNavigationBar(
                 alwaysShowLabel = true
             )
         }
-        NavigationBarItem(
-            selected = false,
-            onClick = onOpenMenu,
-            icon = { Icon(imageVector = Icons.Default.Menu, contentDescription = "Abrir menu") },
-            label = { Text("Menu") },
-            alwaysShowLabel = true
-        )
     }
 }
 

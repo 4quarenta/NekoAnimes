@@ -190,8 +190,7 @@ private fun AppShell(manifest: AppManifest) {
                     NekoNavigationBar(
                         items = primaryItems,
                         selectedRoute = selectedRoute,
-                        onSelected = ::navigateTo,
-                        onOpenMenu = { drawerScope.launch { drawerState.open() } }
+                        onSelected = ::navigateTo
                     )
                 }
             }
