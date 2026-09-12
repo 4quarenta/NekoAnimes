@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.util.Log
+import android.webkit.WebSettings
 import com.nekoanimes.app.BuildConfig
 import com.nekoanimes.app.bridge.PlayerSourceOverride
 import androidx.activity.compose.BackHandler
@@ -103,12 +104,19 @@ internal fun NekoPlayerScreen(
         is PlayerState.Ready -> {
             val descriptor = current.descriptor
             val player = remember(descriptor.episodeId) {
+                val bloggerMedia = isGoogleVideoSource(descriptor.source.url)
                 val httpFactory = DefaultHttpDataSource.Factory()
-                    .setUserAgent("NekoAnimes/${BuildConfig.VERSION_NAME}")
+                    .setUserAgent(
+                        if (bloggerMedia) WebSettings.getDefaultUserAgent(context)
+                        else "NekoAnimes/${BuildConfig.VERSION_NAME}"
+                    )
                     .setConnectTimeoutMs(10_000)
                     .setReadTimeoutMs(15_000)
                     .setAllowCrossProtocolRedirects(false)
-                    .setDefaultRequestProperties(descriptor.source.headers)
+                    .setDefaultRequestProperties(
+                        if (bloggerMedia) mapOf("Referer" to "https://www.blogger.com/")
+                        else descriptor.source.headers
+                    )
                 ExoPlayer.Builder(context)
                     .setMediaSourceFactory(DefaultMediaSourceFactory(httpFactory))
                     .build()
@@ -164,6 +172,12 @@ internal fun NekoPlayerScreen(
 
 private fun isHlsSource(url: String, mimeType: String?): Boolean =
     mimeType?.let(::normalizeMime) == MimeTypes.APPLICATION_M3U8 || Uri.parse(url).lastPathSegment?.contains(".m3u8", ignoreCase = true) == true
+
+private fun isGoogleVideoSource(url: String): Boolean {
+    val uri = Uri.parse(url)
+    val host = uri.host?.lowercase() ?: return false
+    return (host == "googlevideo.com" || host.endsWith(".googlevideo.com")) && uri.path == "/videoplayback"
+}
 
 private fun normalizeMime(value: String): String = when (value.lowercase()) {
     "hls", "application/x-mpegurl", "application/vnd.apple.mpegurl" -> MimeTypes.APPLICATION_M3U8
