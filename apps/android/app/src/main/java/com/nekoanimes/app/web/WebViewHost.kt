@@ -33,14 +33,16 @@ fun WebViewHost(
     modifier: Modifier = Modifier,
     onHorizontalSwipe: (HorizontalSwipeDirection) -> Unit = {},
     onOpenDrawer: () -> Unit = {},
+    gesturesEnabled: Boolean = true,
     onWebViewReady: (WebView) -> Unit
 ) {
     val currentOnHorizontalSwipe by rememberUpdatedState(onHorizontalSwipe)
     val currentOnOpenDrawer by rememberUpdatedState(onOpenDrawer)
+    val currentGesturesEnabled = rememberUpdatedState(gesturesEnabled)
 
     AndroidView(
         modifier = modifier,
-            factory = { context ->
+        factory = { context ->
             NekoRefreshLayout(context).apply {
                 setColorSchemeColors(0xFF8B5CF6.toInt())
                 val container = this
@@ -55,7 +57,7 @@ fun WebViewHost(
                     var downX = 0f
                     var downY = 0f
                     var hasTouchDown = false
-                    val edgeInset = 32f * context.resources.displayMetrics.density
+                    val drawerEdgeZone = 96f * context.resources.displayMetrics.density
                     val swipeThreshold = 96f * context.resources.displayMetrics.density
 
                     setOnTouchListener { _, event ->
@@ -70,10 +72,11 @@ fun WebViewHost(
                                 val deltaX = event.rawX - downX
                                 val deltaY = event.rawY - downY
                                 hasTouchDown = false
+                                if (!currentGesturesEnabled.value) return@setOnTouchListener false
                                 val isHorizontalSwipe = abs(deltaX) >= swipeThreshold && abs(deltaX) > abs(deltaY) * 1.35f
                                 if (isHorizontalSwipe) {
-                                    val startedAtDrawerEdge = downX <= edgeInset
-                                    val startedAwayFromEdges = downX > edgeInset && downX < width - edgeInset
+                                    val startedAtDrawerEdge = downX <= drawerEdgeZone
+                                    val startedAwayFromEdges = downX > drawerEdgeZone && downX < width - drawerEdgeZone
                                     if (startedAtDrawerEdge && deltaX > 0) {
                                         currentOnOpenDrawer()
                                     } else if (startedAwayFromEdges) {

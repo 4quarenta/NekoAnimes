@@ -108,12 +108,14 @@ private fun AppShell(manifest: AppManifest) {
                 selectedRoute = route
             },
             onOpenPlayer = { episodeId, source ->
-                playerOpening = true
-                playerReturnRoute = currentWebRouteState
-                playerRequest = PlayerRequest(episodeId, source)
-                drawerScope.launch {
-                    drawerState.close()
-                    playerOpening = false
+                if (playerRequest == null && !playerOpening) {
+                    playerOpening = true
+                    playerReturnRoute = currentWebRouteState
+                    drawerScope.launch {
+                        drawerState.close()
+                        playerRequest = PlayerRequest(episodeId, source)
+                        playerOpening = false
+                    }
                 }
             },
             onAppEvent = { name, placement -> ads.onAppEvent(name, placement) }
@@ -217,8 +219,9 @@ private fun AppShell(manifest: AppManifest) {
                     bridge = bridge,
                     modifier = Modifier.fillMaxSize().padding(padding),
                     onHorizontalSwipe = ::navigateBySwipe,
+                    gesturesEnabled = playerRequest == null && !playerOpening,
                     onOpenDrawer = {
-                        if (playerRequest == null && !playerOpening) {
+                        if (playerRequest == null && !playerOpening && !drawerState.isOpen) {
                             drawerScope.launch { drawerState.open() }
                         }
                     },
