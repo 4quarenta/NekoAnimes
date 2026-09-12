@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ServerAdapter } from './contracts/server-adapter';
+import { AnimesDigitalAdapter } from './adapters/animesdigital/animesdigital.adapter';
 import { AnimesOnlineCcAdapter } from './adapters/animesonlinecc/animesonlinecc.adapter';
 import { GoyabuAdapter } from './adapters/goyabu/goyabu.adapter';
 
@@ -7,10 +8,15 @@ import { GoyabuAdapter } from './adapters/goyabu/goyabu.adapter';
 export class ServerRegistry {
   private readonly adapters: Map<string, ServerAdapter>;
 
-  constructor(goyabu: GoyabuAdapter, animesOnlineCc: AnimesOnlineCcAdapter) {
+  constructor(
+    goyabu: GoyabuAdapter,
+    animesOnlineCc: AnimesOnlineCcAdapter,
+    animesDigital: AnimesDigitalAdapter
+  ) {
     this.adapters = new Map<string, ServerAdapter>([
       [goyabu.descriptor.id, goyabu],
-      [animesOnlineCc.descriptor.id, animesOnlineCc]
+      [animesOnlineCc.descriptor.id, animesOnlineCc],
+      [animesDigital.descriptor.id, animesDigital]
     ]);
   }
 

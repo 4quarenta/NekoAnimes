@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AnimesDigitalAdapter } from './adapters/animesdigital/animesdigital.adapter';
 import { AnimesOnlineCcAdapter } from './adapters/animesonlinecc/animesonlinecc.adapter';
 import { GoyabuAdapter } from './adapters/goyabu/goyabu.adapter';
 import { ServerHttpClient } from './server-http.client';
@@ -14,6 +15,7 @@ import { ServersService } from './servers.service';
     ServersCacheService,
     GoyabuAdapter,
     AnimesOnlineCcAdapter,
+    AnimesDigitalAdapter,
     ServerRegistry,
     ServersService
   ],
