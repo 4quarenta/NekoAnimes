@@ -11,6 +11,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
@@ -33,6 +34,9 @@ fun WebViewHost(
     onOpenDrawer: () -> Unit = {},
     onWebViewReady: (WebView) -> Unit
 ) {
+    val currentOnHorizontalSwipe by rememberUpdatedState(onHorizontalSwipe)
+    val currentOnOpenDrawer by rememberUpdatedState(onOpenDrawer)
+
     AndroidView(
         modifier = modifier,
             factory = { context ->
@@ -70,9 +74,9 @@ fun WebViewHost(
                                     val startedAtDrawerEdge = downX <= edgeInset
                                     val startedAwayFromEdges = downX > edgeInset && downX < width - edgeInset
                                     if (startedAtDrawerEdge && deltaX > 0) {
-                                        onOpenDrawer()
+                                        currentOnOpenDrawer()
                                     } else if (startedAwayFromEdges) {
-                                        onHorizontalSwipe(
+                                        currentOnHorizontalSwipe(
                                             if (deltaX < 0) HorizontalSwipeDirection.Next else HorizontalSwipeDirection.Previous
                                         )
                                     }

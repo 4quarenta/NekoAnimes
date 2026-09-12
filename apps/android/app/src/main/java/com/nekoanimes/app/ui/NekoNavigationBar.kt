@@ -15,17 +15,24 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.Text
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.awaitEachGesture
+import androidx.compose.ui.input.pointer.awaitFirstDown
+import androidx.compose.ui.input.pointer.awaitPointerEvent
+import androidx.compose.ui.input.pointer.consume
+import androidx.compose.ui.input.pointer.positionChangeIgnoreConsumed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.nekoanimes.app.model.NavigationItem
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 @Composable
 fun NekoNavigationBar(
@@ -56,6 +63,7 @@ fun NekoNavigationDrawer(
 ) {
     val drawerScope = rememberCoroutineScope()
     val closeThresholdPx = with(LocalDensity.current) { 72.dp.toPx() }
+    val touchSlopPx = with(LocalDensity.current) { 8.dp.toPx() }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -64,19 +72,33 @@ fun NekoNavigationDrawer(
             ModalDrawerSheet(
                 modifier = Modifier
                     .fillMaxWidth(0.7f)
-                    .pointerInput(drawerState, closeThresholdPx) {
-                        var totalDrag = 0f
-                        detectHorizontalDragGestures(
-                            onDragStart = { totalDrag = 0f },
-                            onHorizontalDrag = { _, dragAmount -> totalDrag += dragAmount },
-                            onDragEnd = {
-                                if (totalDrag <= -closeThresholdPx) {
+                    .pointerInput(drawerState, closeThresholdPx, touchSlopPx) {
+                        awaitEachGesture {
+                            awaitPointerEventScope {
+                                val down = awaitFirstDown(
+                                    requireUnconsumed = false,
+                                    pass = PointerEventPass.Initial
+                                )
+                                var totalDrag = Offset.Zero
+                                var tracking = true
+                                while (tracking) {
+                                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                    if (!change.pressed) {
+                                        tracking = false
+                                        break
+                                    }
+                                    val delta = change.positionChangeIgnoreConsumed()
+                                    totalDrag += delta
+                                    if (abs(totalDrag.x) > touchSlopPx && abs(totalDrag.x) > abs(totalDrag.y)) {
+                                        change.consume()
+                                    }
+                                }
+                                if (totalDrag.x <= -closeThresholdPx) {
                                     drawerScope.launch { drawerState.close() }
                                 }
-                                totalDrag = 0f
-                            },
-                            onDragCancel = { totalDrag = 0f }
-                        )
+                            }
+                        }
                     }
             ) {
                 Text("NekoAnimes", modifier = Modifier.padding(horizontal = 28.dp, vertical = 24.dp))
