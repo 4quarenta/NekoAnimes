@@ -93,7 +93,9 @@ APK, valida SHA-256 e abre o instalador. A instalação de APK direto exige
 autorizar a fonte desconhecida no Android de teste; se a permissão ainda não
 existir, o app abre a tela correta e continua o fluxo automaticamente ao
 voltar. O player nativo abre sempre em paisagem e oculta as barras/botões de
-ação do sistema enquanto está ativo.
+ação do sistema enquanto está ativo. O WebView também oferece pull-to-refresh;
+o botão voltar percorre o histórico da página e, na raiz, dois toques rápidos
+abrem a confirmação de saída.
 
 ## GitHub Actions
 
