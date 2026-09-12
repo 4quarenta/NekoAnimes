@@ -191,6 +191,7 @@ private fun AppShell(manifest: AppManifest) {
                     bridge = bridge,
                     modifier = Modifier.fillMaxSize().padding(padding),
                     onHorizontalSwipe = ::navigateBySwipe,
+                    onOpenDrawer = { drawerScope.launch { drawerState.open() } },
                     onWebViewReady = { webView = it }
                 )
             }
