@@ -2,6 +2,15 @@ import { Hono } from 'hono';
 import type { Context, Next } from 'hono';
 import { cors } from 'hono/cors';
 import { HTTPException } from 'hono/http-exception';
+import {
+  ANIMES_DIGITAL,
+  ProviderError,
+  checkAnimesDigitalHealth,
+  getAnimesDigitalAnime,
+  getAnimesDigitalEpisode,
+  listServerDescriptors,
+  searchAnimesDigital
+} from './server-providers';
 
 type Variables = { userId: string; userEmail?: string; tokenHash?: string };
 type App = Hono<{ Bindings: Env; Variables: Variables }>;
@@ -99,6 +108,70 @@ app.get('/v1/catalog/episodes/:episodeId/playback', async (c) => {
   const rows = await all<Row>(c.env.DB, 'SELECT id, url, mime_type, label, headers, is_default FROM episode_sources WHERE episode_id = ? ORDER BY is_default DESC, label COLLATE NOCASE', item.id);
   if (!rows.length) throw new HTTPException(404, { message: 'Fonte de reprodução indisponível' });
   return c.json({ episode: { id: item.id, number: item.number, title: item.title, durationSeconds: item.duration_seconds }, sources: rows.map(source) });
+});
+
+app.get('/v1/servers', (c) => c.json({ servers: listServerDescriptors() }));
+
+app.get('/v1/servers/health', async (c) => c.json({ servers: [await checkAnimesDigitalHealth()], checkedAt: new Date().toISOString() }));
+
+app.get('/v1/servers/search', async (c) => {
+  const query = c.req.query('q')?.trim() ?? '';
+  validateProviderQuery(query);
+  try {
+    const matches = await searchAnimesDigital(query);
+    return c.json({
+      query,
+      servers: [{ server: ANIMES_DIGITAL, status: matches.length ? 'ok' : 'unavailable', matches }],
+      fetchedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    return c.json(providerSearchError(query, error), 200);
+  }
+});
+
+app.get('/v1/servers/resolve/:query/:season/:episode', async (c) => {
+  const query = decodeURIComponent(c.req.param('query')).trim();
+  validateProviderQuery(query);
+  const seasonNumber = positiveProviderInt(c.req.param('season'), 'Temporada inválida');
+  const episodeNumber = positiveProviderInt(c.req.param('episode'), 'Episódio inválido');
+  let search;
+  try {
+    search = await searchAnimesDigital(query);
+  } catch (error) {
+    return c.json({ query, season: seasonNumber, episode: episodeNumber, servers: [{ server: ANIMES_DIGITAL, status: providerStatus(error), available: false, error: providerErrorCode(error) }], fetchedAt: new Date().toISOString() }, 200);
+  }
+
+  const match = search[0];
+  if (!match) return c.json({ query, season: seasonNumber, episode: episodeNumber, servers: [{ server: ANIMES_DIGITAL, status: 'unavailable', available: false, error: 'provider_unavailable' }], fetchedAt: new Date().toISOString() }, 200);
+  try {
+    const detail = await getAnimesDigitalAnime(match.reference);
+    const episode = detail.seasons.find((item) => item.number === seasonNumber)?.episodes.find((item) => item.number === episodeNumber);
+    return c.json({ query, season: seasonNumber, episode: episodeNumber, servers: [{ server: ANIMES_DIGITAL, status: 'ok', available: Boolean(episode), anime: match, ...(episode ? { episode } : {}) }], fetchedAt: new Date().toISOString() }, 200);
+  } catch (error) {
+    return c.json({ query, season: seasonNumber, episode: episodeNumber, servers: [{ server: ANIMES_DIGITAL, status: providerStatus(error), available: false, anime: match, error: providerErrorCode(error) }], fetchedAt: new Date().toISOString() }, 200);
+  }
+});
+
+app.get('/v1/servers/:serverId/anime', async (c) => {
+  assertServerId(c.req.param('serverId'));
+  const reference = c.req.query('ref')?.trim() ?? '';
+  if (!reference || reference.length > 1000 || !reference.startsWith('/')) throw new HTTPException(400, { message: 'Referência inválida' });
+  try {
+    return c.json(await getAnimesDigitalAnime(reference));
+  } catch (error) {
+    throw providerHttpException(error);
+  }
+});
+
+app.get('/v1/servers/:serverId/episode', async (c) => {
+  assertServerId(c.req.param('serverId'));
+  const reference = c.req.query('ref')?.trim() ?? '';
+  if (!reference || reference.length > 1000 || !reference.startsWith('/')) throw new HTTPException(400, { message: 'Referência inválida' });
+  try {
+    return c.json(await getAnimesDigitalEpisode(reference));
+  } catch (error) {
+    throw providerHttpException(error);
+  }
 });
 
 app.get('/v1/news', async (c) => {
@@ -206,6 +279,13 @@ async function digest(value: string) { const hash = await crypto.subtle.digest('
 async function hashPassword(password: string, salt: string) { const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']); const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: base64ToBytes(salt), iterations: 100_000, hash: 'SHA-256' }, key, 256); return bytesToBase64Url(new Uint8Array(bits)); }
 async function verifyPassword(password: string, salt: string, expected: string) { return (await hashPassword(password, salt)) === expected; }
 function clampInt(value: string | undefined, fallback: number, min: number, max: number) { const parsed = Number(value); return Number.isInteger(parsed) ? Math.min(Math.max(parsed, min), max) : fallback; }
+function validateProviderQuery(value: string) { if (value.length < 2 || value.length > 120) throw new HTTPException(400, { message: 'Consulta inválida' }); }
+function positiveProviderInt(value: string | undefined, message: string) { const parsed = Number(value); if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100_000) throw new HTTPException(400, { message }); return parsed; }
+function assertServerId(value: string) { if (value !== ANIMES_DIGITAL.id) throw new HTTPException(404, { message: 'Servidor não encontrado' }); }
+function providerStatus(error: unknown): 'timeout' | 'error' { return error instanceof ProviderError && error.kind === 'timeout' ? 'timeout' : 'error'; }
+function providerErrorCode(error: unknown): 'provider_unavailable' | 'provider_timeout' { return error instanceof ProviderError && error.kind === 'timeout' ? 'provider_timeout' : 'provider_unavailable'; }
+function providerSearchError(query: string, error: unknown) { return { query, servers: [{ server: ANIMES_DIGITAL, status: providerStatus(error), matches: [], error: providerErrorCode(error) }], fetchedAt: new Date().toISOString() }; }
+function providerHttpException(error: unknown): HTTPException { return new HTTPException(error instanceof ProviderError && error.kind === 'timeout' ? 504 : 503, { message: error instanceof Error ? error.message : 'Provider indisponível' }); }
 function defaultAds() { return { enabled: false, engine: 'max' as const, banner: { enabled: false }, appOpen: { enabled: false, minIntervalMinutes: 60, skipFirstOpens: 3 }, interstitial: { enabled: false, minIntervalMinutes: 30, maxPerSession: 2 } }; }
 function isAdsConfig(value: unknown): value is ReturnType<typeof defaultAds> { return Boolean(value && typeof value === 'object' && 'enabled' in value && 'banner' in value && 'appOpen' in value && 'interstitial' in value); }
 function streamingNavigation() { return [{ id: 'home', label: 'Início', icon: 'home', route: '/' }, { id: 'catalog', label: 'A–Z', icon: 'catalog', route: '/catalogo' }, { id: 'search', label: 'Buscar', icon: 'search', route: '/buscar' }, { id: 'library', label: 'Lista', icon: 'library', route: '/lista' }, { id: 'account', label: 'Conta', icon: 'profile', route: '/conta' }]; }

@@ -28,6 +28,8 @@ fica preservado para o runtime tradicional/produção.
 - Manifest: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/app-manifest>
 - Catálogo: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/catalog/anime>
 - Notícias: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/news>
+- Providers: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/servers>
+- Resolução de episódio: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/servers/resolve/Bleach/1/1>
 - Atualização Android: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/app-update/android>
 
 O endpoint de atualização está operacional em `200`, com o APK de staging
@@ -126,6 +128,7 @@ APK.
 - Direct Release não é gerado automaticamente sem keystore definitiva.
 - O endpoint de update depende da publicação do APK e das duas secrets de
   checksum; ambos já estão configurados no staging atual.
-- A interface de providers já está na SPA, mas as rotas `/v1/servers/*` ainda
-  não foram transportadas para o Worker Cloudflare; elas permanecem disponíveis
-  somente na API NestJS tradicional até existir um adapter seguro para staging.
+- A integração de providers do staging transporta apenas o adapter seguro do
+  Animes Digital para o Worker. A busca e a resolução de temporada/episódio
+  são feitas sob demanda quando o usuário abre um episódio; reprodução pelo
+  provider continua desabilitada (`playback: false`).
