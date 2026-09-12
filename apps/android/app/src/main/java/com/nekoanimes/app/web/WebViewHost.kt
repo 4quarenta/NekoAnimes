@@ -1,6 +1,7 @@
 package com.nekoanimes.app.web
 
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.view.ViewGroup
@@ -25,7 +26,7 @@ fun WebViewHost(
     AndroidView(
         modifier = modifier,
         factory = { context ->
-            SwipeRefreshLayout(context).apply {
+            NekoRefreshLayout(context).apply {
                 setColorSchemeColors(0xFF8B5CF6.toInt())
                 val container = this
                 val webView = WebView(context).apply {
@@ -60,14 +61,19 @@ fun WebViewHost(
                     loadUrl(url)
                 }
 
+                hostedWebView = webView
                 addView(webView, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
                 setOnRefreshListener { webView.reload() }
                 bridge.attach(webView)
                 onWebViewReady(webView)
             }
         },
-        update = { onWebViewReady(it.getChildAt(0) as WebView) }
+        update = { it.hostedWebView?.let(onWebViewReady) }
     )
+}
+
+private class NekoRefreshLayout(context: Context) : SwipeRefreshLayout(context) {
+    var hostedWebView: WebView? = null
 }
 
 private fun isAllowedWebAppUrl(uri: Uri): Boolean {
