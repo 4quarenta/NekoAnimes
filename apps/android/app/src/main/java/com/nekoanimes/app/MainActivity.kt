@@ -28,6 +28,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -81,8 +82,10 @@ private fun AppShell(manifest: AppManifest) {
     NekoUpdatePrompt(activity)
 
     var selectedRoute by remember(manifest.configVersion) { mutableStateOf("/") }
+    var currentWebRoute by remember(manifest.configVersion) { mutableStateOf("/") }
     var webView by remember(manifest.configVersion) { mutableStateOf<WebView?>(null) }
     var playerRequest by remember(manifest.configVersion) { mutableStateOf<PlayerRequest?>(null) }
+    var playerReturnRoute by remember(manifest.configVersion) { mutableStateOf<String?>(null) }
     var adsBootstrapped by remember(manifest.configVersion) { mutableStateOf(false) }
     var lastBackPressedAt by remember { mutableLongStateOf(0L) }
     var showExitDialog by remember { mutableStateOf(false) }
@@ -94,12 +97,19 @@ private fun AppShell(manifest: AppManifest) {
     val drawerItems = remember(manifest.configVersion) {
         manifest.navigation.filter(::isDrawerItem)
     }
+    val currentWebRouteState by rememberUpdatedState(currentWebRoute)
 
     val ads = remember(manifest.configVersion) { NekoAdOrchestrator(activity, manifest.ads) }
     val bridge = remember(manifest.configVersion) {
         NekoBridge(
-            onRouteChanged = { route -> selectedRoute = route },
-            onOpenPlayer = { episodeId, source -> playerRequest = PlayerRequest(episodeId, source) },
+            onRouteChanged = { route ->
+                currentWebRoute = route
+                selectedRoute = route
+            },
+            onOpenPlayer = { episodeId, source ->
+                playerReturnRoute = currentWebRouteState
+                playerRequest = PlayerRequest(episodeId, source)
+            },
             onAppEvent = { name, placement -> ads.onAppEvent(name, placement) }
         )
     }
@@ -201,10 +211,13 @@ private fun AppShell(manifest: AppManifest) {
                     episodeId = playing.episodeId,
                     sourceOverride = playing.source,
                     onClose = { positionSeconds, durationSeconds ->
+                        val returnRoute = playerReturnRoute
                         playerRequest = null
+                        playerReturnRoute = null
                         ads.onAppEvent("episode_closed", "player")
                         webView?.let {
                             bridge.sendPlayerClosed(it, playing.episodeId, positionSeconds, durationSeconds)
+                            if (!returnRoute.isNullOrBlank()) bridge.sendNavigation(it, returnRoute)
                         }
                     }
                 )

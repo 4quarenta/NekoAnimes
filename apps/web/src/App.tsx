@@ -41,7 +41,7 @@ export function App() {
 
     const onResolved = () => {
       const route = window.location.pathname;
-      if (route.startsWith('/anime/')) NekoNative.routeChanged('/catalogo');
+      if (route.startsWith('/anime/')) NekoNative.routeChanged(route);
       else if (route.startsWith('/noticias/')) NekoNative.routeChanged('/');
       else if (isNativeRoute(route)) NekoNative.routeChanged(route);
     };
