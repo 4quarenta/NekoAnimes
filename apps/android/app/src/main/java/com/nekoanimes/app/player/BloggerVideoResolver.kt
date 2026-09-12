@@ -40,6 +40,7 @@ internal class BloggerVideoResolver(private val context: Context) {
             webView = playerWebView
             playerWebView.settings.javaScriptEnabled = true
             playerWebView.settings.domStorageEnabled = true
+            playerWebView.settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
             playerWebView.settings.mediaPlaybackRequiresUserGesture = false
             playerWebView.settings.allowFileAccess = false
             playerWebView.settings.allowContentAccess = false
