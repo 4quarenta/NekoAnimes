@@ -15,6 +15,7 @@ import {
 type Variables = { userId: string; userEmail?: string; tokenHash?: string };
 type App = Hono<{ Bindings: Env; Variables: Variables }>;
 type Row = Record<string, unknown>;
+const MEDIA_PROXY_HOSTS = new Set(['cdn.imagesskill.com']);
 
 const app: App = new Hono();
 
@@ -65,6 +66,28 @@ app.get('/v1/app-update/android', (c) => {
     return c.json({ message: 'Canal de atualização Android ainda não publicado' }, 503);
   }
   return c.json({ platform: 'android', channel: 'direct', versionCode, versionName, apkUrl, sha256, required: c.env.ANDROID_UPDATE_REQUIRED === 'true' }, 200, { 'Cache-Control': 'no-store' });
+});
+
+app.get('/v1/media/proxy', async (c) => {
+  const target = parseMediaProxyTarget(c.req.query('url'));
+  const response = await fetch(target, {
+    redirect: 'follow',
+    headers: { accept: 'application/vnd.apple.mpegurl,application/x-mpegURL,video/*,*/*' }
+  });
+  if (!response.ok || !response.body) throw new HTTPException(502, { message: `Media upstream respondeu HTTP ${response.status}` });
+
+  const contentType = response.headers.get('content-type') ?? '';
+  const isPlaylist = /\.m3u8$/i.test(new URL(response.url || target).pathname) || /mpegurl/i.test(contentType);
+  const headers = new Headers({
+    'cache-control': 'no-store',
+    'content-type': isPlaylist ? 'application/vnd.apple.mpegurl' : contentType || 'application/octet-stream'
+  });
+  if (!isPlaylist) return new Response(response.body, { status: 200, headers });
+
+  const playlist = await response.text();
+  const baseUrl = response.url || target;
+  const rewritten = rewriteMediaPlaylist(playlist, baseUrl, c.req.url);
+  return new Response(rewritten, { status: 200, headers });
 });
 
 app.get('/v1/catalog/anime', async (c) => {
@@ -241,6 +264,10 @@ app.get('/v1/servers/:serverId/resolve/:query/:season/:episode', async (c) => {
     const episode = detail.seasons.find((item) => item.number === seasonNumber)?.episodes.find((item) => item.number === episodeNumber);
     if (!episode) throw new HTTPException(404, { message: 'Episódio não encontrado neste provider' });
     const providerEpisode = await getProviderEpisode(serverId, episode.reference);
+    const sources = providerEpisode.playback.sources.map((source) => ({
+      ...source,
+      ...(isMediaProxyTarget(source.url) ? { playbackUrl: mediaProxyUrl(c.req.url, source.url) } : {})
+    }));
     return c.json({
       query,
       season: seasonNumber,
@@ -248,7 +275,7 @@ app.get('/v1/servers/:serverId/resolve/:query/:season/:episode', async (c) => {
       server: detail.server,
       anime,
       episode,
-      sources: providerEpisode.playback.sources,
+      sources,
       fetchedAt: new Date().toISOString()
     });
   } catch (error) {
@@ -373,6 +400,49 @@ function animeDetail(row: Row) { return { ...animeSummary(row), titleEnglish: ro
 function season(row: Row) { return { id: row.id, animeId: row.anime_id, number: row.number, title: row.title, episodesCount: row.episodes_count }; }
 function episode(row: Row) { return { id: row.id, seasonId: row.season_id, number: row.number, title: row.title, durationSeconds: row.duration_seconds, airedAt: row.aired_at }; }
 function source(row: Row) { return { id: row.id, url: row.url, mimeType: row.mime_type, label: row.label, headers: parseObject(row.headers), isDefault: Boolean(row.is_default) }; }
+
+function parseMediaProxyTarget(value: string | undefined): string {
+  if (!value || value.length > 2048 || !isMediaProxyTarget(value)) throw new HTTPException(400, { message: 'URL de mídia não permitida' });
+  return new URL(value).toString();
+}
+
+function isMediaProxyTarget(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && MEDIA_PROXY_HOSTS.has(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function mediaProxyUrl(requestUrl: string, target: string): string {
+  const url = new URL('/v1/media/proxy', requestUrl);
+  url.searchParams.set('url', target);
+  return url.toString();
+}
+
+function rewriteMediaPlaylist(playlist: string, baseUrl: string, requestUrl: string): string {
+  return playlist.split(/\r?\n/).map((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return line;
+    if (trimmed.startsWith('#')) {
+      return line.replace(/URI="([^"]+)"/gi, (match, rawUrl: string) => {
+        const absolute = resolveMediaUrl(rawUrl, baseUrl);
+        return isMediaProxyTarget(absolute) ? `URI="${mediaProxyUrl(requestUrl, absolute)}"` : match;
+      });
+    }
+    const absolute = resolveMediaUrl(trimmed, baseUrl);
+    return isMediaProxyTarget(absolute) ? mediaProxyUrl(requestUrl, absolute) : line;
+  }).join('\n');
+}
+
+function resolveMediaUrl(value: string, baseUrl: string): string {
+  try {
+    return new URL(value, baseUrl).toString();
+  } catch {
+    return '';
+  }
+}
 function newsArticle(row: Row) { return { id: row.id, slug: row.slug, title: row.title, summary: row.summary, category: row.category, sourceName: row.source_name, sourceUrl: row.source_url, imageUrl: row.image_allowed ? row.image_url : null, imageAllowed: Boolean(row.image_allowed), publishedAt: row.published_at }; }
 async function readCredentials(c: Context) { const body = await c.req.json<{ email?: string; password?: string }>(); const email = body.email?.trim().toLowerCase() ?? ''; const password = body.password ?? ''; if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 8 || password.length > 256) throw new HTTPException(400, { message: 'E-mail ou senha inválidos' }); return { email, password }; }
 async function createSession(db: D1Database, userId: string, email: string) { const token = randomToken(32); const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(); await db.prepare('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)').bind(await digest(token), userId, expiresAt).run(); return { session: { access_token: token, token_type: 'bearer', expires_in: 30 * 24 * 60 * 60, user: { id: userId, email } } }; }

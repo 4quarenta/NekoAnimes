@@ -50,7 +50,7 @@ export function AnimeDetailPage() {
     setSelectedEpisode(null);
     setSelectedServerId(null);
     setSelectedServerReference(null);
-    NekoNative.player.open(resolution.episode.id, source);
+    NekoNative.player.open(resolution.episode.id, { ...source, url: source.playbackUrl ?? source.url });
   }, [providerResolution.data]);
 
   if (anime.isPending) return <AppScreen><div className="neko-skeleton" /></AppScreen>;
