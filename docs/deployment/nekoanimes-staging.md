@@ -62,7 +62,7 @@ arquivo `apps/web/public/_redirects` mantém o fallback SPA para refresh em
 Variáveis públicas do build web:
 
 - `VITE_API_BASE_URL=https://nekoanimes-api-staging.john-alleff01.workers.dev`
-- `VITE_APP_VERSION=1.0.2`
+- `VITE_APP_VERSION=1.0.3`
 
 Não há `VITE_SUPABASE_*` nesta arquitetura. Nunca colocar tokens de Cloudflare,
 credenciais de banco ou `service_role` no frontend.
@@ -76,17 +76,17 @@ O workflow `Android staging` é manual e usa a variável de repositório
 - `WEB_APP_ORIGIN=https://nekoanimes-staging.pages.dev`
 - `API_BASE_URL=https://nekoanimes-api-staging.john-alleff01.workers.dev`
 
-Publicação esperada:
+Publicação atual:
 
 ```text
-android/v1.0.2/NekoAnimes-v1.0.2.apk
-android/v1.0.2/NekoAnimes-v1.0.2.apk.sha256
+android/v1.0.3/NekoAnimes-v1.0.3.apk
+android/v1.0.3/NekoAnimes-v1.0.3.apk.sha256
 ```
 
 O workflow guarda o APK como artifact e cria a prerelease GitHub
-`v1.0.2-staging`; não é release de produção. A URL pública atual do APK é:
+`v1.0.3-staging`; não é release de produção. A URL pública atual do APK é:
 
-<https://pub-d7e4841d19c54db9bbeedcdc3af062c1.r2.dev/android/v1.0.2/NekoAnimes-v1.0.2.apk>
+<https://pub-d7e4841d19c54db9bbeedcdc3af062c1.r2.dev/android/v1.0.3/NekoAnimes-v1.0.3.apk>
 
 O Android baixa o manifesto de atualização, compara `versionCode`, baixa o
 APK, valida SHA-256 e abre o instalador. A instalação de APK direto exige
@@ -126,3 +126,6 @@ APK.
 - Direct Release não é gerado automaticamente sem keystore definitiva.
 - O endpoint de update depende da publicação do APK e das duas secrets de
   checksum; ambos já estão configurados no staging atual.
+- A interface de providers já está na SPA, mas as rotas `/v1/servers/*` ainda
+  não foram transportadas para o Worker Cloudflare; elas permanecem disponíveis
+  somente na API NestJS tradicional até existir um adapter seguro para staging.
