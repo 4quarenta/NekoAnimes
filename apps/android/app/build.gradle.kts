@@ -18,8 +18,8 @@ android {
         applicationId = "com.nekoanimes.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 10017
-        versionName = "1.0.17"
+        versionCode = 10018
+        versionName = "1.0.18"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "MAX_SDK_KEY", "\"${providers.gradleProperty("MAX_SDK_KEY").orElse("").get()}\"")

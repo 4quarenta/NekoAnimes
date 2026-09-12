@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.view.MotionEvent
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -125,16 +126,31 @@ private class NekoRefreshLayout(context: Context) : SwipeRefreshLayout(context) 
     var hostedWebView: WebView? = null
 
     private var refreshGestureAllowed = false
+    private var horizontalGesture = false
+    private var downX = 0f
+    private var downY = 0f
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
     override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                downX = event.x
+                downY = event.y
+                horizontalGesture = false
                 refreshGestureAllowed = event.y <= height * 0.40f
                 if (!refreshGestureAllowed) return false
             }
+            MotionEvent.ACTION_MOVE -> {
+                val deltaX = event.x - downX
+                val deltaY = event.y - downY
+                if (!horizontalGesture && abs(deltaX) > touchSlop && abs(deltaX) > abs(deltaY)) {
+                    horizontalGesture = true
+                }
+                if (horizontalGesture || !refreshGestureAllowed) return false
+            }
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                if (!refreshGestureAllowed) {
-                    refreshGestureAllowed = false
+                if (!refreshGestureAllowed || horizontalGesture) {
+                    resetGesture()
                     return false
                 }
             }
@@ -142,9 +158,16 @@ private class NekoRefreshLayout(context: Context) : SwipeRefreshLayout(context) 
 
         val intercepted = super.onInterceptTouchEvent(event)
         if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
-            refreshGestureAllowed = false
+            resetGesture()
         }
         return intercepted
+    }
+
+    private fun resetGesture() {
+        refreshGestureAllowed = false
+        horizontalGesture = false
+        downX = 0f
+        downY = 0f
     }
 }
 
