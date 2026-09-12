@@ -45,12 +45,14 @@ export function AnimeDetailPage() {
   useEffect(() => {
     const resolution = providerResolution.data;
     const directSources = resolution?.sources.filter((item) => item.kind === 'direct') ?? [];
-    const source = directSources.find((item) => item.isDefault) ?? directSources[0];
+    const source = directSources.find((item) => item.isDefault) ?? directSources[0] ?? resolution?.sources.find((item) => item.kind === 'embed');
     if (!resolution || !source) return;
-    setSelectedEpisode(null);
-    setSelectedServerId(null);
-    setSelectedServerReference(null);
-    NekoNative.player.open(resolution.episode.id, { ...source, url: source.playbackUrl ?? source.url });
+    const opened = NekoNative.player.open(resolution.episode.id, { ...source, url: source.playbackUrl ?? source.url });
+    if (opened) {
+      setSelectedEpisode(null);
+      setSelectedServerId(null);
+      setSelectedServerReference(null);
+    }
   }, [providerResolution.data]);
 
   if (anime.isPending) return <AppScreen><div className="neko-skeleton" /></AppScreen>;
@@ -144,32 +146,8 @@ export function AnimeDetailPage() {
                     />;
                   })}
                   {selectedServerId && providerResolution.isError ? <p className="neko-error">Não foi possível consultar as sources deste provider.</p> : null}
-                  {selectedServerId && providerResolution.data?.sources.filter((source) => source.kind === 'embed').map((source) => (
-                    <div className="neko-account-notice" key={source.id}>
-                      <strong>Source Blogger encontrada</strong>
-                      <a href={source.url} target="_blank" rel="noreferrer" style={{ overflowWrap: 'anywhere' }}>{source.url}</a>
-                      <button
-                        className="neko-more"
-                        type="button"
-                        onClick={() => {
-                          const opened = NekoNative.player.open(providerResolution.data!.episode.id, {
-                            url: source.url,
-                            mimeType: source.mimeType,
-                            label: source.label,
-                            headers: source.headers
-                          });
-                          if (opened) {
-                            setSelectedEpisode(null);
-                            setSelectedServerId(null);
-                            setSelectedServerReference(null);
-                          }
-                        }}
-                      >
-                        Abrir no reprodutor Android
-                      </button>
-                    </div>
-                  ))}
                   {selectedServerId && providerResolution.data && providerResolution.data.sources.length === 0 ? <p className="neko-error">Este episódio não possui uma source direta ou Blogger na página consultada.</p> : null}
+                  {selectedServerId && providerResolution.data && providerResolution.data.sources.length > 0 && !NekoNative.isAvailable() ? <p className="neko-account-notice">A reprodução desta source está disponível no aplicativo Android.</p> : null}
                 </div>
               ) : <div className="neko-account-notice"><strong>Nenhum servidor disponível</strong><p>Este episódio não foi localizado nos providers configurados para staging.</p></div>
             ) : null}

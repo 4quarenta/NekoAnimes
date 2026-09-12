@@ -17,6 +17,7 @@ import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.nekoanimes.app.model.NavigationItem
@@ -50,9 +51,9 @@ fun NekoNavigationDrawer(
 ) {
     ModalNavigationDrawer(
         drawerState = drawerState,
-        gesturesEnabled = true,
+        gesturesEnabled = false,
         drawerContent = {
-            ModalDrawerSheet {
+            ModalDrawerSheet(modifier = Modifier.fillMaxWidth(0.7f)) {
                 Text("NekoAnimes", modifier = Modifier.padding(horizontal = 28.dp, vertical = 24.dp))
                 items.forEach { item ->
                     NavigationDrawerItem(

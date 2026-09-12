@@ -29,11 +29,12 @@ fun WebViewHost(
     bridge: NekoBridge,
     modifier: Modifier = Modifier,
     onHorizontalSwipe: (HorizontalSwipeDirection) -> Unit = {},
+    onOpenDrawer: () -> Unit = {},
     onWebViewReady: (WebView) -> Unit
 ) {
     AndroidView(
         modifier = modifier,
-        factory = { context ->
+            factory = { context ->
             NekoRefreshLayout(context).apply {
                 setColorSchemeColors(0xFF8B5CF6.toInt())
                 val container = this
@@ -47,6 +48,8 @@ fun WebViewHost(
                     settings.userAgentString = "${settings.userAgentString} NekoAnimes/Android"
                     var downX = 0f
                     var downY = 0f
+                    val edgeInset = 32f * context.resources.displayMetrics.density
+                    val swipeThreshold = 96f * context.resources.displayMetrics.density
 
                     setOnTouchListener { _, event ->
                         when (event.actionMasked) {
@@ -57,13 +60,22 @@ fun WebViewHost(
                             MotionEvent.ACTION_UP -> {
                                 val deltaX = event.rawX - downX
                                 val deltaY = event.rawY - downY
-                                val edgeInset = 32f * context.resources.displayMetrics.density
-                                val startedAwayFromEdge = downX > edgeInset && downX < width - edgeInset
-                                if (startedAwayFromEdge && abs(deltaX) >= 96f && abs(deltaX) > abs(deltaY) * 1.35f) {
-                                    onHorizontalSwipe(
-                                        if (deltaX < 0) HorizontalSwipeDirection.Next else HorizontalSwipeDirection.Previous
-                                    )
+                                val isHorizontalSwipe = abs(deltaX) >= swipeThreshold && abs(deltaX) > abs(deltaY) * 1.35f
+                                if (isHorizontalSwipe) {
+                                    val startedAtDrawerEdge = downX <= edgeInset
+                                    val startedAwayFromEdges = downX > edgeInset && downX < width - edgeInset
+                                    if (startedAtDrawerEdge && deltaX > 0) {
+                                        onOpenDrawer()
+                                    } else if (startedAwayFromEdges) {
+                                        onHorizontalSwipe(
+                                            if (deltaX < 0) HorizontalSwipeDirection.Next else HorizontalSwipeDirection.Previous
+                                        )
+                                    }
                                 }
+                            }
+                            MotionEvent.ACTION_CANCEL -> {
+                                downX = 0f
+                                downY = 0f
                             }
                         }
                         false
@@ -94,6 +106,7 @@ fun WebViewHost(
 
                 hostedWebView = webView
                 addView(webView, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+                setOnChildScrollUpCallback { _, _ -> webView.canScrollVertically(-1) }
                 setOnRefreshListener { webView.reload() }
                 bridge.attach(webView)
                 onWebViewReady(webView)
