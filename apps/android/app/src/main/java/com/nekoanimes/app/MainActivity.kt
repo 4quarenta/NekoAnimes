@@ -124,20 +124,8 @@ private fun AppShell(manifest: AppManifest) {
     }
 
     val playing = playerRequest
-    if (playing != null) {
-        NekoPlayerScreen(
-            episodeId = playing.episodeId,
-            sourceOverride = playing.source,
-            onClose = { positionSeconds, durationSeconds ->
-                playerRequest = null
-                ads.onAppEvent("episode_closed", "player")
-                webView?.let { bridge.sendPlayerClosed(it, playing.episodeId, positionSeconds, durationSeconds) }
-            }
-        )
-        return
-    }
 
-    BackHandler {
+    BackHandler(enabled = playing == null) {
         val currentWebView = webView
         if (currentWebView?.canGoBack() == true) {
             lastBackPressedAt = 0L
@@ -184,26 +172,42 @@ private fun AppShell(manifest: AppManifest) {
         selectedRoute = selectedRoute,
         onSelected = ::navigateTo
     ) {
-        Scaffold(
-            modifier = Modifier.fillMaxSize(),
-            bottomBar = {
-                Column {
-                    NekoBannerSlot(manifest.ads)
-                    NekoNavigationBar(
-                        items = primaryItems,
-                        selectedRoute = selectedRoute,
-                        onSelected = ::navigateTo
-                    )
+        Box(modifier = Modifier.fillMaxSize()) {
+            Scaffold(
+                modifier = Modifier.fillMaxSize(),
+                bottomBar = {
+                    Column {
+                        NekoBannerSlot(manifest.ads)
+                        NekoNavigationBar(
+                            items = primaryItems,
+                            selectedRoute = selectedRoute,
+                            onSelected = ::navigateTo
+                        )
+                    }
                 }
+            ) { padding ->
+                WebViewHost(
+                    url = manifest.webAppUrl,
+                    bridge = bridge,
+                    modifier = Modifier.fillMaxSize().padding(padding),
+                    onHorizontalSwipe = ::navigateBySwipe,
+                    onWebViewReady = { webView = it }
+                )
             }
-        ) { padding ->
-            WebViewHost(
-                url = manifest.webAppUrl,
-                bridge = bridge,
-                modifier = Modifier.fillMaxSize().padding(padding),
-                onHorizontalSwipe = ::navigateBySwipe,
-                onWebViewReady = { webView = it }
-            )
+
+            if (playing != null) {
+                NekoPlayerScreen(
+                    episodeId = playing.episodeId,
+                    sourceOverride = playing.source,
+                    onClose = { positionSeconds, durationSeconds ->
+                        playerRequest = null
+                        ads.onAppEvent("episode_closed", "player")
+                        webView?.let {
+                            bridge.sendPlayerClosed(it, playing.episodeId, positionSeconds, durationSeconds)
+                        }
+                    }
+                )
+            }
         }
     }
 }
