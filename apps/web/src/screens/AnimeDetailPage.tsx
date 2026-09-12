@@ -148,6 +148,25 @@ export function AnimeDetailPage() {
                     <div className="neko-account-notice" key={source.id}>
                       <strong>Source Blogger encontrada</strong>
                       <a href={source.url} target="_blank" rel="noreferrer" style={{ overflowWrap: 'anywhere' }}>{source.url}</a>
+                      <button
+                        className="neko-more"
+                        type="button"
+                        onClick={() => {
+                          const opened = NekoNative.player.open(providerResolution.data!.episode.id, {
+                            url: source.url,
+                            mimeType: source.mimeType,
+                            label: source.label,
+                            headers: source.headers
+                          });
+                          if (opened) {
+                            setSelectedEpisode(null);
+                            setSelectedServerId(null);
+                            setSelectedServerReference(null);
+                          }
+                        }}
+                      >
+                        Abrir no reprodutor Android
+                      </button>
                     </div>
                   ))}
                   {selectedServerId && providerResolution.data && providerResolution.data.sources.length === 0 ? <p className="neko-error">Este episódio não possui uma source direta ou Blogger na página consultada.</p> : null}

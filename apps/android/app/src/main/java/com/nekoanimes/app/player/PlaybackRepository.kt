@@ -1,5 +1,6 @@
 package com.nekoanimes.app.player
 
+import android.content.Context
 import com.nekoanimes.app.BuildConfig
 import com.nekoanimes.app.bridge.PlayerSourceOverride
 import org.json.JSONObject
@@ -21,13 +22,23 @@ internal data class PlaybackDescriptor(
 )
 
 internal class PlaybackRepository {
-    fun load(episodeId: String, sourceOverride: PlayerSourceOverride? = null): PlaybackDescriptor {
+    suspend fun load(context: Context, episodeId: String, sourceOverride: PlayerSourceOverride? = null): PlaybackDescriptor {
         if (sourceOverride != null) {
+            val resolvedUrl = if (isBloggerVideoUrl(sourceOverride.url)) {
+                BloggerVideoResolver(context).resolve(sourceOverride.url)
+            } else {
+                sourceOverride.url
+            }
             return PlaybackDescriptor(
                 episodeId = episodeId,
                 episodeNumber = 0,
                 title = sourceOverride.label,
-                source = PlaybackSource(sourceOverride.url, sourceOverride.mimeType, sourceOverride.label, sourceOverride.headers)
+                source = PlaybackSource(
+                    resolvedUrl,
+                    if (isBloggerVideoUrl(sourceOverride.url)) "video/mp4" else sourceOverride.mimeType,
+                    sourceOverride.label,
+                    sourceOverride.headers
+                )
             )
         }
         val connection = URL("${BuildConfig.API_BASE_URL}/v1/catalog/episodes/$episodeId/playback")
@@ -65,5 +76,13 @@ internal class PlaybackRepository {
         } finally {
             connection.disconnect()
         }
+    }
+
+    private fun isBloggerVideoUrl(value: String): Boolean {
+        val uri = android.net.Uri.parse(value)
+        return uri.scheme.equals("https", true) &&
+            uri.host.equals("www.blogger.com", true) &&
+            uri.path == "/video.g" &&
+            !uri.getQueryParameter("token").isNullOrBlank()
     }
 }
