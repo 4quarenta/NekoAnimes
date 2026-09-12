@@ -64,7 +64,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun AppShell(manifest: AppManifest) {
-    val activity = LocalContext.current as Activity
+    val activity = LocalContext.current as ComponentActivity
     NekoUpdatePrompt(activity)
 
     var selectedRoute by remember(manifest.configVersion) { mutableStateOf("/") }

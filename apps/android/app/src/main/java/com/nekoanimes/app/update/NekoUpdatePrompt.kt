@@ -1,6 +1,5 @@
 package com.nekoanimes.app.update
 
-import android.app.Activity
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
@@ -15,6 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import com.nekoanimes.app.BuildConfig
+import androidx.activity.ComponentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.Dispatchers
@@ -22,7 +22,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
-internal fun NekoUpdatePrompt(activity: Activity) {
+internal fun NekoUpdatePrompt(activity: ComponentActivity) {
     if (!BuildConfig.SELF_UPDATE_ENABLED) return
 
     val repository = remember { UpdateRepository(activity.cacheDir) }

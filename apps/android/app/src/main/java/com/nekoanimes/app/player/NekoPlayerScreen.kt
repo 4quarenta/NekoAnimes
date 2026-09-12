@@ -47,7 +47,6 @@ internal fun NekoPlayerScreen(
     DisposableEffect(activity, episodeId) {
         val window = activity.window
         val previousOrientation = activity.requestedOrientation
-        val previousDecorFitsSystemWindows = WindowCompat.getDecorFitsSystemWindows(window)
         val controller = WindowCompat.getInsetsController(window, window.decorView)
         val previousBarsBehavior = controller.systemBarsBehavior
         val previousLightStatusBars = controller.isAppearanceLightStatusBars
@@ -65,7 +64,7 @@ internal fun NekoPlayerScreen(
             controller.systemBarsBehavior = previousBarsBehavior
             controller.isAppearanceLightStatusBars = previousLightStatusBars
             controller.isAppearanceLightNavigationBars = previousLightNavigationBars
-            WindowCompat.setDecorFitsSystemWindows(window, previousDecorFitsSystemWindows)
+            WindowCompat.setDecorFitsSystemWindows(window, true)
             activity.requestedOrientation = previousOrientation
         }
     }
