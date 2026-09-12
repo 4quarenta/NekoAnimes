@@ -2,9 +2,6 @@ name: Android staging
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - apps/android/**
 
 concurrency:
   group: neko-android-staging
@@ -36,7 +33,6 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.4.1'
-          cache-provider: basic
       - name: Validate staging configuration
         shell: bash
         run: test -n "$NEKO_API_BASE_URL"

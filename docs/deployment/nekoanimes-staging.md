@@ -90,7 +90,10 @@ O workflow guarda o APK como artifact e cria a prerelease GitHub
 
 O Android baixa o manifesto de atualização, compara `versionCode`, baixa o
 APK, valida SHA-256 e abre o instalador. A instalação de APK direto exige
-autorizar a fonte desconhecida no Android de teste.
+autorizar a fonte desconhecida no Android de teste; se a permissão ainda não
+existir, o app abre a tela correta e continua o fluxo automaticamente ao
+voltar. O player nativo abre sempre em paisagem e oculta as barras/botões de
+ação do sistema enquanto está ativo.
 
 ## GitHub Actions
 
