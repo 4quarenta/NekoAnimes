@@ -52,13 +52,51 @@ export type ServerAnimeDetail = {
 
 type HtmlAnchor = { href: string; text: string };
 type ProviderResponse = { html: string; url: string };
+type ProviderConfig = ServerDescriptor & {
+  searchPath: (query: string) => string;
+  fallbackAnimePath: (query: string) => string;
+  isAnimeReference: (reference: string) => boolean;
+  isEpisodeReference: (reference: string) => boolean;
+  cleanTitle: (title: string) => string;
+};
 
-export const ANIMES_DIGITAL: ServerDescriptor = {
+export const ANIMES_DIGITAL: ProviderConfig = {
   id: 'animesdigital',
   name: 'Animes Digital',
   baseUrl: 'https://animesdigital.org',
-  capabilities: { search: true, anime: true, episodes: true, playback: false }
+  capabilities: { search: true, anime: true, episodes: true, playback: false },
+  searchPath: (query) => `/?s=${encodeURIComponent(query)}`,
+  fallbackAnimePath: (query) => `/anime/a/${slugify(query)}`,
+  isAnimeReference: (reference) => reference.startsWith('/anime/a/'),
+  isEpisodeReference: (reference) => reference.startsWith('/video/a/') || /^\/\?p=\d+$/i.test(reference),
+  cleanTitle: cleanAnimeTitle
 };
+
+export const ANIMES_ONLINE_CC: ProviderConfig = {
+  id: 'animesonlinecc',
+  name: 'Animes Online',
+  baseUrl: 'https://animesonlinecc.to',
+  capabilities: { search: true, anime: true, episodes: true, playback: false },
+  searchPath: (query) => `/?s=${encodeURIComponent(query)}`,
+  fallbackAnimePath: (query) => `/anime/${slugify(query)}`,
+  isAnimeReference: (reference) => reference.startsWith('/anime/'),
+  isEpisodeReference: (reference) => reference.includes('/episodio/'),
+  cleanTitle: (title) => cleanAnimeTitle(title).replace(/\s+todos\s+os\s+epis[oó]dios\s+online$/i, '').replace(/\s+online$/i, '').trim()
+};
+
+export const GOYABU: ProviderConfig = {
+  id: 'goyabu',
+  name: 'Goyabu',
+  baseUrl: 'https://goyabu.io',
+  capabilities: { search: true, anime: true, episodes: true, playback: false },
+  searchPath: (query) => `/?s=${encodeURIComponent(query)}`,
+  fallbackAnimePath: (query) => `/anime/${slugify(query)}`,
+  isAnimeReference: (reference) => reference.startsWith('/anime/'),
+  isEpisodeReference: (reference) => /^\/\d+\/?(?:\?.*)?$/.test(reference) || reference.includes('/episodio/'),
+  cleanTitle: (title) => cleanAnimeTitle(title).replace(/^assistir\s+/i, '').replace(/\s+todos\s+os\s+epis[oó]dios\s+online\.?$/i, '').trim()
+};
+
+const PROVIDERS: ProviderConfig[] = [GOYABU, ANIMES_ONLINE_CC, ANIMES_DIGITAL];
 
 const MAX_HTML_BYTES = 4_000_000;
 const DEFAULT_TIMEOUT_MS = 12_000;
@@ -71,39 +109,45 @@ export class ProviderError extends Error {
 }
 
 export function listServerDescriptors(): ServerDescriptor[] {
-  return [ANIMES_DIGITAL];
+  return PROVIDERS.map(({ searchPath: _searchPath, fallbackAnimePath: _fallbackAnimePath, isAnimeReference: _isAnimeReference, isEpisodeReference: _isEpisodeReference, cleanTitle: _cleanTitle, ...descriptor }) => descriptor);
 }
 
-export async function searchAnimesDigital(query: string): Promise<ServerAnimeMatch[]> {
-  const response = await getProviderHtml(`/?s=${encodeURIComponent(query)}`);
-  const matches = extractAnimeMatches(query, parseAnchors(response.html));
+export function hasProvider(serverId: string): boolean {
+  return PROVIDERS.some((provider) => provider.id === serverId);
+}
+
+export async function searchProvider(serverId: string, query: string): Promise<ServerAnimeMatch[]> {
+  const provider = getProvider(serverId);
+  const response = await getProviderHtml(provider, provider.searchPath(query));
+  const matches = extractAnimeMatches(provider, query, parseAnchors(response.html));
   if (matches.length > 0) return matches.slice(0, 10);
 
-  const fallbackReference = `/anime/a/${slugify(query)}`;
+  const fallbackReference = provider.fallbackAnimePath(query);
   try {
-    const detail = await getProviderHtml(fallbackReference);
-    const title = cleanAnimeTitle(parseH1(detail.html) ?? query);
+    const detail = await getProviderHtml(provider, fallbackReference);
+    const title = provider.cleanTitle(parseH1(detail.html) ?? query);
     const confidence = scoreTitleMatch(query, title);
-    return confidence >= 0.45 ? [toAnimeMatch(title, detail.url, confidence)] : [];
+    return confidence >= 0.45 ? [toAnimeMatch(provider, title, detail.url, confidence)] : [];
   } catch {
     return [];
   }
 }
 
-export async function getAnimesDigitalAnime(reference: string): Promise<ServerAnimeDetail> {
-  const safeReference = assertReference(reference, 'anime');
-  const response = await getProviderHtml(safeReference);
-  const title = cleanAnimeTitle(parseH1(response.html) ?? lastPathPart(safeReference) ?? 'Anime');
+export async function getProviderAnime(serverId: string, reference: string): Promise<ServerAnimeDetail> {
+  const provider = getProvider(serverId);
+  const safeReference = assertReference(provider, reference, 'anime');
+  const response = await getProviderHtml(provider, safeReference);
+  const title = provider.cleanTitle(parseH1(response.html) ?? lastPathPart(safeReference) ?? 'Anime');
   const anchors = parseAnchors(response.html);
-  const episodes = extractEpisodeCandidates(anchors, 2);
+  const episodes = extractEpisodeCandidates(provider, anchors, 2);
 
   // Some provider pages expose seasons as links. Keep the number of follow-up
   // requests bounded because this endpoint is called from a public Worker.
-  const seasonReferences = extractSeasonReferences(anchors).slice(0, 12);
+  const seasonReferences = extractSeasonReferences(provider, anchors).slice(0, 12);
   const seasonPages = await Promise.allSettled(
     seasonReferences.map(async ({ reference: seasonReference, number }) => {
-      const seasonPage = await getProviderHtml(seasonReference);
-      return extractEpisodeCandidates(parseAnchors(seasonPage.html), 3, number);
+      const seasonPage = await getProviderHtml(provider, seasonReference);
+      return extractEpisodeCandidates(provider, parseAnchors(seasonPage.html), 3, number);
     })
   );
 
@@ -112,33 +156,34 @@ export async function getAnimesDigitalAnime(reference: string): Promise<ServerAn
   }
 
   return {
-    server: ANIMES_DIGITAL,
+    server: provider,
     anime: {
       title,
-      reference: referenceFromUrl(response.url),
+      reference: referenceFromUrl(provider, response.url),
       url: response.url,
       year: parseYear(pageText(response.html))
     },
-    seasons: groupEpisodes(episodes),
+    seasons: groupEpisodes(provider, episodes),
     fetchedAt: new Date().toISOString()
   };
 }
 
-export async function getAnimesDigitalEpisode(reference: string) {
-  const safeReference = assertReference(reference, 'episode');
-  const response = await getProviderHtml(safeReference);
+export async function getProviderEpisode(serverId: string, reference: string) {
+  const provider = getProvider(serverId);
+  const safeReference = assertReference(provider, reference, 'episode');
+  const response = await getProviderHtml(provider, safeReference);
   const title = parseH1(response.html) ?? 'Episódio';
   const number = parseEpisodeNumber(title, safeReference);
   if (!number) throw new ProviderError('Número do episódio não identificado', 'unavailable');
   const seasonNumber = parseSeasonNumber(title, safeReference) ?? 1;
 
   return {
-    server: ANIMES_DIGITAL,
-    id: `${ANIMES_DIGITAL.id}:${seasonNumber}:${number}`,
+    server: provider,
+    id: `${provider.id}:${seasonNumber}:${number}`,
     title,
     number,
     seasonNumber,
-    reference: referenceFromUrl(response.url),
+    reference: referenceFromUrl(provider, response.url),
     url: response.url,
     available: true,
     playback: { available: false, sources: [], reason: 'not-configured' as const },
@@ -146,19 +191,20 @@ export async function getAnimesDigitalEpisode(reference: string) {
   };
 }
 
-export async function checkAnimesDigitalHealth(): Promise<{ server: ServerDescriptor; status: 'ok' | 'unavailable'; latencyMs: number; checkedAt: string }> {
+export async function checkProviderHealth(serverId: string): Promise<{ server: ServerDescriptor; status: 'ok' | 'unavailable'; latencyMs: number; checkedAt: string }> {
+  const provider = getProvider(serverId);
   const startedAt = Date.now();
   try {
-    await getProviderHtml('/', 5_000);
-    return { server: ANIMES_DIGITAL, status: 'ok', latencyMs: Date.now() - startedAt, checkedAt: new Date().toISOString() };
+    await getProviderHtml(provider, '/', 5_000);
+    return { server: provider, status: 'ok', latencyMs: Date.now() - startedAt, checkedAt: new Date().toISOString() };
   } catch {
-    return { server: ANIMES_DIGITAL, status: 'unavailable', latencyMs: Date.now() - startedAt, checkedAt: new Date().toISOString() };
+    return { server: provider, status: 'unavailable', latencyMs: Date.now() - startedAt, checkedAt: new Date().toISOString() };
   }
 }
 
-async function getProviderHtml(reference: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<ProviderResponse> {
-  const url = new URL(reference, ANIMES_DIGITAL.baseUrl);
-  if (url.protocol !== 'https:' || url.hostname !== new URL(ANIMES_DIGITAL.baseUrl).hostname) {
+async function getProviderHtml(provider: ProviderConfig, reference: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<ProviderResponse> {
+  const url = new URL(reference, provider.baseUrl);
+  if (url.protocol !== 'https:' || url.hostname !== new URL(provider.baseUrl).hostname) {
     throw new ProviderError('Referência fora do provider permitido', 'unavailable');
   }
 
@@ -214,43 +260,49 @@ async function readLimitedText(response: Response, maxBytes: number): Promise<st
   }
 }
 
-function extractAnimeMatches(query: string, anchors: HtmlAnchor[]): ServerAnimeMatch[] {
+function getProvider(serverId: string): ProviderConfig {
+  const provider = PROVIDERS.find((item) => item.id === serverId);
+  if (!provider) throw new ProviderError('Servidor não encontrado', 'unavailable');
+  return provider;
+}
+
+function extractAnimeMatches(provider: ProviderConfig, query: string, anchors: HtmlAnchor[]): ServerAnimeMatch[] {
   const deduped = new Map<string, ServerAnimeMatch>();
   for (const anchor of anchors) {
-    const reference = referenceFromHref(anchor.href);
-    if (!reference || !reference.startsWith('/anime/a/')) continue;
-    const title = cleanAnimeTitle(anchor.text);
+    const reference = referenceFromHref(provider, anchor.href);
+    if (!reference || !provider.isAnimeReference(reference)) continue;
+    const title = provider.cleanTitle(anchor.text);
     if (!title || title.length < 2) continue;
     const confidence = scoreTitleMatch(query, title);
     if (confidence < 0.45) continue;
-    const match = toAnimeMatch(title, new URL(reference, ANIMES_DIGITAL.baseUrl).toString(), confidence);
+    const match = toAnimeMatch(provider, title, new URL(reference, provider.baseUrl).toString(), confidence);
     const existing = deduped.get(reference);
     if (!existing || match.confidence > existing.confidence) deduped.set(reference, match);
   }
   return [...deduped.values()].sort((a, b) => b.confidence - a.confidence || a.title.localeCompare(b.title));
 }
 
-function toAnimeMatch(title: string, url: string, confidence: number): ServerAnimeMatch {
-  return { serverId: ANIMES_DIGITAL.id, serverName: ANIMES_DIGITAL.name, title, reference: referenceFromUrl(url), url, confidence };
+function toAnimeMatch(provider: ProviderConfig, title: string, url: string, confidence: number): ServerAnimeMatch {
+  return { serverId: provider.id, serverName: provider.name, title, reference: referenceFromUrl(provider, url), url, confidence };
 }
 
-function extractEpisodeCandidates(anchors: HtmlAnchor[], sourcePriority: number, forcedSeason?: number): Array<{ episode: ServerEpisode; sourcePriority: number }> {
+function extractEpisodeCandidates(provider: ProviderConfig, anchors: HtmlAnchor[], sourcePriority: number, forcedSeason?: number): Array<{ episode: ServerEpisode; sourcePriority: number }> {
   const candidates: Array<{ episode: ServerEpisode; sourcePriority: number }> = [];
   for (const anchor of anchors) {
-    const reference = referenceFromHref(anchor.href);
-    if (!reference || (!reference.startsWith('/video/a/') && !/^\/\?p=\d+$/i.test(reference))) continue;
+    const reference = referenceFromHref(provider, anchor.href);
+    if (!reference || !provider.isEpisodeReference(reference)) continue;
     const episodeNumber = parseEpisodeNumber(anchor.text, reference);
     if (!episodeNumber) continue;
     const seasonNumber = forcedSeason ?? parseSeasonNumber(anchor.text, reference) ?? 1;
     candidates.push({
       sourcePriority,
       episode: {
-        id: `${ANIMES_DIGITAL.id}:${seasonNumber}:${episodeNumber}`,
+        id: `${provider.id}:${seasonNumber}:${episodeNumber}`,
         title: cleanEpisodeTitle(anchor.text || `Episódio ${episodeNumber}`),
         number: episodeNumber,
         seasonNumber,
         reference,
-        url: new URL(reference, ANIMES_DIGITAL.baseUrl).toString(),
+        url: new URL(reference, provider.baseUrl).toString(),
         available: true
       }
     });
@@ -258,11 +310,11 @@ function extractEpisodeCandidates(anchors: HtmlAnchor[], sourcePriority: number,
   return candidates;
 }
 
-function extractSeasonReferences(anchors: HtmlAnchor[]): Array<{ reference: string; number: number }> {
+function extractSeasonReferences(provider: ProviderConfig, anchors: HtmlAnchor[]): Array<{ reference: string; number: number }> {
   const seen = new Set<string>();
   const result: Array<{ reference: string; number: number }> = [];
   for (const anchor of anchors) {
-    const reference = referenceFromHref(anchor.href);
+    const reference = referenceFromHref(provider, anchor.href);
     if (!reference || !reference.includes('/temporada/') || seen.has(reference)) continue;
     const number = parseSeasonNumber(anchor.text, reference) ?? 1;
     seen.add(reference);
@@ -271,7 +323,7 @@ function extractSeasonReferences(anchors: HtmlAnchor[]): Array<{ reference: stri
   return result.sort((a, b) => a.number - b.number);
 }
 
-function groupEpisodes(candidates: Array<{ episode: ServerEpisode; sourcePriority: number }>): ServerSeason[] {
+function groupEpisodes(provider: ProviderConfig, candidates: Array<{ episode: ServerEpisode; sourcePriority: number }>): ServerSeason[] {
   const byKey = new Map<string, { episode: ServerEpisode; sourcePriority: number }>();
   for (const candidate of candidates) {
     const key = `${candidate.episode.seasonNumber}:${candidate.episode.number}`;
@@ -285,25 +337,23 @@ function groupEpisodes(candidates: Array<{ episode: ServerEpisode; sourcePriorit
     seasons.set(episode.seasonNumber, current);
   }
   return [...seasons.entries()].sort(([a], [b]) => a - b).map(([number, episodes]) => ({
-    id: `${ANIMES_DIGITAL.id}:season:${number}`,
+    id: `${provider.id}:season:${number}`,
     number,
     title: `Temporada ${number}`,
     episodes: episodes.sort((a, b) => a.number - b.number)
   }));
 }
 
-function assertReference(reference: string, kind: 'anime' | 'episode'): string {
-  const normalized = referenceFromHref(reference);
-  const allowed = kind === 'anime'
-    ? normalized?.startsWith('/anime/a/')
-    : Boolean(normalized && (normalized.startsWith('/video/a/') || /^\/\?p=\d+$/i.test(normalized)));
+function assertReference(provider: ProviderConfig, reference: string, kind: 'anime' | 'episode'): string {
+  const normalized = referenceFromHref(provider, reference);
+  const allowed = kind === 'anime' ? Boolean(normalized && provider.isAnimeReference(normalized)) : Boolean(normalized && provider.isEpisodeReference(normalized));
   if (!normalized || !allowed) throw new ProviderError(`Referência de ${kind} inválida`, 'unavailable');
   return normalized;
 }
 
-function referenceFromHref(href: string): string | null {
+function referenceFromHref(provider: ProviderConfig, href: string): string | null {
   try {
-    const base = new URL(ANIMES_DIGITAL.baseUrl);
+    const base = new URL(provider.baseUrl);
     const url = new URL(decodeHtml(href), base);
     if (url.protocol !== 'https:' || url.hostname !== base.hostname) return null;
     return `${url.pathname}${url.search}`;
@@ -312,8 +362,8 @@ function referenceFromHref(href: string): string | null {
   }
 }
 
-function referenceFromUrl(url: string): string {
-  const reference = referenceFromHref(url);
+function referenceFromUrl(provider: ProviderConfig, url: string): string {
+  const reference = referenceFromHref(provider, url);
   if (!reference) throw new ProviderError('URL do provider inválida', 'unavailable');
   return reference;
 }

@@ -128,7 +128,7 @@ APK.
 - Direct Release não é gerado automaticamente sem keystore definitiva.
 - O endpoint de update depende da publicação do APK e das duas secrets de
   checksum; ambos já estão configurados no staging atual.
-- A integração de providers do staging transporta apenas o adapter seguro do
-  Animes Digital para o Worker. A busca e a resolução de temporada/episódio
-  são feitas sob demanda quando o usuário abre um episódio; reprodução pelo
-  provider continua desabilitada (`playback: false`).
+- A integração de providers do staging transporta os três adapters existentes:
+  `goyabu`, `animesonlinecc` e `animesdigital`. A busca e a resolução de
+  temporada/episódio são feitas sob demanda quando o usuário abre um episódio;
+  reprodução pelo provider continua desabilitada (`playback: false`).

@@ -3,13 +3,13 @@ import type { Context, Next } from 'hono';
 import { cors } from 'hono/cors';
 import { HTTPException } from 'hono/http-exception';
 import {
-  ANIMES_DIGITAL,
   ProviderError,
-  checkAnimesDigitalHealth,
-  getAnimesDigitalAnime,
-  getAnimesDigitalEpisode,
+  checkProviderHealth,
+  getProviderAnime,
+  getProviderEpisode,
+  hasProvider,
   listServerDescriptors,
-  searchAnimesDigital
+  searchProvider
 } from './server-providers';
 
 type Variables = { userId: string; userEmail?: string; tokenHash?: string };
@@ -112,20 +112,23 @@ app.get('/v1/catalog/episodes/:episodeId/playback', async (c) => {
 
 app.get('/v1/servers', (c) => c.json({ servers: listServerDescriptors() }));
 
-app.get('/v1/servers/health', async (c) => c.json({ servers: [await checkAnimesDigitalHealth()], checkedAt: new Date().toISOString() }));
+app.get('/v1/servers/health', async (c) => c.json({ servers: await Promise.all(listServerDescriptors().map((server) => checkProviderHealth(server.id))), checkedAt: new Date().toISOString() }));
 
 app.get('/v1/servers/search', async (c) => {
   const query = c.req.query('q')?.trim() ?? '';
   validateProviderQuery(query);
   try {
-    const matches = await searchAnimesDigital(query);
-    return c.json({
-      query,
-      servers: [{ server: ANIMES_DIGITAL, status: matches.length ? 'ok' : 'unavailable', matches }],
-      fetchedAt: new Date().toISOString()
-    });
+    const servers = await Promise.all(listServerDescriptors().map(async (server) => {
+      try {
+        const matches = await searchProvider(server.id, query);
+        return { server, status: matches.length ? 'ok' as const : 'unavailable' as const, matches };
+      } catch (error) {
+        return { server, status: providerStatus(error), matches: [], error: providerErrorCode(error) };
+      }
+    }));
+    return c.json({ query, servers, fetchedAt: new Date().toISOString() });
   } catch (error) {
-    return c.json(providerSearchError(query, error), 200);
+    throw error;
   }
 });
 
@@ -136,20 +139,30 @@ app.get('/v1/servers/resolve/:query/:season/:episode', async (c) => {
   const episodeNumber = positiveProviderInt(c.req.param('episode'), 'Episódio inválido');
   let search;
   try {
-    search = await searchAnimesDigital(query);
+    search = await Promise.all(listServerDescriptors().map(async (server) => {
+      try {
+        const matches = await searchProvider(server.id, query);
+        return { server, status: matches.length ? 'ok' as const : 'unavailable' as const, matches };
+      } catch (error) {
+        return { server, status: providerStatus(error), matches: [], error: providerErrorCode(error) };
+      }
+    }));
   } catch (error) {
-    return c.json({ query, season: seasonNumber, episode: episodeNumber, servers: [{ server: ANIMES_DIGITAL, status: providerStatus(error), available: false, error: providerErrorCode(error) }], fetchedAt: new Date().toISOString() }, 200);
+    throw error;
   }
 
-  const match = search[0];
-  if (!match) return c.json({ query, season: seasonNumber, episode: episodeNumber, servers: [{ server: ANIMES_DIGITAL, status: 'unavailable', available: false, error: 'provider_unavailable' }], fetchedAt: new Date().toISOString() }, 200);
-  try {
-    const detail = await getAnimesDigitalAnime(match.reference);
-    const episode = detail.seasons.find((item) => item.number === seasonNumber)?.episodes.find((item) => item.number === episodeNumber);
-    return c.json({ query, season: seasonNumber, episode: episodeNumber, servers: [{ server: ANIMES_DIGITAL, status: 'ok', available: Boolean(episode), anime: match, ...(episode ? { episode } : {}) }], fetchedAt: new Date().toISOString() }, 200);
-  } catch (error) {
-    return c.json({ query, season: seasonNumber, episode: episodeNumber, servers: [{ server: ANIMES_DIGITAL, status: providerStatus(error), available: false, anime: match, error: providerErrorCode(error) }], fetchedAt: new Date().toISOString() }, 200);
-  }
+  const servers = await Promise.all(search.map(async (result) => {
+    const match = result.matches[0];
+    if (!match || result.status !== 'ok') return { server: result.server, status: result.status, available: false, error: result.error };
+    try {
+      const detail = await getProviderAnime(result.server.id, match.reference);
+      const episode = detail.seasons.find((item) => item.number === seasonNumber)?.episodes.find((item) => item.number === episodeNumber);
+      return { server: result.server, status: 'ok' as const, available: Boolean(episode), anime: match, ...(episode ? { episode } : {}) };
+    } catch (error) {
+      return { server: result.server, status: providerStatus(error), available: false, anime: match, error: providerErrorCode(error) };
+    }
+  }));
+  return c.json({ query, season: seasonNumber, episode: episodeNumber, servers, fetchedAt: new Date().toISOString() }, 200);
 });
 
 app.get('/v1/servers/:serverId/anime', async (c) => {
@@ -157,7 +170,7 @@ app.get('/v1/servers/:serverId/anime', async (c) => {
   const reference = c.req.query('ref')?.trim() ?? '';
   if (!reference || reference.length > 1000 || !reference.startsWith('/')) throw new HTTPException(400, { message: 'Referência inválida' });
   try {
-    return c.json(await getAnimesDigitalAnime(reference));
+    return c.json(await getProviderAnime(c.req.param('serverId'), reference));
   } catch (error) {
     throw providerHttpException(error);
   }
@@ -168,7 +181,7 @@ app.get('/v1/servers/:serverId/episode', async (c) => {
   const reference = c.req.query('ref')?.trim() ?? '';
   if (!reference || reference.length > 1000 || !reference.startsWith('/')) throw new HTTPException(400, { message: 'Referência inválida' });
   try {
-    return c.json(await getAnimesDigitalEpisode(reference));
+    return c.json(await getProviderEpisode(c.req.param('serverId'), reference));
   } catch (error) {
     throw providerHttpException(error);
   }
@@ -281,10 +294,9 @@ async function verifyPassword(password: string, salt: string, expected: string) 
 function clampInt(value: string | undefined, fallback: number, min: number, max: number) { const parsed = Number(value); return Number.isInteger(parsed) ? Math.min(Math.max(parsed, min), max) : fallback; }
 function validateProviderQuery(value: string) { if (value.length < 2 || value.length > 120) throw new HTTPException(400, { message: 'Consulta inválida' }); }
 function positiveProviderInt(value: string | undefined, message: string) { const parsed = Number(value); if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100_000) throw new HTTPException(400, { message }); return parsed; }
-function assertServerId(value: string) { if (value !== ANIMES_DIGITAL.id) throw new HTTPException(404, { message: 'Servidor não encontrado' }); }
+function assertServerId(value: string) { if (!hasProvider(value)) throw new HTTPException(404, { message: 'Servidor não encontrado' }); }
 function providerStatus(error: unknown): 'timeout' | 'error' { return error instanceof ProviderError && error.kind === 'timeout' ? 'timeout' : 'error'; }
 function providerErrorCode(error: unknown): 'provider_unavailable' | 'provider_timeout' { return error instanceof ProviderError && error.kind === 'timeout' ? 'provider_timeout' : 'provider_unavailable'; }
-function providerSearchError(query: string, error: unknown) { return { query, servers: [{ server: ANIMES_DIGITAL, status: providerStatus(error), matches: [], error: providerErrorCode(error) }], fetchedAt: new Date().toISOString() }; }
 function providerHttpException(error: unknown): HTTPException { return new HTTPException(error instanceof ProviderError && error.kind === 'timeout' ? 504 : 503, { message: error instanceof Error ? error.message : 'Provider indisponível' }); }
 function defaultAds() { return { enabled: false, engine: 'max' as const, banner: { enabled: false }, appOpen: { enabled: false, minIntervalMinutes: 60, skipFirstOpens: 3 }, interstitial: { enabled: false, minIntervalMinutes: 30, maxPerSession: 2 } }; }
 function isAdsConfig(value: unknown): value is ReturnType<typeof defaultAds> { return Boolean(value && typeof value === 'object' && 'enabled' in value && 'banner' in value && 'appOpen' in value && 'interstitial' in value); }
