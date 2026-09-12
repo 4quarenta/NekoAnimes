@@ -37,11 +37,22 @@ export type LibraryItem = { animeId: string; slug: string; title: string; year: 
 export type ContinueWatchingItem = { animeId: string; slug: string; title: string; seasonNumber: number; episodeId: string; episodeNumber: number; episodeTitle: string | null; positionSeconds: number; durationSeconds: number; completed: boolean; updatedAt: string };
 export type SavedNewsItem = { id: string; slug: string; title: string; category: string; sourceName: string; publishedAt: string };
 
+export type ServerCapabilities = { search: boolean; anime: boolean; episodes: boolean; playback: boolean };
+export type ServerDescriptor = { id: string; name: string; baseUrl: string; capabilities: ServerCapabilities };
+export type ServerAnimeMatch = { serverId: string; serverName: string; title: string; reference: string; url: string; confidence: number };
+export type ServerSearchProviderResult = { server: ServerDescriptor; status: 'ok' | 'unavailable' | 'timeout' | 'error'; matches: ServerAnimeMatch[]; error?: 'provider_unavailable' | 'provider_timeout' };
+export type ServerSearchResponse = { query: string; servers: ServerSearchProviderResult[]; fetchedAt: string };
+export type ServerEpisode = { id: string; title: string; number: number; seasonNumber: number; reference: string; url: string; releasedAt?: string; available: boolean };
+export type ServerSeason = { id: string; number: number; title: string; episodes: ServerEpisode[] };
+export type ServerAnimeDetail = { server: ServerDescriptor; anime: { title: string; reference: string; url: string; year?: number }; seasons: ServerSeason[]; fetchedAt: string };
+
 export function fetchCatalog(params: { letter?: string; query?: string; limit?: number } = {}) { const search = new URLSearchParams(); if (params.letter) search.set('letter', params.letter); if (params.query) search.set('q', params.query); if (params.limit) search.set('limit', String(params.limit)); const suffix = search.size ? `?${search}` : ''; return getJson<{ items: CatalogAnime[]; count: number }>(`/v1/catalog/anime${suffix}`); }
 export function fetchAnime(slug: string) { return getJson<AnimeDetail>(`/v1/catalog/anime/${encodeURIComponent(slug)}`); }
 export function fetchEpisodes(seasonId: string, offset = 0, limit = 10) { return getJson<{ season: AnimeSeason; items: Episode[]; offset: number; limit: number; total: number }>(`/v1/catalog/seasons/${encodeURIComponent(seasonId)}/episodes?offset=${offset}&limit=${limit}`); }
 export function fetchNews(params: { query?: string; category?: string; limit?: number } = {}) { const search = new URLSearchParams(); if (params.query) search.set('q', params.query); if (params.category) search.set('category', params.category); if (params.limit) search.set('limit', String(params.limit)); const suffix = search.size ? `?${search}` : ''; return getJson<{ items: NewsArticle[]; count: number }>(`/v1/news${suffix}`); }
 export function fetchNewsArticle(slug: string) { return getJson<NewsArticle>(`/v1/news/${encodeURIComponent(slug)}`); }
+export function fetchServerSearch(query: string) { return getJson<ServerSearchResponse>(`/v1/servers/search?q=${encodeURIComponent(query)}`); }
+export function fetchServerAnime(serverId: string, reference: string) { const search = new URLSearchParams({ ref: reference }); return getJson<ServerAnimeDetail>(`/v1/servers/${encodeURIComponent(serverId)}/anime?${search}`); }
 
 export function fetchMe() { return authJson<{ id: string; email: string | null }>('/v1/me'); }
 export function fetchLibrary() { return authJson<LibraryItem[]>('/v1/me/library'); }
