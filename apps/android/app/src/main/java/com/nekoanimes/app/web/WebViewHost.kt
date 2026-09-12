@@ -48,6 +48,7 @@ fun WebViewHost(
                     settings.userAgentString = "${settings.userAgentString} NekoAnimes/Android"
                     var downX = 0f
                     var downY = 0f
+                    var hasTouchDown = false
                     val edgeInset = 32f * context.resources.displayMetrics.density
                     val swipeThreshold = 96f * context.resources.displayMetrics.density
 
@@ -56,10 +57,13 @@ fun WebViewHost(
                             MotionEvent.ACTION_DOWN -> {
                                 downX = event.rawX
                                 downY = event.rawY
+                                hasTouchDown = true
                             }
                             MotionEvent.ACTION_UP -> {
+                                if (!hasTouchDown) return@setOnTouchListener false
                                 val deltaX = event.rawX - downX
                                 val deltaY = event.rawY - downY
+                                hasTouchDown = false
                                 val isHorizontalSwipe = abs(deltaX) >= swipeThreshold && abs(deltaX) > abs(deltaY) * 1.35f
                                 if (isHorizontalSwipe) {
                                     val startedAtDrawerEdge = downX <= edgeInset
@@ -76,6 +80,7 @@ fun WebViewHost(
                             MotionEvent.ACTION_CANCEL -> {
                                 downX = 0f
                                 downY = 0f
+                                hasTouchDown = false
                             }
                         }
                         false
