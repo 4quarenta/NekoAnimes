@@ -1,6 +1,7 @@
 package com.nekoanimes.app.player
 
 import com.nekoanimes.app.BuildConfig
+import com.nekoanimes.app.bridge.PlayerSourceOverride
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -20,7 +21,15 @@ internal data class PlaybackDescriptor(
 )
 
 internal class PlaybackRepository {
-    fun load(episodeId: String): PlaybackDescriptor {
+    fun load(episodeId: String, sourceOverride: PlayerSourceOverride? = null): PlaybackDescriptor {
+        if (sourceOverride != null) {
+            return PlaybackDescriptor(
+                episodeId = episodeId,
+                episodeNumber = 0,
+                title = sourceOverride.label,
+                source = PlaybackSource(sourceOverride.url, sourceOverride.mimeType, sourceOverride.label, sourceOverride.headers)
+            )
+        }
         val connection = URL("${BuildConfig.API_BASE_URL}/v1/catalog/episodes/$episodeId/playback")
             .openConnection() as HttpURLConnection
         connection.connectTimeout = 5_000

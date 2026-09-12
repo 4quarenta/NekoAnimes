@@ -13,7 +13,7 @@ import org.json.JSONObject
 
 class NekoBridge(
     private val onRouteChanged: (String) -> Unit,
-    private val onOpenPlayer: (String) -> Unit,
+    private val onOpenPlayer: (String, PlayerSourceOverride?) -> Unit,
     private val onAppEvent: (String, String?) -> Unit
 ) {
     companion object {
@@ -87,7 +87,13 @@ class NekoBridge(
                 }
                 "player.open" -> {
                     val episodeId = payload.optString("episodeId")
-                    if (!isSafeId(episodeId)) replyError(replyProxy, id, "INVALID_EPISODE", "episodeId inválido") else { onOpenPlayer(episodeId); replyOk(replyProxy, id) }
+                    if (!isSafeId(episodeId)) {
+                        replyError(replyProxy, id, "INVALID_EPISODE", "episodeId inválido")
+                    } else {
+                        runCatching { parseSource(payload) }
+                            .onSuccess { source -> onOpenPlayer(episodeId, source); replyOk(replyProxy, id) }
+                            .onFailure { replyError(replyProxy, id, "INVALID_SOURCE", "Fonte de reprodução inválida") }
+                    }
                 }
                 "app.event" -> {
                     val name = payload.optString("name")
@@ -113,4 +119,29 @@ class NekoBridge(
     private fun normalizedPort(uri: Uri): Int = if (uri.port != -1) uri.port else if (uri.scheme.equals("https", true)) 443 else 80
     private fun isSafeRoute(route: String): Boolean = route.startsWith("/") && route.length <= 512 && !route.contains("\\")
     private fun isSafeId(value: String): Boolean = value.isNotBlank() && value.length <= 128
+
+    private fun parseSource(payload: JSONObject): PlayerSourceOverride? {
+        val source = payload.optJSONObject("source") ?: return null
+        val url = source.optString("url")
+        val uri = Uri.parse(url)
+        require(url.length in 1..2048 && uri.scheme.equals("https", true) && !uri.host.isNullOrBlank())
+        val headers = linkedMapOf<String, String>()
+        val headerJson = source.optJSONObject("headers")
+        if (headerJson != null) {
+            val keys = headerJson.keys()
+            while (keys.hasNext()) {
+                require(headers.size < 8)
+                val key = keys.next()
+                val value = headerJson.optString(key)
+                require(key.matches(Regex("[A-Za-z0-9-]{1,64}")) && value.length <= 1024)
+                headers[key] = value
+            }
+        }
+        return PlayerSourceOverride(
+            url = url,
+            mimeType = source.optString("mimeType").ifBlank { null }?.take(128),
+            label = source.optString("label").ifBlank { null }?.take(256),
+            headers = headers
+        )
+    }
 }

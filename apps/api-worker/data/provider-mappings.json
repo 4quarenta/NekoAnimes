@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-09-12",
+  "description": "Mapa inicial de identidade entre providers. IDs externos só entram após validação explícita.",
+  "entries": [
+    {
+      "canonicalTitle": "Mob Psycho 100",
+      "malId": null,
+      "anilistId": null,
+      "tmdbId": null,
+      "status": "pending-external-verification",
+      "providers": [
+        { "id": "animesonlinecc", "animeReference": "/anime/mob-psycho-100/" },
+        { "id": "animesdigital", "animeReference": "/anime/a/mob-psycho-100/" }
+      ]
+    }
+  ]
+}

@@ -29,6 +29,16 @@ export type ServerEpisode = {
   reference: string;
   url: string;
   available: boolean;
+  sources?: ProviderPlaybackSource[];
+};
+
+export type ProviderPlaybackSource = {
+  id: string;
+  url: string;
+  mimeType?: string;
+  label: string;
+  headers: Record<string, string>;
+  isDefault: boolean;
 };
 
 export type ServerSeason = {
@@ -64,7 +74,7 @@ export const ANIMES_DIGITAL: ProviderConfig = {
   id: 'animesdigital',
   name: 'Animes Digital',
   baseUrl: 'https://animesdigital.org',
-  capabilities: { search: true, anime: true, episodes: true, playback: false },
+  capabilities: { search: true, anime: true, episodes: true, playback: true },
   searchPath: (query) => `/?s=${encodeURIComponent(query)}`,
   fallbackAnimePath: (query) => `/anime/a/${slugify(query)}`,
   isAnimeReference: (reference) => reference.startsWith('/anime/a/'),
@@ -76,7 +86,7 @@ export const ANIMES_ONLINE_CC: ProviderConfig = {
   id: 'animesonlinecc',
   name: 'Animes Online',
   baseUrl: 'https://animesonlinecc.to',
-  capabilities: { search: true, anime: true, episodes: true, playback: false },
+  capabilities: { search: true, anime: true, episodes: true, playback: true },
   searchPath: (query) => `/?s=${encodeURIComponent(query)}`,
   fallbackAnimePath: (query) => `/anime/${slugify(query)}`,
   isAnimeReference: (reference) => reference.startsWith('/anime/'),
@@ -88,7 +98,7 @@ export const GOYABU: ProviderConfig = {
   id: 'goyabu',
   name: 'Goyabu',
   baseUrl: 'https://goyabu.io',
-  capabilities: { search: true, anime: true, episodes: true, playback: false },
+  capabilities: { search: true, anime: true, episodes: true, playback: true },
   searchPath: (query) => `/?s=${encodeURIComponent(query)}`,
   fallbackAnimePath: (query) => `/anime/${slugify(query)}`,
   isAnimeReference: (reference) => reference.startsWith('/anime/'),
@@ -176,6 +186,7 @@ export async function getProviderEpisode(serverId: string, reference: string) {
   const number = parseEpisodeNumber(title, safeReference);
   if (!number) throw new ProviderError('Número do episódio não identificado', 'unavailable');
   const seasonNumber = parseSeasonNumber(title, safeReference) ?? 1;
+  const sources = extractPlaybackSources(provider, response.html, response.url);
 
   return {
     server: provider,
@@ -186,7 +197,7 @@ export async function getProviderEpisode(serverId: string, reference: string) {
     reference: referenceFromUrl(provider, response.url),
     url: response.url,
     available: true,
-    playback: { available: false, sources: [], reason: 'not-configured' as const },
+    playback: { available: sources.length > 0, sources, reason: sources.length > 0 ? 'configured' as const : 'not-configured' as const },
     fetchedAt: new Date().toISOString()
   };
 }
@@ -308,6 +319,51 @@ function extractEpisodeCandidates(provider: ProviderConfig, anchors: HtmlAnchor[
     });
   }
   return candidates;
+}
+
+function extractPlaybackSources(provider: ProviderConfig, html: string, episodeUrl: string): ProviderPlaybackSource[] {
+  const candidates = new Set<string>();
+  const normalizedHtml = html.replace(/\\\//g, '/').replace(/&amp;/gi, '&');
+  const directPattern = /(?:https?:)?\/\/[^\s"'<>\\]+\.(?:m3u8|mp4|mpd)(?:\?[^\s"'<>\\]*)?/gi;
+  for (const match of normalizedHtml.matchAll(directPattern)) candidates.add(match[0].startsWith('//') ? `https:${match[0]}` : match[0]);
+
+  const iframePattern = /<iframe\b[^>]*\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/gi;
+  for (const match of normalizedHtml.matchAll(iframePattern)) {
+    const raw = decodeHtml(match[1] ?? match[2] ?? match[3] ?? '');
+    try {
+      const iframe = new URL(raw, episodeUrl);
+      const embedded = iframe.searchParams.get('d') ?? iframe.searchParams.get('file') ?? iframe.searchParams.get('source');
+      if (embedded && isDirectMediaUrl(embedded)) candidates.add(embedded);
+      if (isDirectMediaUrl(iframe.toString())) candidates.add(iframe.toString());
+    } catch {
+      // Ignore malformed or non-HTTPS player frames.
+    }
+  }
+
+  return [...candidates].filter((url) => isDirectMediaUrl(url)).slice(0, 5).map((url, index) => ({
+    id: `${provider.id}:source:${index + 1}`,
+    url,
+    mimeType: mediaMimeType(url),
+    label: `${provider.name} · fonte ${index + 1}`,
+    headers: { Referer: episodeUrl },
+    isDefault: index === 0
+  }));
+}
+
+function isDirectMediaUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && /\.(?:m3u8|mp4|mpd)(?:$|[?#])/i.test(url.pathname + url.search + url.hash);
+  } catch {
+    return false;
+  }
+}
+
+function mediaMimeType(value: string): string | undefined {
+  if (/\.m3u8(?:$|[?#])/i.test(value)) return 'application/vnd.apple.mpegurl';
+  if (/\.mpd(?:$|[?#])/i.test(value)) return 'application/dash+xml';
+  if (/\.mp4(?:$|[?#])/i.test(value)) return 'video/mp4';
+  return undefined;
 }
 
 function extractSeasonReferences(provider: ProviderConfig, anchors: HtmlAnchor[]): Array<{ reference: string; number: number }> {

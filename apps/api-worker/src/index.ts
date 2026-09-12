@@ -157,7 +157,9 @@ app.get('/v1/servers/resolve/:query/:season/:episode', async (c) => {
     try {
       const detail = await getProviderAnime(result.server.id, match.reference);
       const episode = detail.seasons.find((item) => item.number === seasonNumber)?.episodes.find((item) => item.number === episodeNumber);
-      return { server: result.server, status: 'ok' as const, available: Boolean(episode), anime: match, ...(episode ? { episode } : {}) };
+      if (!episode) return { server: result.server, status: 'ok' as const, available: false, anime: match, sources: [] };
+      const providerEpisode = await getProviderEpisode(result.server.id, episode.reference);
+      return { server: result.server, status: 'ok' as const, available: Boolean(providerEpisode.playback.sources.length), anime: match, episode: { ...episode, sources: providerEpisode.playback.sources }, sources: providerEpisode.playback.sources };
     } catch (error) {
       return { server: result.server, status: providerStatus(error), available: false, anime: match, error: providerErrorCode(error) };
     }

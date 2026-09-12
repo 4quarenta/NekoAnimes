@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import com.nekoanimes.app.ads.NekoAdOrchestrator
 import com.nekoanimes.app.ads.NekoBannerSlot
 import com.nekoanimes.app.bridge.NekoBridge
+import com.nekoanimes.app.bridge.PlayerSourceOverride
 import com.nekoanimes.app.data.AppManifestRepository
 import com.nekoanimes.app.model.AppManifest
 import com.nekoanimes.app.model.NavigationItem
@@ -81,7 +82,7 @@ private fun AppShell(manifest: AppManifest) {
 
     var selectedRoute by remember(manifest.configVersion) { mutableStateOf("/") }
     var webView by remember(manifest.configVersion) { mutableStateOf<WebView?>(null) }
-    var playerEpisodeId by remember(manifest.configVersion) { mutableStateOf<String?>(null) }
+    var playerRequest by remember(manifest.configVersion) { mutableStateOf<PlayerRequest?>(null) }
     var adsBootstrapped by remember(manifest.configVersion) { mutableStateOf(false) }
     var lastBackPressedAt by remember { mutableLongStateOf(0L) }
     var showExitDialog by remember { mutableStateOf(false) }
@@ -98,7 +99,7 @@ private fun AppShell(manifest: AppManifest) {
     val bridge = remember(manifest.configVersion) {
         NekoBridge(
             onRouteChanged = { route -> selectedRoute = route },
-            onOpenPlayer = { episodeId -> playerEpisodeId = episodeId },
+            onOpenPlayer = { episodeId, source -> playerRequest = PlayerRequest(episodeId, source) },
             onAppEvent = { name, placement -> ads.onAppEvent(name, placement) }
         )
     }
@@ -122,14 +123,15 @@ private fun AppShell(manifest: AppManifest) {
         drawerScope.launch { drawerState.close() }
     }
 
-    val playing = playerEpisodeId
+    val playing = playerRequest
     if (playing != null) {
         NekoPlayerScreen(
-            episodeId = playing,
+            episodeId = playing.episodeId,
+            sourceOverride = playing.source,
             onClose = { positionSeconds, durationSeconds ->
-                playerEpisodeId = null
+                playerRequest = null
                 ads.onAppEvent("episode_closed", "player")
-                webView?.let { bridge.sendPlayerClosed(it, playing, positionSeconds, durationSeconds) }
+                webView?.let { bridge.sendPlayerClosed(it, playing.episodeId, positionSeconds, durationSeconds) }
             }
         )
         return
@@ -205,6 +207,8 @@ private fun AppShell(manifest: AppManifest) {
         }
     }
 }
+
+private data class PlayerRequest(val episodeId: String, val source: PlayerSourceOverride?)
 
 private fun isDrawerItem(item: NavigationItem): Boolean = item.route == "/lista" || item.route == "/salvos" || item.route == "/conta"
 

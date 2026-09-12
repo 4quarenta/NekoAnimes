@@ -32,6 +32,13 @@ fica preservado para o runtime tradicional/produção.
 - Resolução de episódio: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/servers/resolve/Bleach/1/1>
 - Atualização Android: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/app-update/android>
 
+Para validar providers e sources do episódio de teste:
+
+- Resolução: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/servers/resolve/Mob%20Psycho%20100/1/1>
+- Animes Digital: <https://animesdigital.org/>
+- Animes Online: <https://animesonlinecc.to/>
+- Goyabu: <https://goyabu.io/>
+
 O endpoint de atualização está operacional em `200`, com o APK de staging
 publicado no R2 e as secrets `ANDROID_APK_URL` e `ANDROID_APK_SHA256`
 configuradas no Worker.
@@ -64,7 +71,7 @@ arquivo `apps/web/public/_redirects` mantém o fallback SPA para refresh em
 Variáveis públicas do build web:
 
 - `VITE_API_BASE_URL=https://nekoanimes-api-staging.john-alleff01.workers.dev`
-- `VITE_APP_VERSION=1.0.4`
+- `VITE_APP_VERSION=1.0.5`
 
 Não há `VITE_SUPABASE_*` nesta arquitetura. Nunca colocar tokens de Cloudflare,
 credenciais de banco ou `service_role` no frontend.
@@ -81,14 +88,14 @@ O workflow `Android staging` é manual e usa a variável de repositório
 Publicação atual:
 
 ```text
-android/v1.0.4/NekoAnimes-v1.0.4.apk
-android/v1.0.4/NekoAnimes-v1.0.4.apk.sha256
+android/v1.0.5/NekoAnimes-v1.0.5.apk
+android/v1.0.5/NekoAnimes-v1.0.5.apk.sha256
 ```
 
 O workflow guarda o APK como artifact e cria a prerelease GitHub
-`v1.0.4-staging`; não é release de produção. A URL pública atual do APK é:
+`v1.0.5-staging`; não é release de produção. A URL pública do novo APK será:
 
-<https://pub-d7e4841d19c54db9bbeedcdc3af062c1.r2.dev/android/v1.0.4/NekoAnimes-v1.0.4.apk>
+<https://pub-d7e4841d19c54db9bbeedcdc3af062c1.r2.dev/android/v1.0.5/NekoAnimes-v1.0.5.apk>
 
 O Android baixa o manifesto de atualização, compara `versionCode`, baixa o
 APK, valida SHA-256 e abre o instalador. A instalação de APK direto exige
@@ -98,6 +105,23 @@ voltar. O player nativo abre sempre em paisagem e oculta as barras/botões de
 ação do sistema enquanto está ativo. O WebView também oferece pull-to-refresh;
 o botão voltar percorre o histórico da página e, na raiz, dois toques rápidos
 abrem a confirmação de saída.
+
+## Mapeamento de identidade e sources
+
+O primeiro mapa de identidade está em
+`apps/api-worker/data/provider-mappings.json`. Ele é um arquivo versionado e
+deliberadamente não usa uma tabela nova no D1. Cada entrada pode relacionar a
+referência do anime em cada provider aos IDs MAL, AniList e TMDB; IDs não
+confirmados ficam `null` e a entrada permanece em revisão. Não elevamos uma
+correspondência heurística a 100% sem essa validação.
+
+Ao resolver um episódio, o Worker busca a página do episódio no provider e
+extrai somente URLs HTTPS explícitas com extensão `.m3u8`, `.mp4` ou `.mpd`,
+incluindo parâmetros explícitos `d`, `file` ou `source` de iframes. As sources
+encontradas são devolvidas em `sources` e a primeira é aberta pelo player
+nativo. O Worker não segue iframes arbitrários nem tenta contornar DRM,
+anti-bot ou autenticação. A disponibilidade é por episódio: um provider pode
+estar saudável e ainda não expor uma source direta na página consultada.
 
 ## GitHub Actions
 
@@ -131,4 +155,4 @@ APK.
 - A integração de providers do staging transporta os três adapters existentes:
   `goyabu`, `animesonlinecc` e `animesdigital`. A busca e a resolução de
   temporada/episódio são feitas sob demanda quando o usuário abre um episódio;
-  reprodução pelo provider continua desabilitada (`playback: false`).
+  a reprodução só é oferecida quando uma source direta é extraída da página.

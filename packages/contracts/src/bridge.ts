@@ -3,11 +3,17 @@ import { z } from 'zod';
 export const NEKO_BRIDGE_VERSION = 1 as const;
 const RouteSchema = z.string().startsWith('/').max(512);
 const IdSchema = z.string().min(1).max(128);
+const PlayerSourceSchema = z.object({
+  url: z.string().url().startsWith('https://').max(2048),
+  mimeType: z.string().max(128).optional(),
+  label: z.string().max(256).optional(),
+  headers: z.record(z.string(), z.string().max(1024)).optional()
+});
 
 export const BridgeRequestSchema = z.discriminatedUnion('type', [
   z.object({ version: z.literal(NEKO_BRIDGE_VERSION), id: IdSchema, type: z.literal('bridge.handshake'), payload: z.object({ webVersion: z.string().min(1).max(64) }) }),
   z.object({ version: z.literal(NEKO_BRIDGE_VERSION), id: IdSchema, type: z.literal('navigation.routeChanged'), payload: z.object({ route: RouteSchema }) }),
-  z.object({ version: z.literal(NEKO_BRIDGE_VERSION), id: IdSchema, type: z.literal('player.open'), payload: z.object({ episodeId: IdSchema }) }),
+  z.object({ version: z.literal(NEKO_BRIDGE_VERSION), id: IdSchema, type: z.literal('player.open'), payload: z.object({ episodeId: IdSchema, source: PlayerSourceSchema.optional() }) }),
   z.object({ version: z.literal(NEKO_BRIDGE_VERSION), id: IdSchema, type: z.literal('app.event'), payload: z.object({ name: z.string().min(1).max(64), placement: z.string().min(1).max(128).optional() }) })
 ]);
 

@@ -3,6 +3,7 @@ package com.nekoanimes.app.player
 import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.net.Uri
+import com.nekoanimes.app.bridge.PlayerSourceOverride
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -37,14 +38,15 @@ import kotlinx.coroutines.withContext
 @Composable
 internal fun NekoPlayerScreen(
     episodeId: String,
+    sourceOverride: PlayerSourceOverride? = null,
     onClose: (positionSeconds: Int, durationSeconds: Int) -> Unit
 ) {
     val context = LocalContext.current
     val activity = context as Activity
-    var state by remember(episodeId) { mutableStateOf<PlayerState>(PlayerState.Loading) }
-    var activePlayer by remember(episodeId) { mutableStateOf<ExoPlayer?>(null) }
+    var state by remember(episodeId, sourceOverride?.url) { mutableStateOf<PlayerState>(PlayerState.Loading) }
+    var activePlayer by remember(episodeId, sourceOverride?.url) { mutableStateOf<ExoPlayer?>(null) }
 
-    DisposableEffect(activity, episodeId) {
+    DisposableEffect(activity, episodeId, sourceOverride?.url) {
         val window = activity.window
         val previousOrientation = activity.requestedOrientation
         val controller = WindowCompat.getInsetsController(window, window.decorView)
@@ -79,9 +81,9 @@ internal fun NekoPlayerScreen(
 
     BackHandler { closeWithProgress() }
 
-    LaunchedEffect(episodeId) {
+    LaunchedEffect(episodeId, sourceOverride?.url) {
         state = runCatching {
-            withContext(Dispatchers.IO) { PlaybackRepository().load(episodeId) }
+            withContext(Dispatchers.IO) { PlaybackRepository().load(episodeId, sourceOverride) }
         }.fold(
             onSuccess = { PlayerState.Ready(it) },
             onFailure = { PlayerState.Error(it.message ?: "Falha ao carregar episódio") }

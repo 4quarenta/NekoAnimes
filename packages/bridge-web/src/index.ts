@@ -16,6 +16,12 @@ declare global {
 }
 
 type Listener = (event: NekoBridgeEvent) => void;
+export type NekoPlayerSource = {
+  url: string;
+  mimeType?: string;
+  label?: string;
+  headers?: Record<string, string>;
+};
 
 const listeners = new Set<Listener>();
 
@@ -55,13 +61,13 @@ export const NekoNative = {
   },
 
   player: {
-    open(episodeId: string): boolean {
-      return post('player.open', { episodeId });
+    open(episodeId: string, source?: NekoPlayerSource): boolean {
+      return post('player.open', { episodeId, ...(source ? { source } : {}) });
     }
   },
 
-  openPlayer(episodeId: string): boolean {
-    return this.player.open(episodeId);
+  openPlayer(episodeId: string, source?: NekoPlayerSource): boolean {
+    return this.player.open(episodeId, source);
   },
 
   appEvent(name: string, placement?: string): boolean {

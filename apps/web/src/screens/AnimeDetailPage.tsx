@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
+import { NekoNative } from '@neko/bridge-web';
 import {
   fetchAnime,
   fetchEpisodes,
@@ -111,12 +112,23 @@ export function AnimeDetailPage() {
                 <div className="neko-list">
                   {serverResolution.data.servers.filter((result) => result.available).map((result) => {
                     const selected = selectedServerId === result.server.id;
-                    return <TextRow key={result.server.id} title={result.server.name} meta="Disponível para este episódio" trailing={selected ? '✓' : 'Selecionar'} onClick={() => setSelectedServerId(result.server.id)} />;
+                    const source = result.sources?.find((item) => item.isDefault) ?? result.sources?.[0];
+                    return <TextRow
+                      key={result.server.id}
+                      title={result.server.name}
+                      meta={source ? 'Abrir player' : 'Fonte não disponível'}
+                      trailing={selected ? '✓' : '▶'}
+                      onClick={() => {
+                        if (!source || !result.episode) return;
+                        setSelectedServerId(result.server.id);
+                        setSelectedEpisode(null);
+                        NekoNative.player.open(result.episode.id, source);
+                      }}
+                    />;
                   })}
                 </div>
               ) : <div className="neko-account-notice"><strong>Nenhum servidor disponível</strong><p>Este episódio não foi localizado nos providers configurados para staging.</p></div>
             ) : null}
-            {selectedServerId ? <div className="neko-account-notice"><strong>Servidor selecionado</strong><p>A reprodução deste provider ainda não está configurada no player. É necessário cadastrar uma fonte de mídia autorizada antes de abrir o vídeo.</p></div> : null}
           </div>
           </div>
         </div>
