@@ -2,6 +2,9 @@ name: Android staging
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - apps/android/**
 
 concurrency:
   group: neko-android-staging

@@ -1,5 +1,7 @@
 package com.nekoanimes.app.player
 
+import android.app.Activity
+import android.content.pm.ActivityInfo
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -19,6 +21,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
@@ -35,8 +40,35 @@ internal fun NekoPlayerScreen(
     onClose: (positionSeconds: Int, durationSeconds: Int) -> Unit
 ) {
     val context = LocalContext.current
+    val activity = context as Activity
     var state by remember(episodeId) { mutableStateOf<PlayerState>(PlayerState.Loading) }
     var activePlayer by remember(episodeId) { mutableStateOf<ExoPlayer?>(null) }
+
+    DisposableEffect(activity, episodeId) {
+        val window = activity.window
+        val previousOrientation = activity.requestedOrientation
+        val previousDecorFitsSystemWindows = WindowCompat.getDecorFitsSystemWindows(window)
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        val previousBarsBehavior = controller.systemBarsBehavior
+        val previousLightStatusBars = controller.isAppearanceLightStatusBars
+        val previousLightNavigationBars = controller.isAppearanceLightNavigationBars
+
+        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        controller.isAppearanceLightStatusBars = false
+        controller.isAppearanceLightNavigationBars = false
+        controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        controller.hide(WindowInsetsCompat.Type.systemBars())
+
+        onDispose {
+            controller.show(WindowInsetsCompat.Type.systemBars())
+            controller.systemBarsBehavior = previousBarsBehavior
+            controller.isAppearanceLightStatusBars = previousLightStatusBars
+            controller.isAppearanceLightNavigationBars = previousLightNavigationBars
+            WindowCompat.setDecorFitsSystemWindows(window, previousDecorFitsSystemWindows)
+            activity.requestedOrientation = previousOrientation
+        }
+    }
 
     fun closeWithProgress() {
         val player = activePlayer
