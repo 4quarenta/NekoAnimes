@@ -24,7 +24,8 @@ internal data class PlaybackDescriptor(
 internal class PlaybackRepository {
     suspend fun load(activity: Activity, episodeId: String, sourceOverride: PlayerSourceOverride? = null): PlaybackDescriptor {
         if (sourceOverride != null) {
-            val resolvedUrl = if (isBloggerVideoUrl(sourceOverride.url)) {
+            val bloggerSource = isBloggerVideoUrl(sourceOverride.url)
+            val resolvedUrl = if (bloggerSource) {
                 BloggerVideoResolver(activity).resolve(sourceOverride.url)
             } else {
                 sourceOverride.url
@@ -35,9 +36,9 @@ internal class PlaybackRepository {
                 title = sourceOverride.label,
                 source = PlaybackSource(
                     resolvedUrl,
-                    if (isBloggerVideoUrl(sourceOverride.url)) "video/mp4" else sourceOverride.mimeType,
+                    if (bloggerSource) "video/mp4" else sourceOverride.mimeType,
                     sourceOverride.label,
-                    sourceOverride.headers
+                    if (bloggerSource) emptyMap() else sourceOverride.headers
                 )
             )
         }
