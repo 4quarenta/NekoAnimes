@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -26,6 +27,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,11 +38,16 @@ import com.nekoanimes.app.ads.NekoBannerSlot
 import com.nekoanimes.app.bridge.NekoBridge
 import com.nekoanimes.app.data.AppManifestRepository
 import com.nekoanimes.app.model.AppManifest
+import com.nekoanimes.app.model.NavigationItem
 import com.nekoanimes.app.player.NekoPlayerScreen
 import com.nekoanimes.app.ui.NekoNavigationBar
+import com.nekoanimes.app.ui.NekoNavigationDrawer
 import com.nekoanimes.app.ui.NekoTheme
 import com.nekoanimes.app.update.NekoUpdatePrompt
+import com.nekoanimes.app.web.HorizontalSwipeDirection
 import com.nekoanimes.app.web.WebViewHost
+import kotlinx.coroutines.launch
+import androidx.compose.material3.rememberDrawerState
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -78,6 +85,14 @@ private fun AppShell(manifest: AppManifest) {
     var adsBootstrapped by remember(manifest.configVersion) { mutableStateOf(false) }
     var lastBackPressedAt by remember { mutableLongStateOf(0L) }
     var showExitDialog by remember { mutableStateOf(false) }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val drawerScope = rememberCoroutineScope()
+    val primaryItems = remember(manifest.configVersion) {
+        manifest.navigation.filterNot(::isDrawerItem)
+    }
+    val drawerItems = remember(manifest.configVersion) {
+        manifest.navigation.filter(::isDrawerItem)
+    }
 
     val ads = remember(manifest.configVersion) { NekoAdOrchestrator(activity, manifest.ads) }
     val bridge = remember(manifest.configVersion) {
@@ -98,6 +113,13 @@ private fun AppShell(manifest: AppManifest) {
     if (!adsBootstrapped) {
         LoadingScreen(message = if (manifest.ads.enabled) "Preparando experiência…" else null)
         return
+    }
+
+    fun navigateTo(item: NavigationItem) {
+        selectedRoute = item.route
+        ads.onAppEvent("content_opened", item.id)
+        webView?.let { bridge.sendNavigation(it, item.route) }
+        drawerScope.launch { drawerState.close() }
     }
 
     val playing = playerEpisodeId
@@ -145,31 +167,47 @@ private fun AppShell(manifest: AppManifest) {
         )
     }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        bottomBar = {
-            Column {
-                NekoBannerSlot(manifest.ads)
-                NekoNavigationBar(
-                    items = manifest.navigation,
-                    selectedRoute = selectedRoute,
-                    onSelected = { item ->
-                        selectedRoute = item.route
-                        ads.onAppEvent("content_opened", item.id)
-                        webView?.let { bridge.sendNavigation(it, item.route) }
-                    }
-                )
-            }
+    fun navigateBySwipe(direction: HorizontalSwipeDirection) {
+        val currentIndex = primaryItems.indexOfFirst { item ->
+            if (item.route == "/") selectedRoute == "/" else selectedRoute.startsWith(item.route)
         }
-    ) { padding ->
-        WebViewHost(
-            url = manifest.webAppUrl,
-            bridge = bridge,
-            modifier = Modifier.fillMaxSize().padding(padding),
-            onWebViewReady = { webView = it }
-        )
+        if (currentIndex < 0) return
+        val targetIndex = currentIndex + if (direction == HorizontalSwipeDirection.Next) 1 else -1
+        primaryItems.getOrNull(targetIndex)?.let(::navigateTo)
+    }
+
+    NekoNavigationDrawer(
+        drawerState = drawerState,
+        items = drawerItems,
+        selectedRoute = selectedRoute,
+        onSelected = ::navigateTo
+    ) {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            bottomBar = {
+                Column {
+                    NekoBannerSlot(manifest.ads)
+                    NekoNavigationBar(
+                        items = primaryItems,
+                        selectedRoute = selectedRoute,
+                        onSelected = ::navigateTo,
+                        onOpenMenu = { drawerScope.launch { drawerState.open() } }
+                    )
+                }
+            }
+        ) { padding ->
+            WebViewHost(
+                url = manifest.webAppUrl,
+                bridge = bridge,
+                modifier = Modifier.fillMaxSize().padding(padding),
+                onHorizontalSwipe = ::navigateBySwipe,
+                onWebViewReady = { webView = it }
+            )
+        }
     }
 }
+
+private fun isDrawerItem(item: NavigationItem): Boolean = item.route == "/lista" || item.route == "/salvos" || item.route == "/conta"
 
 @Composable
 private fun LoadingScreen(message: String? = null) {

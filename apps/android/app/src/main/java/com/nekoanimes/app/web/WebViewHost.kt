@@ -4,6 +4,7 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.view.MotionEvent
 import android.view.ViewGroup
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -15,12 +16,19 @@ import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.nekoanimes.app.BuildConfig
 import com.nekoanimes.app.bridge.NekoBridge
 import java.net.URI
+import kotlin.math.abs
+
+enum class HorizontalSwipeDirection {
+    Previous,
+    Next
+}
 
 @Composable
 fun WebViewHost(
     url: String,
     bridge: NekoBridge,
     modifier: Modifier = Modifier,
+    onHorizontalSwipe: (HorizontalSwipeDirection) -> Unit = {},
     onWebViewReady: (WebView) -> Unit
 ) {
     AndroidView(
@@ -37,6 +45,29 @@ fun WebViewHost(
                     settings.javaScriptCanOpenWindowsAutomatically = false
                     settings.setSupportMultipleWindows(false)
                     settings.userAgentString = "${settings.userAgentString} NekoAnimes/Android"
+                    var downX = 0f
+                    var downY = 0f
+
+                    setOnTouchListener { _, event ->
+                        when (event.actionMasked) {
+                            MotionEvent.ACTION_DOWN -> {
+                                downX = event.rawX
+                                downY = event.rawY
+                            }
+                            MotionEvent.ACTION_UP -> {
+                                val deltaX = event.rawX - downX
+                                val deltaY = event.rawY - downY
+                                val edgeInset = 32f * context.resources.displayMetrics.density
+                                val startedAwayFromEdge = downX > edgeInset && downX < width - edgeInset
+                                if (startedAwayFromEdge && abs(deltaX) >= 96f && abs(deltaX) > abs(deltaY) * 1.35f) {
+                                    onHorizontalSwipe(
+                                        if (deltaX < 0) HorizontalSwipeDirection.Next else HorizontalSwipeDirection.Previous
+                                    )
+                                }
+                            }
+                        }
+                        false
+                    }
 
                     webViewClient = object : WebViewClient() {
                         override fun onPageFinished(view: WebView, url: String?) {
