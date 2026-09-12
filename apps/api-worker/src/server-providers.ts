@@ -39,6 +39,7 @@ export type ProviderPlaybackSource = {
   label: string;
   headers: Record<string, string>;
   isDefault: boolean;
+  kind: 'direct' | 'embed';
 };
 
 export type ServerSeason = {
@@ -351,6 +352,7 @@ function extractScriptEpisodeCandidates(provider: ProviderConfig, html: string, 
 
 async function extractPlaybackSources(provider: ProviderConfig, html: string, episodeUrl: string): Promise<ProviderPlaybackSource[]> {
   const candidates = new Set<string>();
+  const embedCandidates = new Set<string>();
   const normalizedHtml = html.replace(/\\\//g, '/').replace(/&amp;/gi, '&');
   const directPattern = /(?:https?:)?\/\/[^\s"'<>\\]+\.(?:m3u8|mp4|mpd)(?:\?[^\s"'<>\\]*)?/gi;
   for (const match of normalizedHtml.matchAll(directPattern)) {
@@ -366,23 +368,47 @@ async function extractPlaybackSources(provider: ProviderConfig, html: string, ep
       const embedded = iframe.searchParams.get('d') ?? iframe.searchParams.get('file') ?? iframe.searchParams.get('source');
       if (embedded && isDirectMediaUrl(embedded)) candidates.add(embedded);
       if (isDirectMediaUrl(iframe.toString())) candidates.add(iframe.toString());
+      if (isBloggerVideoUrl(iframe.toString())) embedCandidates.add(iframe.toString());
     } catch {
       // Ignore malformed or non-HTTPS player frames.
     }
+  }
+
+  const bloggerPattern = /https:\/\/www\.blogger\.com\/video\.g\?token=[^\s"'<>\\]+/gi;
+  for (const match of normalizedHtml.matchAll(bloggerPattern)) {
+    const url = match[0].replace(/[),.;]+$/g, '');
+    if (isBloggerVideoUrl(url)) embedCandidates.add(url);
+  }
+
+  const encryptedBloggerPattern = /data-blogger-url-encrypted\s*=\s*(?:"([^"]+)"|'([^']+)')/gi;
+  for (const match of normalizedHtml.matchAll(encryptedBloggerPattern)) {
+    const decoded = decodeBloggerVideoUrl(match[1] ?? match[2] ?? '');
+    if (decoded) embedCandidates.add(decoded);
   }
 
   const orderedCandidates = [...candidates]
     .filter((url) => isDirectMediaUrl(url) && !isBackgroundAsset(url))
     .sort((a, b) => mediaPriority(a) - mediaPriority(b))
     .slice(0, 10);
-  return orderedCandidates.slice(0, 5).map((url, index) => ({
+  const directSources = orderedCandidates.slice(0, 5).map((url, index) => ({
     id: `${provider.id}:source:${index + 1}`,
     url,
     mimeType: mediaMimeType(url),
     label: `${provider.name} · fonte ${index + 1}`,
     headers: { Referer: episodeUrl },
-    isDefault: index === 0
+    isDefault: index === 0,
+    kind: 'direct' as const
   }));
+  const embedSources = [...embedCandidates].slice(0, 5).map((url, index) => ({
+    id: `${provider.id}:embed:${index + 1}`,
+    url,
+    mimeType: 'text/html',
+    label: `${provider.name} · Blogger ${index + 1}`,
+    headers: { Referer: episodeUrl },
+    isDefault: directSources.length === 0 && index === 0,
+    kind: 'embed' as const
+  }));
+  return [...directSources, ...embedSources];
 }
 
 function isDirectMediaUrl(value: string): boolean {
@@ -399,6 +425,25 @@ function isBackgroundAsset(value: string): boolean {
     return /(?:^|\/)(?:bg|background|poster|thumbnail)\.mp4$/i.test(new URL(value).pathname);
   } catch {
     return true;
+  }
+}
+
+function isBloggerVideoUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname === 'www.blogger.com' && url.pathname === '/video.g' && url.searchParams.has('token');
+  } catch {
+    return false;
+  }
+}
+
+function decodeBloggerVideoUrl(value: string): string | null {
+  try {
+    const decoded = atob(value);
+    const url = decoded.split('').reverse().join('');
+    return isBloggerVideoUrl(url) ? url : null;
+  } catch {
+    return null;
   }
 }
 

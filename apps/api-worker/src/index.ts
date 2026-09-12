@@ -247,7 +247,7 @@ app.get('/v1/servers/:serverId/resolve/:query/:season/:episode', async (c) => {
       episodeNumber,
       server: detail.server,
       anime,
-      episode: { ...episode, sources: providerEpisode.playback.sources },
+      episode,
       sources: providerEpisode.playback.sources,
       fetchedAt: new Date().toISOString()
     });

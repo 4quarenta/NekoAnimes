@@ -3,6 +3,7 @@ package com.nekoanimes.app.player
 import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.net.Uri
+import android.util.Log
 import com.nekoanimes.app.BuildConfig
 import com.nekoanimes.app.bridge.PlayerSourceOverride
 import androidx.activity.compose.BackHandler
@@ -29,9 +30,12 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -45,6 +49,7 @@ internal fun NekoPlayerScreen(
     val context = LocalContext.current
     val activity = context as Activity
     var state by remember(episodeId, sourceOverride?.url) { mutableStateOf<PlayerState>(PlayerState.Loading) }
+    var playbackError by remember(episodeId, sourceOverride?.url) { mutableStateOf<String?>(null) }
     var activePlayer by remember(episodeId, sourceOverride?.url) { mutableStateOf<ExoPlayer?>(null) }
 
     DisposableEffect(activity, episodeId, sourceOverride?.url) {
@@ -83,6 +88,7 @@ internal fun NekoPlayerScreen(
     BackHandler { closeWithProgress() }
 
     LaunchedEffect(episodeId, sourceOverride?.url) {
+        playbackError = null
         state = runCatching {
             withContext(Dispatchers.IO) { PlaybackRepository().load(episodeId, sourceOverride) }
         }.fold(
@@ -112,7 +118,12 @@ internal fun NekoPlayerScreen(
                             .setUri(Uri.parse(descriptor.source.url))
                             .setMediaMetadata(MediaMetadata.Builder().setTitle(descriptor.title ?: "Episódio ${descriptor.episodeNumber}").build())
                         descriptor.source.mimeType?.let { itemBuilder.setMimeType(normalizeMime(it)) }
-                        setMediaItem(itemBuilder.build())
+                        val mediaItem = itemBuilder.build()
+                        if (isHlsSource(descriptor.source.url, descriptor.source.mimeType)) {
+                            setMediaSource(HlsMediaSource.Factory(httpFactory).createMediaSource(mediaItem))
+                        } else {
+                            setMediaSource(DefaultMediaSourceFactory(httpFactory).createMediaSource(mediaItem))
+                        }
                         prepare()
                         playWhenReady = true
                     }
@@ -120,20 +131,39 @@ internal fun NekoPlayerScreen(
             activePlayer = player
 
             DisposableEffect(player) {
+                val listener = object : Player.Listener {
+                    override fun onPlayerError(error: PlaybackException) {
+                        val detail = error.message?.takeIf { it.isNotBlank() } ?: error.errorCodeName
+                        playbackError = detail
+                        Log.e("NekoPlayer", "ExoPlayer falhou para ${descriptor.source.url}", error)
+                    }
+                }
+                player.addListener(listener)
                 onDispose {
+                    player.removeListener(listener)
                     if (activePlayer === player) activePlayer = null
                     player.release()
                 }
             }
 
-            AndroidView(
-                modifier = Modifier.fillMaxSize().background(Color.Black),
-                factory = { viewContext -> PlayerView(viewContext).apply { this.player = player; useController = true; keepScreenOn = true } },
-                update = { it.player = player }
-            )
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { viewContext -> PlayerView(viewContext).apply { this.player = player; useController = true; keepScreenOn = true } },
+                    update = { it.player = player }
+                )
+                playbackError?.let { error ->
+                    Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.82f)), contentAlignment = Alignment.Center) {
+                        Text("Não foi possível reproduzir este vídeo.\n$error", color = Color.White)
+                    }
+                }
+            }
         }
     }
 }
+
+private fun isHlsSource(url: String, mimeType: String?): Boolean =
+    mimeType?.let(::normalizeMime) == MimeTypes.APPLICATION_M3U8 || Uri.parse(url).lastPathSegment?.contains(".m3u8", ignoreCase = true) == true
 
 private fun normalizeMime(value: String): String = when (value.lowercase()) {
     "hls", "application/x-mpegurl", "application/vnd.apple.mpegurl" -> MimeTypes.APPLICATION_M3U8

@@ -44,7 +44,8 @@ export function AnimeDetailPage() {
 
   useEffect(() => {
     const resolution = providerResolution.data;
-    const source = resolution?.sources.find((item) => item.isDefault) ?? resolution?.sources[0];
+    const directSources = resolution?.sources.filter((item) => item.kind === 'direct') ?? [];
+    const source = directSources.find((item) => item.isDefault) ?? directSources[0];
     if (!resolution || !source) return;
     setSelectedEpisode(null);
     setSelectedServerId(null);
@@ -143,7 +144,13 @@ export function AnimeDetailPage() {
                     />;
                   })}
                   {selectedServerId && providerResolution.isError ? <p className="neko-error">Não foi possível consultar as sources deste provider.</p> : null}
-                  {selectedServerId && providerResolution.data && providerResolution.data.sources.length === 0 ? <p className="neko-error">Este episódio não possui uma source de vídeo utilizável neste provider.</p> : null}
+                  {selectedServerId && providerResolution.data?.sources.filter((source) => source.kind === 'embed').map((source) => (
+                    <div className="neko-account-notice" key={source.id}>
+                      <strong>Source Blogger encontrada</strong>
+                      <a href={source.url} target="_blank" rel="noreferrer" style={{ overflowWrap: 'anywhere' }}>{source.url}</a>
+                    </div>
+                  ))}
+                  {selectedServerId && providerResolution.data && providerResolution.data.sources.length === 0 ? <p className="neko-error">Este episódio não possui uma source direta ou Blogger na página consultada.</p> : null}
                 </div>
               ) : <div className="neko-account-notice"><strong>Nenhum servidor disponível</strong><p>Este episódio não foi localizado nos providers configurados para staging.</p></div>
             ) : null}
