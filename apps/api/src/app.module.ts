@@ -24,12 +24,14 @@ import { SupabaseAuthGuard } from './modules/auth/supabase-auth.guard';
 import { UserDataController } from './modules/user-data/user-data.controller';
 import { UserDataService } from './modules/user-data/user-data.service';
 import { AppUpdateController } from './modules/app-update/app-update.controller';
+import { ServersModule } from './modules/servers/servers.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, cache: true, validate: validateEnvironment }),
     DatabaseModule,
-    RedisModule
+    RedisModule,
+    ServersModule
   ],
   controllers: [
     HealthController,
