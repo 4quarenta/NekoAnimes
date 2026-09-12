@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { NekoNative } from '@neko/bridge-web';
 import {
   fetchAnime,
   fetchEpisodes,
@@ -10,6 +9,7 @@ import {
   type Episode
 } from '../lib/api';
 import { AppScreen, Eyebrow, ScreenHeader, Section, TextRow } from '../components/AppScreen';
+import '../server-dialog.css';
 
 export function AnimeDetailPage() {
   const { slug } = useParams({ from: '/anime/$slug' });
@@ -18,7 +18,7 @@ export function AnimeDetailPage() {
   const [seasonId, setSeasonId] = useState<string | null>(null);
   const [visible, setVisible] = useState(10);
   const [libraryState, setLibraryState] = useState<'idle' | 'saving' | 'saved'>('idle');
-  const [selectedEpisode, setSelectedEpisode] = useState<{ id: string; number: number; title: string | null; seasonNumber: number } | null>(null);
+  const [selectedEpisode, setSelectedEpisode] = useState<{ number: number; title: string | null; seasonNumber: number } | null>(null);
   const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
   const selectedSeasonId = seasonId ?? anime.data?.seasons[0]?.id ?? null;
   const episodeQuery = useQuery({
@@ -41,14 +41,7 @@ export function AnimeDetailPage() {
   function openEpisode(episode: Episode) {
     const seasonNumber = item.seasons.find((season) => season.id === episode.seasonId)?.number ?? 1;
     setSelectedServerId(null);
-    setSelectedEpisode({ id: episode.id, number: episode.number, title: episode.title, seasonNumber });
-  }
-
-  function openInternalPlayer() {
-    if (!selectedEpisode) return;
-    NekoNative.player.open(selectedEpisode.id);
-    setSelectedEpisode(null);
-    setSelectedServerId(null);
+    setSelectedEpisode({ number: episode.number, title: episode.title, seasonNumber });
   }
 
   async function addToLibrary() {
@@ -103,36 +96,29 @@ export function AnimeDetailPage() {
       </AppScreen>
 
       {selectedEpisode ? (
-        <div className="neko-filter-modal neko-server-modal" role="dialog" aria-modal="true" aria-labelledby="neko-server-title">
-          <header className="neko-filter-modal-header">
+        <div className="neko-server-dialog-backdrop" role="presentation">
+          <div className="neko-server-dialog" role="dialog" aria-modal="true" aria-labelledby="neko-server-title">
+          <header className="neko-server-dialog-header">
             <h2 id="neko-server-title">Escolher servidor</h2>
-            <button className="neko-filter-close" type="button" onClick={() => setSelectedEpisode(null)}>Fechar</button>
+            <button className="neko-filter-close" type="button" aria-label="Fechar seletor de servidor" onClick={() => setSelectedEpisode(null)}>×</button>
           </header>
-          <div className="neko-filter-modal-body">
+          <div className="neko-server-dialog-body">
             <p className="neko-account-copy">Episódio {selectedEpisode.number}{selectedEpisode.title ? ` · ${selectedEpisode.title}` : ''}</p>
             {serverResolution.isPending ? <div className="neko-skeleton short" /> : null}
             {serverResolution.isError ? <p className="neko-error">Não foi possível consultar os servidores agora.</p> : null}
             {serverResolution.data ? (
-              <div className="neko-list">
-                {serverResolution.data.servers.map((result) => {
-                  const selected = selectedServerId === result.server.id;
-                  const meta = result.available
-                    ? 'Episódio disponível neste servidor'
-                    : result.status === 'timeout'
-                      ? 'Tempo de resposta esgotado'
-                      : result.status === 'error'
-                        ? 'Servidor indisponível'
-                        : 'Episódio não encontrado';
-                  return <TextRow key={result.server.id} title={result.server.name} meta={meta} trailing={selected ? '✓' : result.available ? 'Selecionar' : '—'} onClick={result.available ? () => setSelectedServerId(result.server.id) : undefined} />;
-                })}
-              </div>
+              serverResolution.data.servers.some((result) => result.available) ? (
+                <div className="neko-list">
+                  {serverResolution.data.servers.filter((result) => result.available).map((result) => {
+                    const selected = selectedServerId === result.server.id;
+                    return <TextRow key={result.server.id} title={result.server.name} meta="Disponível para este episódio" trailing={selected ? '✓' : 'Selecionar'} onClick={() => setSelectedServerId(result.server.id)} />;
+                  })}
+                </div>
+              ) : <div className="neko-account-notice"><strong>Nenhum servidor disponível</strong><p>Este episódio não foi localizado nos providers configurados para staging.</p></div>
             ) : null}
-            {selectedServerId ? <div className="neko-account-notice"><strong>Servidor selecionado</strong><p>O catálogo do provider foi localizado. A reprodução por esse servidor ainda não está configurada no player do app.</p></div> : null}
+            {selectedServerId ? <div className="neko-account-notice"><strong>Servidor selecionado</strong><p>A reprodução deste provider ainda não está configurada no player. É necessário cadastrar uma fonte de mídia autorizada antes de abrir o vídeo.</p></div> : null}
           </div>
-          <footer className="neko-filter-modal-footer neko-server-actions">
-            <button className="neko-more" type="button" onClick={openInternalPlayer}>Testar player interno</button>
-            <button className="neko-primary-button" type="button" onClick={() => { setSelectedEpisode(null); setSelectedServerId(null); }}>Fechar</button>
-          </footer>
+          </div>
         </div>
       ) : null}
     </>
