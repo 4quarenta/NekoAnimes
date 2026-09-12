@@ -3,6 +3,7 @@ package com.nekoanimes.app.web
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
+import android.view.ViewGroup
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -59,7 +60,7 @@ fun WebViewHost(
                     loadUrl(url)
                 }
 
-                addView(webView, SwipeRefreshLayout.LayoutParams(-1, -1))
+                addView(webView, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
                 setOnRefreshListener { webView.reload() }
                 bridge.attach(webView)
                 onWebViewReady(webView)
