@@ -123,6 +123,29 @@ fun WebViewHost(
 
 private class NekoRefreshLayout(context: Context) : SwipeRefreshLayout(context) {
     var hostedWebView: WebView? = null
+
+    private var refreshGestureAllowed = false
+
+    override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                refreshGestureAllowed = event.y <= height * 0.40f
+                if (!refreshGestureAllowed) return false
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (!refreshGestureAllowed) {
+                    refreshGestureAllowed = false
+                    return false
+                }
+            }
+        }
+
+        val intercepted = super.onInterceptTouchEvent(event)
+        if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+            refreshGestureAllowed = false
+        }
+        return intercepted
+    }
 }
 
 private fun isAllowedWebAppUrl(uri: Uri): Boolean {
