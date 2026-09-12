@@ -86,6 +86,7 @@ private fun AppShell(manifest: AppManifest) {
     var webView by remember(manifest.configVersion) { mutableStateOf<WebView?>(null) }
     var playerRequest by remember(manifest.configVersion) { mutableStateOf<PlayerRequest?>(null) }
     var playerReturnRoute by remember(manifest.configVersion) { mutableStateOf<String?>(null) }
+    var playerOpening by remember(manifest.configVersion) { mutableStateOf(false) }
     var adsBootstrapped by remember(manifest.configVersion) { mutableStateOf(false) }
     var lastBackPressedAt by remember { mutableLongStateOf(0L) }
     var showExitDialog by remember { mutableStateOf(false) }
@@ -107,10 +108,12 @@ private fun AppShell(manifest: AppManifest) {
                 selectedRoute = route
             },
             onOpenPlayer = { episodeId, source ->
+                playerOpening = true
+                playerReturnRoute = currentWebRouteState
+                playerRequest = PlayerRequest(episodeId, source)
                 drawerScope.launch {
                     drawerState.close()
-                    playerReturnRoute = currentWebRouteState
-                    playerRequest = PlayerRequest(episodeId, source)
+                    playerOpening = false
                 }
             },
             onAppEvent = { name, placement -> ads.onAppEvent(name, placement) }
@@ -127,6 +130,10 @@ private fun AppShell(manifest: AppManifest) {
     if (!adsBootstrapped) {
         LoadingScreen(message = if (manifest.ads.enabled) "Preparando experiência…" else null)
         return
+    }
+
+    LaunchedEffect(playerRequest) {
+        if (playerRequest != null) drawerState.close()
     }
 
     fun navigateTo(item: NavigationItem) {
@@ -185,13 +192,13 @@ private fun AppShell(manifest: AppManifest) {
         primaryItems.getOrNull(targetIndex)?.let(::navigateTo)
     }
 
-    NekoNavigationDrawer(
-        drawerState = drawerState,
-        items = drawerItems,
-        selectedRoute = selectedRoute,
-        onSelected = ::navigateTo
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        NekoNavigationDrawer(
+            drawerState = drawerState,
+            items = drawerItems,
+            selectedRoute = selectedRoute,
+            onSelected = ::navigateTo
+        ) {
             Scaffold(
                 modifier = Modifier.fillMaxSize(),
                 bottomBar = {
@@ -211,30 +218,31 @@ private fun AppShell(manifest: AppManifest) {
                     modifier = Modifier.fillMaxSize().padding(padding),
                     onHorizontalSwipe = ::navigateBySwipe,
                     onOpenDrawer = {
-                        if (playerRequest == null) {
+                        if (playerRequest == null && !playerOpening) {
                             drawerScope.launch { drawerState.open() }
                         }
                     },
                     onWebViewReady = { webView = it }
                 )
             }
+        }
 
-            if (playing != null) {
-                NekoPlayerScreen(
-                    episodeId = playing.episodeId,
-                    sourceOverride = playing.source,
-                    onClose = { positionSeconds, durationSeconds ->
-                        val returnRoute = playerReturnRoute
-                        playerRequest = null
-                        playerReturnRoute = null
-                        ads.onAppEvent("episode_closed", "player")
-                        webView?.let {
-                            bridge.sendPlayerClosed(it, playing.episodeId, positionSeconds, durationSeconds)
-                            if (!returnRoute.isNullOrBlank()) bridge.sendNavigation(it, returnRoute)
-                        }
+        if (playing != null) {
+            NekoPlayerScreen(
+                episodeId = playing.episodeId,
+                sourceOverride = playing.source,
+                onClose = { positionSeconds, durationSeconds ->
+                    val returnRoute = playerReturnRoute
+                    playerRequest = null
+                    playerReturnRoute = null
+                    playerOpening = false
+                    ads.onAppEvent("episode_closed", "player")
+                    webView?.let {
+                        bridge.sendPlayerClosed(it, playing.episodeId, positionSeconds, durationSeconds)
+                        if (!returnRoute.isNullOrBlank()) bridge.sendNavigation(it, returnRoute)
                     }
-                )
-            }
+                }
+            )
         }
     }
 }

@@ -15,12 +15,17 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationDrawerItem
 import androidx.compose.material3.Text
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import com.nekoanimes.app.model.NavigationItem
+import kotlinx.coroutines.launch
 
 @Composable
 fun NekoNavigationBar(
@@ -49,11 +54,31 @@ fun NekoNavigationDrawer(
     onSelected: (NavigationItem) -> Unit,
     content: @Composable () -> Unit
 ) {
+    val drawerScope = rememberCoroutineScope()
+    val closeThresholdPx = with(LocalDensity.current) { 72.dp.toPx() }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         gesturesEnabled = false,
         drawerContent = {
-            ModalDrawerSheet(modifier = Modifier.fillMaxWidth(0.7f)) {
+            ModalDrawerSheet(
+                modifier = Modifier
+                    .fillMaxWidth(0.7f)
+                    .pointerInput(drawerState, closeThresholdPx) {
+                        var totalDrag = 0f
+                        detectHorizontalDragGestures(
+                            onDragStart = { totalDrag = 0f },
+                            onHorizontalDrag = { _, dragAmount -> totalDrag += dragAmount },
+                            onDragEnd = {
+                                if (totalDrag <= -closeThresholdPx) {
+                                    drawerScope.launch { drawerState.close() }
+                                }
+                                totalDrag = 0f
+                            },
+                            onDragCancel = { totalDrag = 0f }
+                        )
+                    }
+            ) {
                 Text("NekoAnimes", modifier = Modifier.padding(horizontal = 28.dp, vertical = 24.dp))
                 items.forEach { item ->
                     NavigationDrawerItem(
