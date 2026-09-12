@@ -1,6 +1,6 @@
 package com.nekoanimes.app.player
 
-import android.content.Context
+import android.app.Activity
 import com.nekoanimes.app.BuildConfig
 import com.nekoanimes.app.bridge.PlayerSourceOverride
 import org.json.JSONObject
@@ -22,10 +22,10 @@ internal data class PlaybackDescriptor(
 )
 
 internal class PlaybackRepository {
-    suspend fun load(context: Context, episodeId: String, sourceOverride: PlayerSourceOverride? = null): PlaybackDescriptor {
+    suspend fun load(activity: Activity, episodeId: String, sourceOverride: PlayerSourceOverride? = null): PlaybackDescriptor {
         if (sourceOverride != null) {
             val resolvedUrl = if (isBloggerVideoUrl(sourceOverride.url)) {
-                BloggerVideoResolver(context).resolve(sourceOverride.url)
+                BloggerVideoResolver(activity).resolve(sourceOverride.url)
             } else {
                 sourceOverride.url
             }

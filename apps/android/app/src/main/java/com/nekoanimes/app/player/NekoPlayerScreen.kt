@@ -90,7 +90,7 @@ internal fun NekoPlayerScreen(
     LaunchedEffect(episodeId, sourceOverride?.url) {
         playbackError = null
         state = runCatching {
-            withContext(Dispatchers.IO) { PlaybackRepository().load(context, episodeId, sourceOverride) }
+            withContext(Dispatchers.IO) { PlaybackRepository().load(activity, episodeId, sourceOverride) }
         }.fold(
             onSuccess = { PlayerState.Ready(it) },
             onFailure = { PlayerState.Error(it.message ?: "Falha ao carregar episódio") }

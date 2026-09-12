@@ -1,12 +1,16 @@
 package com.nekoanimes.app.player
 
-import android.content.Context
+import android.app.Activity
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import android.view.View
+import android.view.ViewGroup
+import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.FrameLayout
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -16,10 +20,11 @@ import kotlin.coroutines.resumeWithException
  * player starts. Resolve it on-device so the short-lived URL is immediately
  * handed to ExoPlayer and is never persisted by the app or API.
  */
-internal class BloggerVideoResolver(private val context: Context) {
+internal class BloggerVideoResolver(private val activity: Activity) {
     suspend fun resolve(sourceUrl: String): String = suspendCancellableCoroutine { continuation ->
         val mainHandler = Handler(Looper.getMainLooper())
         var webView: WebView? = null
+        var host: FrameLayout? = null
         var completed = false
 
         fun finish(result: Result<String>) {
@@ -27,8 +32,11 @@ internal class BloggerVideoResolver(private val context: Context) {
             completed = true
             mainHandler.removeCallbacksAndMessages(null)
             webView?.stopLoading()
+            host?.removeView(webView)
+            (host?.parent as? ViewGroup)?.removeView(host)
             webView?.destroy()
             webView = null
+            host = null
             if (!continuation.isActive) return
             result.getOrNull()?.let(continuation::resume)
                 ?: continuation.resumeWithException(result.exceptionOrNull() ?: IllegalStateException("Falha ao resolver Blogger"))
@@ -36,8 +44,19 @@ internal class BloggerVideoResolver(private val context: Context) {
 
         mainHandler.post {
             if (!continuation.isActive) return@post
-            val playerWebView = WebView(context)
+            val playerWebView = WebView(activity)
             webView = playerWebView
+            val playerHost = FrameLayout(activity).apply {
+                alpha = 0f
+                visibility = View.VISIBLE
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            }
+            host = playerHost
+            activity.addContentView(
+                playerHost,
+                ViewGroup.LayoutParams(1, 1)
+            )
+            playerHost.addView(playerWebView, FrameLayout.LayoutParams(1, 1))
             playerWebView.settings.javaScriptEnabled = true
             playerWebView.settings.domStorageEnabled = true
             playerWebView.settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
@@ -45,6 +64,24 @@ internal class BloggerVideoResolver(private val context: Context) {
             playerWebView.settings.allowFileAccess = false
             playerWebView.settings.allowContentAccess = false
             playerWebView.settings.setSupportMultipleWindows(false)
+            CookieManager.getInstance().setAcceptCookie(true)
+            CookieManager.getInstance().setAcceptThirdPartyCookies(playerWebView, true)
+
+            fun triggerPlayback(view: WebView) {
+                view.evaluateJavascript(
+                    """
+                    (() => {
+                      const main = document.querySelector('main');
+                      if (!main) return 'missing-main';
+                      main.click();
+                      main.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                      return 'clicked';
+                    })();
+                    """.trimIndent(),
+                    null
+                )
+            }
+
             playerWebView.webViewClient = object : WebViewClient() {
                 override fun onLoadResource(view: WebView, url: String?) {
                     findPlayableUrl(url)?.let { finish(Result.success(it)) }
@@ -59,10 +96,13 @@ internal class BloggerVideoResolver(private val context: Context) {
                     // The public Blogger player starts the embedded player on
                     // this click, after which shouldInterceptRequest observes
                     // the signed googlevideo URL.
-                    view.evaluateJavascript(
-                        "document.querySelector('main')?.click();",
-                        null
-                    )
+                    triggerPlayback(view)
+                    mainHandler.postDelayed({
+                        if (!completed && continuation.isActive) triggerPlayback(view)
+                    }, 750L)
+                    mainHandler.postDelayed({
+                        if (!completed && continuation.isActive) triggerPlayback(view)
+                    }, 2_000L)
                 }
             }
             playerWebView.loadUrl(sourceUrl)
