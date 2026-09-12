@@ -30,10 +30,8 @@ internal class BloggerVideoResolver(private val context: Context) {
             webView?.destroy()
             webView = null
             if (!continuation.isActive) return
-            result.fold(
-                onSuccess = continuation::resume,
-                onFailure = continuation::resumeWithException
-            )
+            result.getOrNull()?.let(continuation::resume)
+                ?: continuation.resumeWithException(result.exceptionOrNull() ?: IllegalStateException("Falha ao resolver Blogger"))
         }
 
         mainHandler.post {

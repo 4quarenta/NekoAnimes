@@ -131,10 +131,14 @@ compara disponibilidade e nunca extrai sources de todos os providers. O Worker
 não segue iframes arbitrários nem tenta contornar DRM, anti-bot ou autenticação.
 Um provider pode aparecer na busca e na lista de episódios, mas não expor uma
 source direta no episódio consultado. URLs Blogger são devolvidas como
-`kind: "embed"` para exibição; elas não são enviadas ao ExoPlayer. Para hosts
-de mídia permitidos com incompatibilidade TLS no Android, `url` preserva a
-source original e `playbackUrl` aponta para `/v1/media/proxy`, que reescreve
-playlists HLS e seus segmentos através do domínio Cloudflare.
+`kind: "embed"` para exibição. No Android, o botão do provider envia essa URL
+para um WebView auxiliar; o `BloggerVideoResolver` inicia o player público,
+captura somente a requisição HTTPS `googlevideo.com/videoplayback` com
+`mime=video/mp4` e entrega o link temporário ao contrato do ExoPlayer. O link
+não é salvo no D1, no APK nem no R2. Para hosts de mídia permitidos com
+incompatibilidade TLS no Android, `url` preserva a source original e
+`playbackUrl` aponta para `/v1/media/proxy`, que reescreve playlists HLS e seus
+segmentos através do domínio Cloudflare.
 
 ## GitHub Actions
 
