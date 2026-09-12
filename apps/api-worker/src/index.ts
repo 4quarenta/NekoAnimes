@@ -2,13 +2,10 @@ import { Hono } from 'hono';
 import type { Context, Next } from 'hono';
 import { cors } from 'hono/cors';
 import { HTTPException } from 'hono/http-exception';
-import { drizzle } from 'drizzle-orm/node-postgres';
-import { Pool } from 'pg';
-import { and, asc, desc, eq, ilike, or, sql } from 'drizzle-orm';
-import * as schema from '../../api/src/database/schema/index';
 
-type Db = ReturnType<typeof drizzle<typeof schema>>;
-type App = Hono<{ Bindings: Env; Variables: { userId: string; userEmail?: string } }>;
+type Variables = { userId: string; userEmail?: string; tokenHash?: string };
+type App = Hono<{ Bindings: Env; Variables: Variables }>;
+type Row = Record<string, unknown>;
 
 const app: App = new Hono();
 
@@ -26,30 +23,29 @@ app.use('*', async (c, next) => {
 
 app.get('/health', (c) => c.json({ status: 'ok', service: 'neko-api', timestamp: new Date().toISOString() }));
 
-app.get('/health/ready', async (c) => withDb(c.env, async (db) => {
+app.get('/health/ready', async (c) => {
   try {
-    await db.execute(sql`select 1`);
-    return c.json({ status: 'ok', service: 'neko-api', dependencies: { postgres: 'ok', redis: 'not-required-on-worker' }, timestamp: new Date().toISOString() });
+    await c.env.DB.prepare('SELECT 1 AS ok').first();
+    return c.json({ status: 'ok', service: 'neko-api', dependencies: { d1: 'ok', auth: 'local-worker' }, timestamp: new Date().toISOString() });
   } catch {
-    return c.json({ status: 'degraded', service: 'neko-api', dependencies: { postgres: 'error', redis: 'not-required-on-worker' }, timestamp: new Date().toISOString() }, 503);
+    return c.json({ status: 'degraded', service: 'neko-api', dependencies: { d1: 'error', auth: 'local-worker' }, timestamp: new Date().toISOString() }, 503);
   }
-}));
+});
 
-app.get('/v1/app-manifest', async (c) => withDb(c.env, async (db) => {
-  const [row] = await db.select().from(schema.appConfig).where(eq(schema.appConfig.id, 1)).limit(1);
-  const payload = (row?.payload ?? {}) as Record<string, unknown>;
-  const ads = isAdsConfig(payload.ads) ? payload.ads : defaultAds();
-  const mode = row?.mode ?? c.env.APP_MODE ?? 'streaming';
+app.get('/v1/app-manifest', async (c) => {
+  const row = await first<Row>(c.env.DB, 'SELECT version, mode, payload FROM app_config WHERE id = 1');
+  const payload = parseObject(row?.payload);
+  const mode = row?.mode === 'news' ? 'news' : 'streaming';
   return c.json({
     schemaVersion: 1,
-    configVersion: row?.version ?? 1,
+    configVersion: Number(row?.version ?? 1),
     mode,
     webAppUrl: c.env.WEB_APP_URL,
     navigation: mode === 'news' ? newsNavigation() : streamingNavigation(),
     features: { player: mode === 'streaming', downloads: false, notifications: true, news: mode === 'news' },
-    ads
+    ads: isAdsConfig(payload.ads) ? payload.ads : defaultAds()
   }, 200, { 'Cache-Control': 'no-store' });
-}));
+});
 
 app.get('/v1/app-update/android', (c) => {
   const versionCode = Number(c.env.ANDROID_LATEST_VERSION_CODE);
@@ -62,114 +58,153 @@ app.get('/v1/app-update/android', (c) => {
   return c.json({ platform: 'android', channel: 'direct', versionCode, versionName, apkUrl, sha256, required: c.env.ANDROID_UPDATE_REQUIRED === 'true' }, 200, { 'Cache-Control': 'no-store' });
 });
 
-app.get('/v1/catalog/anime', async (c) => withDb(c.env, async (db) => {
-  const conditions = [];
+app.get('/v1/catalog/anime', async (c) => {
+  const conditions: string[] = [];
+  const bindings: unknown[] = [];
   const letter = c.req.query('letter');
-  const query = c.req.query('q');
+  const query = c.req.query('q')?.trim();
   const limit = clampInt(c.req.query('limit'), 50, 1, 100);
-  if (letter && /^[A-Z]$/i.test(letter)) conditions.push(ilike(schema.anime.title, `${letter}%`));
-  if (query?.trim()) {
-    const q = `%${query.trim()}%`;
-    conditions.push(or(ilike(schema.anime.title, q), ilike(schema.anime.titleEnglish, q), ilike(schema.anime.titleRomaji, q))!);
-  }
-  const items = await db.select({ id: schema.anime.id, slug: schema.anime.slug, title: schema.anime.title, year: schema.anime.year, type: schema.anime.type, status: schema.anime.status, genres: schema.anime.genres, scoreBasisPoints: schema.anime.scoreBasisPoints }).from(schema.anime).where(conditions.length ? and(...conditions) : undefined).orderBy(asc(schema.anime.title)).limit(limit);
-  return c.json({ items, count: items.length });
-}));
+  if (letter && /^[A-Z]$/i.test(letter)) { conditions.push('title LIKE ? COLLATE NOCASE'); bindings.push(`${letter}%`); }
+  if (query) { conditions.push('(title LIKE ? COLLATE NOCASE OR title_english LIKE ? COLLATE NOCASE OR title_romaji LIKE ? COLLATE NOCASE)'); bindings.push(`%${query}%`, `%${query}%`, `%${query}%`); }
+  const rows = await all<Row>(c.env.DB, `SELECT id, slug, title, year, type, status, genres, score_basis_points FROM anime${whereClause(conditions)} ORDER BY title COLLATE NOCASE LIMIT ?`, ...bindings, limit);
+  return c.json({ items: rows.map(animeSummary), count: rows.length });
+});
 
-app.get('/v1/catalog/anime/:slug', async (c) => withDb(c.env, async (db) => {
-  const [item] = await db.select().from(schema.anime).where(eq(schema.anime.slug, c.req.param('slug'))).limit(1);
+app.get('/v1/catalog/anime/:slug', async (c) => {
+  const item = await first<Row>(c.env.DB, 'SELECT * FROM anime WHERE slug = ?', c.req.param('slug'));
   if (!item) throw new HTTPException(404, { message: 'Anime não encontrado' });
   const [externalIds, seasons] = await Promise.all([
-    db.select({ provider: schema.animeExternalIds.provider, externalId: schema.animeExternalIds.externalId }).from(schema.animeExternalIds).where(eq(schema.animeExternalIds.animeId, item.id)),
-    db.select().from(schema.animeSeasons).where(eq(schema.animeSeasons.animeId, item.id)).orderBy(asc(schema.animeSeasons.number))
+    all<Row>(c.env.DB, 'SELECT provider, external_id FROM anime_external_ids WHERE anime_id = ?', item.id),
+    all<Row>(c.env.DB, 'SELECT * FROM anime_seasons WHERE anime_id = ? ORDER BY number', item.id)
   ]);
-  return c.json({ ...item, externalIds, seasons });
-}));
+  return c.json({ ...animeDetail(item), externalIds: externalIds.map((row) => ({ provider: String(row.provider), externalId: String(row.external_id) })), seasons: seasons.map(season) });
+});
 
-app.get('/v1/catalog/seasons/:seasonId/episodes', async (c) => withDb(c.env, async (db) => {
+app.get('/v1/catalog/seasons/:seasonId/episodes', async (c) => {
   const seasonId = c.req.param('seasonId');
-  const offset = Math.max(clampInt(c.req.query('offset'), 0, 0, 1_000_000), 0);
+  const offset = clampInt(c.req.query('offset'), 0, 0, 1_000_000);
   const limit = clampInt(c.req.query('limit'), 10, 1, 50);
-  const [season] = await db.select().from(schema.animeSeasons).where(eq(schema.animeSeasons.id, seasonId)).limit(1);
-  if (!season) throw new HTTPException(404, { message: 'Temporada não encontrada' });
-  const [items, countRows] = await Promise.all([
-    db.select().from(schema.episodes).where(eq(schema.episodes.seasonId, seasonId)).orderBy(asc(schema.episodes.number)).offset(offset).limit(limit),
-    db.select({ count: sql<number>`count(*)::int` }).from(schema.episodes).where(eq(schema.episodes.seasonId, seasonId))
+  const seasonRow = await first<Row>(c.env.DB, 'SELECT * FROM anime_seasons WHERE id = ?', seasonId);
+  if (!seasonRow) throw new HTTPException(404, { message: 'Temporada não encontrada' });
+  const [rows, count] = await Promise.all([
+    all<Row>(c.env.DB, 'SELECT * FROM episodes WHERE season_id = ? ORDER BY number LIMIT ? OFFSET ?', seasonId, limit, offset),
+    first<Row>(c.env.DB, 'SELECT COUNT(*) AS count FROM episodes WHERE season_id = ?', seasonId)
   ]);
-  return c.json({ season, items, offset, limit, total: countRows[0]?.count ?? 0 });
-}));
+  return c.json({ season: season(seasonRow), items: rows.map(episode), offset, limit, total: Number(count?.count ?? 0) });
+});
 
-app.get('/v1/catalog/episodes/:episodeId/playback', async (c) => withDb(c.env, async (db) => {
-  const episodeId = c.req.param('episodeId');
-  const [episode] = await db.select().from(schema.episodes).where(eq(schema.episodes.id, episodeId)).limit(1);
-  if (!episode) throw new HTTPException(404, { message: 'Episódio não encontrado' });
-  const sources = await db.select({ id: schema.episodeSources.id, url: schema.episodeSources.url, mimeType: schema.episodeSources.mimeType, label: schema.episodeSources.label, headers: schema.episodeSources.headers, isDefault: schema.episodeSources.isDefault }).from(schema.episodeSources).where(eq(schema.episodeSources.episodeId, episodeId)).orderBy(desc(schema.episodeSources.isDefault), asc(schema.episodeSources.label));
-  if (!sources.length) throw new HTTPException(404, { message: 'Fonte de reprodução indisponível' });
-  return c.json({ episode: { id: episode.id, number: episode.number, title: episode.title, durationSeconds: episode.durationSeconds }, sources });
-}));
+app.get('/v1/catalog/episodes/:episodeId/playback', async (c) => {
+  const item = await first<Row>(c.env.DB, 'SELECT * FROM episodes WHERE id = ?', c.req.param('episodeId'));
+  if (!item) throw new HTTPException(404, { message: 'Episódio não encontrado' });
+  const rows = await all<Row>(c.env.DB, 'SELECT id, url, mime_type, label, headers, is_default FROM episode_sources WHERE episode_id = ? ORDER BY is_default DESC, label COLLATE NOCASE', item.id);
+  if (!rows.length) throw new HTTPException(404, { message: 'Fonte de reprodução indisponível' });
+  return c.json({ episode: { id: item.id, number: item.number, title: item.title, durationSeconds: item.duration_seconds }, sources: rows.map(source) });
+});
 
-app.get('/v1/news', async (c) => withDb(c.env, async (db) => {
-  const conditions = [];
-  const query = c.req.query('q');
-  const category = c.req.query('category');
+app.get('/v1/news', async (c) => {
+  const conditions: string[] = [];
+  const bindings: unknown[] = [];
+  const query = c.req.query('q')?.trim();
+  const category = c.req.query('category')?.trim();
   const limit = clampInt(c.req.query('limit'), 30, 1, 100);
-  if (query?.trim()) { const q = `%${query.trim()}%`; conditions.push(or(ilike(schema.newsArticles.title, q), ilike(schema.newsArticles.summary, q), ilike(schema.newsArticles.sourceName, q))!); }
-  if (category?.trim()) conditions.push(eq(schema.newsArticles.category, category.trim()));
-  const items = await db.select({ id: schema.newsArticles.id, slug: schema.newsArticles.slug, title: schema.newsArticles.title, summary: schema.newsArticles.summary, category: schema.newsArticles.category, sourceName: schema.newsArticles.sourceName, sourceUrl: schema.newsArticles.sourceUrl, imageUrl: schema.newsArticles.imageUrl, imageAllowed: schema.newsArticles.imageAllowed, publishedAt: schema.newsArticles.publishedAt }).from(schema.newsArticles).where(conditions.length ? and(...conditions) : undefined).orderBy(desc(schema.newsArticles.publishedAt)).limit(limit);
-  return c.json({ items: items.map((item) => ({ ...item, imageUrl: item.imageAllowed ? item.imageUrl : null })), count: items.length });
-}));
+  if (query) { conditions.push('(title LIKE ? COLLATE NOCASE OR summary LIKE ? COLLATE NOCASE OR source_name LIKE ? COLLATE NOCASE)'); bindings.push(`%${query}%`, `%${query}%`, `%${query}%`); }
+  if (category) { conditions.push('category = ?'); bindings.push(category); }
+  const rows = await all<Row>(c.env.DB, `SELECT id, slug, title, summary, category, source_name, source_url, image_url, image_allowed, published_at FROM news_articles${whereClause(conditions)} ORDER BY published_at DESC LIMIT ?`, ...bindings, limit);
+  return c.json({ items: rows.map(newsArticle), count: rows.length });
+});
 
-app.get('/v1/news/:slug', async (c) => withDb(c.env, async (db) => {
-  const [item] = await db.select().from(schema.newsArticles).where(eq(schema.newsArticles.slug, c.req.param('slug'))).limit(1);
-  if (!item) throw new HTTPException(404, { message: 'Notícia não encontrada' });
-  return c.json({ ...item, imageUrl: item.imageAllowed ? item.imageUrl : null });
-}));
+app.get('/v1/news/:slug', async (c) => {
+  const row = await first<Row>(c.env.DB, 'SELECT * FROM news_articles WHERE slug = ?', c.req.param('slug'));
+  if (!row) throw new HTTPException(404, { message: 'Notícia não encontrada' });
+  return c.json(newsArticle(row));
+});
 
-const requireAuth = async (c: Context<{ Bindings: Env; Variables: { userId: string; userEmail?: string } }>, next: Next) => {
+app.post('/v1/auth/register', async (c) => {
+  const body = await readCredentials(c);
+  const existing = await first<Row>(c.env.DB, 'SELECT id FROM users WHERE email = ? COLLATE NOCASE', body.email);
+  if (existing) throw new HTTPException(409, { message: 'E-mail já cadastrado' });
+  const salt = randomToken(16);
+  const passwordHash = await hashPassword(body.password, salt);
+  const userId = crypto.randomUUID();
+  await c.env.DB.prepare('INSERT INTO users (id, email, password_salt, password_hash) VALUES (?, ?, ?, ?)').bind(userId, body.email, salt, passwordHash).run();
+  return c.json(await createSession(c.env.DB, userId, body.email), 201);
+});
+
+app.post('/v1/auth/login', async (c) => {
+  const body = await readCredentials(c);
+  const user = await first<Row>(c.env.DB, 'SELECT id, email, password_salt, password_hash FROM users WHERE email = ? COLLATE NOCASE', body.email);
+  if (!user || !(await verifyPassword(body.password, String(user.password_salt), String(user.password_hash)))) throw new HTTPException(401, { message: 'E-mail ou senha inválidos' });
+  return c.json(await createSession(c.env.DB, String(user.id), String(user.email)));
+});
+
+const requireAuth = async (c: Context<{ Bindings: Env; Variables: Variables }>, next: Next) => {
   const match = /^Bearer\s+([^\s]+)$/i.exec(c.req.header('Authorization') ?? '');
   const token = match?.[1] ?? '';
-  if (!token || token.length > 8192 || !c.env.SUPABASE_URL || !c.env.SUPABASE_PUBLISHABLE_KEY) throw new HTTPException(401, { message: 'Autenticação necessária' });
-  let response: Response;
-  try { response = await fetch(new URL('/auth/v1/user', c.env.SUPABASE_URL), { headers: { apikey: c.env.SUPABASE_PUBLISHABLE_KEY, authorization: `Bearer ${token}`, accept: 'application/json' } }); }
-  catch { throw new HTTPException(503, { message: 'Serviço de autenticação indisponível' }); }
-  if (!response.ok) throw new HTTPException(401, { message: 'Sessão inválida ou expirada' });
-  const user = await response.json() as { id?: string; email?: string };
-  if (!user.id || !/^[0-9a-f-]{36}$/i.test(user.id)) throw new HTTPException(401, { message: 'Usuário inválido' });
-  c.set('userId', user.id); c.set('userEmail', user.email); await next();
+  if (!token || token.length > 512) throw new HTTPException(401, { message: 'Autenticação necessária' });
+  const tokenHash = await digest(token);
+  const user = await first<Row>(c.env.DB, `SELECT users.id, users.email FROM sessions INNER JOIN users ON users.id = sessions.user_id WHERE sessions.token_hash = ? AND julianday(sessions.expires_at) > julianday('now')`, tokenHash);
+  if (!user) throw new HTTPException(401, { message: 'Sessão inválida ou expirada' });
+  c.set('userId', String(user.id)); c.set('userEmail', String(user.email)); c.set('tokenHash', tokenHash); await next();
 };
 
+app.use('/v1/auth/logout', requireAuth);
+app.post('/v1/auth/logout', async (c) => { await c.env.DB.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(c.get('tokenHash')).run(); return c.json({ ok: true }); });
 app.use('/v1/me', requireAuth);
 app.use('/v1/me/*', requireAuth);
 
 app.get('/v1/me', (c) => c.json({ id: c.get('userId'), email: c.get('userEmail') ?? null }));
-app.get('/v1/me/library', async (c) => withDb(c.env, async (db) => c.json(await db.select({ animeId: schema.anime.id, slug: schema.anime.slug, title: schema.anime.title, year: schema.anime.year, genres: schema.anime.genres, status: schema.userLibrary.status, updatedAt: schema.userLibrary.updatedAt }).from(schema.userLibrary).innerJoin(schema.anime, eq(schema.userLibrary.animeId, schema.anime.id)).where(eq(schema.userLibrary.userId, c.get('userId'))).orderBy(desc(schema.userLibrary.updatedAt)))));
-app.put('/v1/me/library/:animeId', async (c) => withDb(c.env, async (db) => {
+app.get('/v1/me/library', async (c) => {
+  const rows = await all<Row>(c.env.DB, `SELECT anime.id AS anime_id, anime.slug, anime.title, anime.year, anime.genres, user_library.status, user_library.updated_at FROM user_library INNER JOIN anime ON anime.id = user_library.anime_id WHERE user_library.user_id = ? ORDER BY user_library.updated_at DESC`, c.get('userId'));
+  return c.json(rows.map((row) => ({ animeId: row.anime_id, slug: row.slug, title: row.title, year: row.year, genres: parseArray(row.genres), status: row.status, updatedAt: row.updated_at })));
+});
+app.put('/v1/me/library/:animeId', async (c) => {
   const body = await c.req.json<{ status?: string }>(); const status = body.status ?? 'watchlist';
   if (!['watchlist', 'watching', 'completed', 'paused', 'dropped'].includes(status)) throw new HTTPException(400, { message: 'Status da biblioteca inválido' });
-  const [exists] = await db.select({ id: schema.anime.id }).from(schema.anime).where(eq(schema.anime.id, c.req.param('animeId'))).limit(1); if (!exists) throw new HTTPException(404, { message: 'Anime não encontrado' });
-  const [row] = await db.insert(schema.userLibrary).values({ userId: c.get('userId'), animeId: exists.id, status, updatedAt: new Date() }).onConflictDoUpdate({ target: [schema.userLibrary.userId, schema.userLibrary.animeId], set: { status, updatedAt: new Date() } }).returning(); return c.json(row);
-}));
-app.delete('/v1/me/library/:animeId', async (c) => withDb(c.env, async (db) => { await db.delete(schema.userLibrary).where(and(eq(schema.userLibrary.userId, c.get('userId')), eq(schema.userLibrary.animeId, c.req.param('animeId')))); return c.json({ ok: true }); }));
-app.get('/v1/me/continue-watching', async (c) => withDb(c.env, async (db) => c.json(await db.select({ animeId: schema.anime.id, slug: schema.anime.slug, title: schema.anime.title, seasonNumber: schema.animeSeasons.number, episodeId: schema.episodes.id, episodeNumber: schema.episodes.number, episodeTitle: schema.episodes.title, positionSeconds: schema.userEpisodeProgress.positionSeconds, durationSeconds: schema.userEpisodeProgress.durationSeconds, completed: schema.userEpisodeProgress.completed, updatedAt: schema.userEpisodeProgress.updatedAt }).from(schema.userEpisodeProgress).innerJoin(schema.episodes, eq(schema.userEpisodeProgress.episodeId, schema.episodes.id)).innerJoin(schema.animeSeasons, eq(schema.episodes.seasonId, schema.animeSeasons.id)).innerJoin(schema.anime, eq(schema.animeSeasons.animeId, schema.anime.id)).where(and(eq(schema.userEpisodeProgress.userId, c.get('userId')), eq(schema.userEpisodeProgress.completed, false))).orderBy(desc(schema.userEpisodeProgress.updatedAt)).limit(20))));
-app.put('/v1/me/progress/:episodeId', async (c) => withDb(c.env, async (db) => {
+  const exists = await first<Row>(c.env.DB, 'SELECT id FROM anime WHERE id = ?', c.req.param('animeId')); if (!exists) throw new HTTPException(404, { message: 'Anime não encontrado' });
+  const id = crypto.randomUUID(); await c.env.DB.prepare(`INSERT INTO user_library (id, user_id, anime_id, status) VALUES (?, ?, ?, ?) ON CONFLICT(user_id, anime_id) DO UPDATE SET status = excluded.status, updated_at = CURRENT_TIMESTAMP`).bind(id, c.get('userId'), exists.id, status).run();
+  return c.json({ ok: true, animeId: exists.id, status });
+});
+app.delete('/v1/me/library/:animeId', async (c) => { await c.env.DB.prepare('DELETE FROM user_library WHERE user_id = ? AND anime_id = ?').bind(c.get('userId'), c.req.param('animeId')).run(); return c.json({ ok: true }); });
+app.get('/v1/me/continue-watching', async (c) => {
+  const rows = await all<Row>(c.env.DB, `SELECT anime.id AS anime_id, anime.slug, anime.title, anime_seasons.number AS season_number, episodes.id AS episode_id, episodes.number AS episode_number, episodes.title AS episode_title, user_episode_progress.position_seconds, user_episode_progress.duration_seconds, user_episode_progress.completed, user_episode_progress.updated_at FROM user_episode_progress INNER JOIN episodes ON episodes.id = user_episode_progress.episode_id INNER JOIN anime_seasons ON anime_seasons.id = episodes.season_id INNER JOIN anime ON anime.id = anime_seasons.anime_id WHERE user_episode_progress.user_id = ? AND user_episode_progress.completed = 0 ORDER BY user_episode_progress.updated_at DESC LIMIT 20`, c.get('userId'));
+  return c.json(rows.map((row) => ({ animeId: row.anime_id, slug: row.slug, title: row.title, seasonNumber: row.season_number, episodeId: row.episode_id, episodeNumber: row.episode_number, episodeTitle: row.episode_title, positionSeconds: row.position_seconds, durationSeconds: row.duration_seconds, completed: Boolean(row.completed), updatedAt: row.updated_at })));
+});
+app.put('/v1/me/progress/:episodeId', async (c) => {
   const body = await c.req.json<{ positionSeconds: number; durationSeconds: number }>(); const positionSeconds = Math.max(0, Math.floor(body.positionSeconds)); const durationSeconds = Math.max(0, Math.floor(body.durationSeconds));
   if (!Number.isFinite(positionSeconds) || !Number.isFinite(durationSeconds) || positionSeconds > 604800 || durationSeconds > 604800 || (durationSeconds > 0 && positionSeconds > durationSeconds + 30)) throw new HTTPException(400, { message: 'Progresso inválido' });
-  const [exists] = await db.select({ id: schema.episodes.id }).from(schema.episodes).where(eq(schema.episodes.id, c.req.param('episodeId'))).limit(1); if (!exists) throw new HTTPException(404, { message: 'Episódio não encontrado' });
-  const completed = durationSeconds > 0 && positionSeconds / durationSeconds >= 0.9;
-  const [row] = await db.insert(schema.userEpisodeProgress).values({ userId: c.get('userId'), episodeId: exists.id, positionSeconds, durationSeconds, completed, updatedAt: new Date() }).onConflictDoUpdate({ target: [schema.userEpisodeProgress.userId, schema.userEpisodeProgress.episodeId], set: { positionSeconds, durationSeconds, completed, updatedAt: new Date() } }).returning(); return c.json(row);
-}));
-app.get('/v1/me/saved-news', async (c) => withDb(c.env, async (db) => c.json(await db.select({ id: schema.newsArticles.id, slug: schema.newsArticles.slug, title: schema.newsArticles.title, category: schema.newsArticles.category, sourceName: schema.newsArticles.sourceName, publishedAt: schema.newsArticles.publishedAt }).from(schema.userSavedNews).innerJoin(schema.newsArticles, eq(schema.userSavedNews.articleId, schema.newsArticles.id)).where(eq(schema.userSavedNews.userId, c.get('userId'))).orderBy(desc(schema.userSavedNews.createdAt)))));
-app.put('/v1/me/saved-news/:articleId', async (c) => withDb(c.env, async (db) => { const [article] = await db.select({ id: schema.newsArticles.id }).from(schema.newsArticles).where(eq(schema.newsArticles.id, c.req.param('articleId'))).limit(1); if (!article) throw new HTTPException(404, { message: 'Notícia não encontrada' }); await db.insert(schema.userSavedNews).values({ userId: c.get('userId'), articleId: article.id }).onConflictDoNothing(); return c.json({ ok: true }); }));
-app.delete('/v1/me/saved-news/:articleId', async (c) => withDb(c.env, async (db) => { await db.delete(schema.userSavedNews).where(and(eq(schema.userSavedNews.userId, c.get('userId')), eq(schema.userSavedNews.articleId, c.req.param('articleId')))); return c.json({ ok: true }); }));
+  const exists = await first<Row>(c.env.DB, 'SELECT id FROM episodes WHERE id = ?', c.req.param('episodeId')); if (!exists) throw new HTTPException(404, { message: 'Episódio não encontrado' });
+  const completed = durationSeconds > 0 && positionSeconds / durationSeconds >= 0.9 ? 1 : 0; const id = crypto.randomUUID();
+  await c.env.DB.prepare(`INSERT INTO user_episode_progress (id, user_id, episode_id, position_seconds, duration_seconds, completed) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(user_id, episode_id) DO UPDATE SET position_seconds = excluded.position_seconds, duration_seconds = excluded.duration_seconds, completed = excluded.completed, updated_at = CURRENT_TIMESTAMP`).bind(id, c.get('userId'), exists.id, positionSeconds, durationSeconds, completed).run();
+  return c.json({ ok: true, episodeId: exists.id, positionSeconds, durationSeconds, completed: Boolean(completed) });
+});
+app.get('/v1/me/saved-news', async (c) => {
+  const rows = await all<Row>(c.env.DB, `SELECT news_articles.id, news_articles.slug, news_articles.title, news_articles.category, news_articles.source_name, news_articles.published_at FROM user_saved_news INNER JOIN news_articles ON news_articles.id = user_saved_news.article_id WHERE user_saved_news.user_id = ? ORDER BY user_saved_news.created_at DESC`, c.get('userId'));
+  return c.json(rows.map((row) => ({ id: row.id, slug: row.slug, title: row.title, category: row.category, sourceName: row.source_name, publishedAt: row.published_at })));
+});
+app.put('/v1/me/saved-news/:articleId', async (c) => { const article = await first<Row>(c.env.DB, 'SELECT id FROM news_articles WHERE id = ?', c.req.param('articleId')); if (!article) throw new HTTPException(404, { message: 'Notícia não encontrada' }); await c.env.DB.prepare('INSERT OR IGNORE INTO user_saved_news (id, user_id, article_id) VALUES (?, ?, ?)').bind(crypto.randomUUID(), c.get('userId'), article.id).run(); return c.json({ ok: true }); });
+app.delete('/v1/me/saved-news/:articleId', async (c) => { await c.env.DB.prepare('DELETE FROM user_saved_news WHERE user_id = ? AND article_id = ?').bind(c.get('userId'), c.req.param('articleId')).run(); return c.json({ ok: true }); });
 
 app.onError((error, c) => { if (error instanceof HTTPException) return c.json({ message: error.message }, error.status); console.error(error); return c.json({ message: 'Erro interno da API' }, 500); });
 
-async function withDb<T>(env: Env, action: (db: Db) => Promise<T>): Promise<T> {
-  const pool = new Pool({ connectionString: env.HYPERDRIVE.connectionString, max: 5, connectionTimeoutMillis: 5_000 });
-  const db = drizzle(pool, { schema });
-  try { return await action(db); } finally { await pool.end(); }
-}
-
+async function all<T extends Row>(db: D1Database, query: string, ...bindings: unknown[]) { return (await db.prepare(query).bind(...bindings).all<T>()).results; }
+async function first<T extends Row>(db: D1Database, query: string, ...bindings: unknown[]) { return await db.prepare(query).bind(...bindings).first<T>(); }
+function whereClause(conditions: string[]) { return conditions.length ? ` WHERE ${conditions.join(' AND ')}` : ''; }
+function parseArray(value: unknown): string[] { try { const parsed = JSON.parse(String(value ?? '[]')); return Array.isArray(parsed) ? parsed.map(String) : []; } catch { return []; } }
+function parseObject(value: unknown): Record<string, unknown> { try { const parsed = JSON.parse(String(value ?? '{}')); return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {}; } catch { return {}; } }
+function animeSummary(row: Row) { return { id: row.id, slug: row.slug, title: row.title, year: row.year, type: row.type, status: row.status, genres: parseArray(row.genres), scoreBasisPoints: row.score_basis_points }; }
+function animeDetail(row: Row) { return { ...animeSummary(row), titleEnglish: row.title_english, titleRomaji: row.title_romaji, titleNative: row.title_native, synopsis: row.synopsis }; }
+function season(row: Row) { return { id: row.id, animeId: row.anime_id, number: row.number, title: row.title, episodesCount: row.episodes_count }; }
+function episode(row: Row) { return { id: row.id, seasonId: row.season_id, number: row.number, title: row.title, durationSeconds: row.duration_seconds, airedAt: row.aired_at }; }
+function source(row: Row) { return { id: row.id, url: row.url, mimeType: row.mime_type, label: row.label, headers: parseObject(row.headers), isDefault: Boolean(row.is_default) }; }
+function newsArticle(row: Row) { return { id: row.id, slug: row.slug, title: row.title, summary: row.summary, category: row.category, sourceName: row.source_name, sourceUrl: row.source_url, imageUrl: row.image_allowed ? row.image_url : null, imageAllowed: Boolean(row.image_allowed), publishedAt: row.published_at }; }
+async function readCredentials(c: Context) { const body = await c.req.json<{ email?: string; password?: string }>(); const email = body.email?.trim().toLowerCase() ?? ''; const password = body.password ?? ''; if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 8 || password.length > 256) throw new HTTPException(400, { message: 'E-mail ou senha inválidos' }); return { email, password }; }
+async function createSession(db: D1Database, userId: string, email: string) { const token = randomToken(32); const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(); await db.prepare('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)').bind(await digest(token), userId, expiresAt).run(); return { session: { access_token: token, token_type: 'bearer', expires_in: 30 * 24 * 60 * 60, user: { id: userId, email } } }; }
+function randomToken(size: number) { const bytes = new Uint8Array(size); crypto.getRandomValues(bytes); return bytesToBase64Url(bytes); }
+function bytesToBase64Url(bytes: Uint8Array) { let binary = ''; bytes.forEach((value) => { binary += String.fromCharCode(value); }); return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+function base64ToBytes(value: string) { const normalized = value.replace(/-/g, '+').replace(/_/g, '/'); const binary = atob(normalized); return Uint8Array.from(binary, (character) => character.charCodeAt(0)); }
+async function digest(value: string) { const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)); return bytesToBase64Url(new Uint8Array(hash)); }
+async function hashPassword(password: string, salt: string) { const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']); const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: base64ToBytes(salt), iterations: 100_000, hash: 'SHA-256' }, key, 256); return bytesToBase64Url(new Uint8Array(bits)); }
+async function verifyPassword(password: string, salt: string, expected: string) { return (await hashPassword(password, salt)) === expected; }
 function clampInt(value: string | undefined, fallback: number, min: number, max: number) { const parsed = Number(value); return Number.isInteger(parsed) ? Math.min(Math.max(parsed, min), max) : fallback; }
 function defaultAds() { return { enabled: false, engine: 'max' as const, banner: { enabled: false }, appOpen: { enabled: false, minIntervalMinutes: 60, skipFirstOpens: 3 }, interstitial: { enabled: false, minIntervalMinutes: 30, maxPerSession: 2 } }; }
 function isAdsConfig(value: unknown): value is ReturnType<typeof defaultAds> { return Boolean(value && typeof value === 'object' && 'enabled' in value && 'banner' in value && 'appOpen' in value && 'interstitial' in value); }

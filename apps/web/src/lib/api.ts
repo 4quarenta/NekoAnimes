@@ -1,7 +1,6 @@
 import { AppManifestSchema, type AppManifest } from '@neko/contracts';
-import { supabase } from './supabase';
-
-const API_URL = import.meta.env.VITE_API_BASE_URL ?? import.meta.env.VITE_API_URL ?? 'http://localhost:3000';
+import { getAccessToken } from './auth';
+import { API_URL } from './config';
 
 async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, { cache: 'no-store' });
@@ -10,8 +9,7 @@ async function getJson<T>(path: string): Promise<T> {
 }
 
 async function authJson<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
+  const token = getAccessToken();
   if (!token) throw new Error('AUTH_REQUIRED');
   const response = await fetch(`${API_URL}${path}`, {
     ...init,

@@ -1,18 +1,17 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import type { Session } from '@supabase/supabase-js';
 import { fetchContinueWatching, fetchLibrary } from '../lib/api';
-import { supabase } from '../lib/supabase';
+import { auth, type AuthSession } from '../lib/auth';
 import { AppScreen, EmptyState, Eyebrow, ScreenHeader, Section, TextRow } from '../components/AppScreen';
 
 export function LibraryPage() {
   const navigate = useNavigate();
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<AuthSession | null>(null);
 
   useEffect(() => {
-    void supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data } = supabase.auth.onAuthStateChange((_event, next) => setSession(next));
+    void auth.getSession().then(({ data }) => setSession(data.session));
+    const { data } = auth.onAuthStateChange((_event, next) => setSession(next));
     return () => data.subscription.unsubscribe();
   }, []);
 

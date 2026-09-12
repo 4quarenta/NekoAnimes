@@ -1,71 +1,121 @@
-# NekoAnimes staging
+# NekoAnimes staging — Cloudflare-only
 
-This document records the isolated staging topology. It does not contain Supabase secrets, Cloudflare tokens, admin keys, or signing material.
+Staging é isolado do SICC, SnapGym e ConcursoMestre. Esta topologia usa somente
+recursos Cloudflare e não exige Supabase. Nenhum segredo é versionado.
 
-## Resources
+## Recursos provisionados
 
-- Pages: `nekoanimes-staging` → `https://nekoanimes-staging.pages.dev` (project id `7e3d03c6-6809-4d8f-a135-d8668ca502e3`)
-- Worker: `nekoanimes-api-staging` → URL is recorded after the first Worker deployment
-- R2: `nekoanimes-releases-staging` (bucket id `d7e4841d19c54db9bbeedcdc3af062c1`)
-- R2 managed public domain: `https://pub-d7e4841d19c54db9bbeedcdc3af062c1.r2.dev` (enabled only for staging downloads)
-- PostgreSQL: dedicated Supabase project named `NekoAnimes` (must not be created in SICC)
-- Hyperdrive: dedicated config pointing only to the NekoAnimes PostgreSQL database
+- Pages: `nekoanimes-staging` — <https://nekoanimes-staging.pages.dev>
+  (project id `7e3d03c6-6809-4d8f-a135-d8668ca502e3`)
+- Worker: `nekoanimes-api-staging` —
+  <https://nekoanimes-api-staging.john-alleff01.workers.dev>
+- D1: `nekoanimes-staging-db` — database id
+  `b075bb90-a027-40de-8a28-b74f74192f2f`
+- R2: `nekoanimes-releases-staging` — bucket id
+  `d7e4841d19c54db9bbeedcdc3af062c1`
+- R2 público temporário: <https://pub-d7e4841d19c54db9bbeedcdc3af062c1.r2.dev>
 
-## Current provisioning blocker
+O Worker usa Hono e SQL nativo do D1. A API NestJS/Fastify original foi
+preservada para o runtime tradicional; o Worker staging é uma camada de
+adaptação isolada, porque o spike não justificou transportar NestJS/Fastify e
+Drizzle para Workers neste primeiro ciclo. O banco de staging é D1; PostgreSQL
+fica preservado para o runtime tradicional/produção.
 
-The connected Supabase account currently exposes only the `SICC` organization and
-its existing projects. NekoAnimes must not be placed there. Create the isolated
-organization/project manually before continuing:
+## Endpoints públicos
 
-1. Open the Supabase Dashboard and open the organization selector in the top-left.
-2. Choose `New organization` (the label may appear as `Create organization`).
-3. Name the organization `NekoAnimes` and select the Free plan.
-4. Inside that new organization, choose `New project`.
-5. Name the project `NekoAnimes`, select the Free plan, and choose `sa-east-1`
-   when available; do not enable paid add-ons.
-6. Return to this task so the new organization can be detected and the database,
-   migrations, Auth, and Hyperdrive can be configured automatically.
+- Health: <https://nekoanimes-api-staging.john-alleff01.workers.dev/health>
+- Readiness: <https://nekoanimes-api-staging.john-alleff01.workers.dev/health/ready>
+- Manifest: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/app-manifest>
+- Catálogo: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/catalog/anime>
+- Notícias: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/news>
+- Atualização Android: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/app-update/android>
 
-Do not select `SICC` or either of its existing projects during these steps.
+O endpoint de atualização permanece `503` até que um APK seja publicado no R2
+e as secrets `ANDROID_APK_URL` e `ANDROID_APK_SHA256` sejam configuradas.
 
-## GitHub configuration required
+## Banco e dados de teste
 
-Repository secrets:
+As migrations autoritativas de staging são:
 
-- `CLOUDFLARE_API_TOKEN` — scoped to Pages edit, Workers edit, R2 edit, and Hyperdrive read/edit as needed
-- `CLOUDFLARE_ACCOUNT_ID`
-- `NEKO_SUPABASE_URL`
-- `NEKO_SUPABASE_PUBLISHABLE_KEY`
-- `NEKO_ANDROID_APK_URL`
-- `NEKO_ANDROID_APK_SHA256`
+1. `apps/api-worker/migrations/0001_initial.sql`
+2. `apps/api-worker/migrations/0002_staging_seed.sql`
 
-Repository variable:
+O seed contém 5 animes, 6 temporadas, 23 episódios e 3 notícias. O catálogo
+não contém links de streaming piratas. Episódios sem fonte retornam erro
+controlado de fonte indisponível.
 
-- `NEKO_API_BASE_URL` — the deployed `https://nekoanimes-api-staging.<workers-subdomain>.workers.dev` URL
+O login de staging é local ao Worker, com usuários e sessões armazenados no D1.
+Ele é suficiente para testes do app, mas ainda não oferece e-mail de
+confirmação, recuperação de senha ou rate limiting de produção.
 
-The APK update URL and SHA are secrets in the deployment workflow because they are operational configuration; no GitHub token is shipped in the APK.
+## Deploy manual
 
-## Database setup
+Para a SPA, publique o diretório `apps/web/dist` no Pages (build command:
+`npm run build --workspace @neko/web`, output directory: `apps/web/dist`). O
+arquivo `apps/web/public/_redirects` mantém o fallback SPA para refresh em
+`/catalogo`, `/buscar`, `/anime/*`, `/conta`, `/lista` e rotas de notícias.
 
-Apply `apps/api/drizzle/0000_wakeful_vapor.sql`, then `apps/api/drizzle/0001_staging_security.sql`, then `apps/api/drizzle/seed-staging.sql` to the dedicated project. Verify the resulting tables and run Supabase security/performance advisors.
+Variáveis públicas do build web:
 
-Configure Supabase Auth with the Pages origin as the Site URL and allow the Pages origin plus its route paths as redirect URLs. Keep service-role credentials server-side and do not place them in Vite variables.
+- `VITE_API_BASE_URL=https://nekoanimes-api-staging.john-alleff01.workers.dev`
+- `VITE_APP_VERSION=1.0.0`
 
-## Deploy order
+Não há `VITE_SUPABASE_*` nesta arquitetura. Nunca colocar tokens de Cloudflare,
+credenciais de banco ou `service_role` no frontend.
 
-1. Create the isolated Supabase organization/project and record its project ref.
-2. Apply migrations and the clearly marked staging seed.
-3. Create a Hyperdrive config for that database and put its ID in `apps/api-worker/wrangler.jsonc`.
-4. Set GitHub secrets/variable and run `Deploy API staging`.
-5. Run `Deploy web staging`.
-6. Run `Android staging`; it uploads the APK and checksum to R2, stores a GitHub prerelease, and creates the staging artifact.
-7. Set `NEKO_ANDROID_APK_URL` and `NEKO_ANDROID_APK_SHA256` from the R2 object and redeploy the API.
+## APK, R2 e atualização
 
-## R2 object layout
+O workflow `Android staging` é manual e usa a variável de repositório
+`NEKO_API_BASE_URL`. Ele compila `:app:assembleDirectDebug` com:
+
+- `WEB_APP_URL=https://nekoanimes-staging.pages.dev`
+- `WEB_APP_ORIGIN=https://nekoanimes-staging.pages.dev`
+- `API_BASE_URL=https://nekoanimes-api-staging.john-alleff01.workers.dev`
+
+Publicação esperada:
 
 ```text
 android/v1.0.0/NekoAnimes-v1.0.0.apk
 android/v1.0.0/NekoAnimes-v1.0.0.apk.sha256
 ```
 
-The `r2.dev` URL is a staging convenience only. A custom download domain must be used before production.
+O workflow guarda o APK como artifact e cria a prerelease GitHub
+`v1.0.0-staging`; não é release de produção. Depois do upload, configure no
+Worker as secrets `ANDROID_APK_URL` e `ANDROID_APK_SHA256` e redeploy. A URL
+esperada do APK é:
+
+<https://pub-d7e4841d19c54db9bbeedcdc3af062c1.r2.dev/android/v1.0.0/NekoAnimes-v1.0.0.apk>
+
+O Android baixa o manifesto de atualização, compara `versionCode`, baixa o
+APK, valida SHA-256 e abre o instalador. A instalação de APK direto exige
+autorizar a fonte desconhecida no Android de teste.
+
+## GitHub Actions
+
+Os workflows são manuais (`workflow_dispatch`) ou limitados ao escopo de
+staging:
+
+- `deploy-web-staging.yml`
+- `deploy-api-staging.yml`
+- `android-staging.yml`
+
+Configure no repositório:
+
+- secret `CLOUDFLARE_API_TOKEN` com escopo apenas para este account e recursos
+  necessários;
+- secret `CLOUDFLARE_ACCOUNT_ID` com valor
+  `a534a9010287d6a1746db5ec722a6241`;
+- variável `NEKO_API_BASE_URL` com a URL do Worker acima.
+
+O token GitHub usado pela própria Action para a prerelease não é embutido no
+APK.
+
+## Limites conhecidos
+
+- O R2 `r2.dev` é temporário para teste; antes de produção deve ser trocado por
+  domínio customizado.
+- A autenticação local do Worker é staging-only; a API NestJS original continua
+  separada e não foi substituída.
+- Direct Release não é gerado automaticamente sem keystore definitiva.
+- O endpoint de update só fica operacional depois do primeiro APK publicado e
+  das duas secrets de checksum configuradas.

@@ -15,8 +15,6 @@ jobs:
       contents: read
     env:
       VITE_API_BASE_URL: ${{ vars.NEKO_API_BASE_URL }}
-      VITE_SUPABASE_URL: ${{ secrets.NEKO_SUPABASE_URL }}
-      VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEKO_SUPABASE_PUBLISHABLE_KEY }}
       VITE_APP_VERSION: 1.0.0
     steps:
       - uses: actions/checkout@v4
@@ -30,8 +28,6 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$VITE_API_BASE_URL"
-          test -n "$VITE_SUPABASE_URL"
-          test -n "$VITE_SUPABASE_PUBLISHABLE_KEY"
       - name: Build web staging
         run: npm run build:web
       - name: Deploy to Cloudflare Pages

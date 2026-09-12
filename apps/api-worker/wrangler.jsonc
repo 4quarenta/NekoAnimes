@@ -11,7 +11,7 @@
     "ANDROID_LATEST_VERSION_CODE": "10000",
     "ANDROID_LATEST_VERSION_NAME": "1.0.0"
   },
-  "hyperdrive": [
-    { "binding": "HYPERDRIVE", "id": "REPLACE_AFTER_SUPABASE_PROJECT_CREATION" }
+  "d1_databases": [
+    { "binding": "DB", "database_name": "nekoanimes-staging-db", "database_id": "b075bb90-a027-40de-8a28-b74f74192f2f", "migrations_dir": "migrations" }
   ]
 }
