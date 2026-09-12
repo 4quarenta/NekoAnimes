@@ -30,8 +30,9 @@ fica preservado para o runtime tradicional/produção.
 - Notícias: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/news>
 - Atualização Android: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/app-update/android>
 
-O endpoint de atualização permanece `503` até que um APK seja publicado no R2
-e as secrets `ANDROID_APK_URL` e `ANDROID_APK_SHA256` sejam configuradas.
+O endpoint de atualização está operacional em `200`, com o APK de staging
+publicado no R2 e as secrets `ANDROID_APK_URL` e `ANDROID_APK_SHA256`
+configuradas no Worker.
 
 ## Banco e dados de teste
 
@@ -80,9 +81,7 @@ android/v1.0.0/NekoAnimes-v1.0.0.apk.sha256
 ```
 
 O workflow guarda o APK como artifact e cria a prerelease GitHub
-`v1.0.0-staging`; não é release de produção. Depois do upload, configure no
-Worker as secrets `ANDROID_APK_URL` e `ANDROID_APK_SHA256` e redeploy. A URL
-esperada do APK é:
+`v1.0.0-staging`; não é release de produção. A URL pública atual do APK é:
 
 <https://pub-d7e4841d19c54db9bbeedcdc3af062c1.r2.dev/android/v1.0.0/NekoAnimes-v1.0.0.apk>
 
@@ -117,5 +116,5 @@ APK.
 - A autenticação local do Worker é staging-only; a API NestJS original continua
   separada e não foi substituída.
 - Direct Release não é gerado automaticamente sem keystore definitiva.
-- O endpoint de update só fica operacional depois do primeiro APK publicado e
-  das duas secrets de checksum configuradas.
+- O endpoint de update depende da publicação do APK e das duas secrets de
+  checksum; ambos já estão configurados no staging atual.
