@@ -581,7 +581,7 @@ function parseAnchors(html: string): HtmlAnchor[] {
   while ((match = pattern.exec(html)) !== null) {
     const href = match[1] ?? match[2] ?? match[3] ?? '';
     const text = stripTags(match[4] ?? '');
-    if (href && text) anchors.push({ href: decodeHtml(href), text });
+    if (href) anchors.push({ href: decodeHtml(href), text });
   }
   return anchors;
 }
