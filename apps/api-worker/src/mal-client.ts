@@ -3,6 +3,15 @@ import type { Context } from 'hono';
 const JIKAN_BASE_URL = 'https://api.jikan.moe/v4';
 const JIKAN_CACHE_ORIGIN = 'https://nekoanimes-jikan-cache.invalid';
 const FALLBACK_MAL_IDS = [5114, 52991, 9253, 21, 269, 11061];
+export const KNOWN_MAL_GENRES: MalGenre[] = [
+  { id: 1, name: 'Action', count: 0 }, { id: 2, name: 'Adventure', count: 0 }, { id: 5, name: 'Avant Garde', count: 0 },
+  { id: 46, name: 'Award Winning', count: 0 }, { id: 28, name: 'Boys Love', count: 0 }, { id: 4, name: 'Comedy', count: 0 },
+  { id: 8, name: 'Drama', count: 0 }, { id: 10, name: 'Fantasy', count: 0 }, { id: 26, name: 'Girls Love', count: 0 },
+  { id: 47, name: 'Gourmet', count: 0 }, { id: 14, name: 'Horror', count: 0 }, { id: 7, name: 'Mystery', count: 0 },
+  { id: 22, name: 'Romance', count: 0 }, { id: 24, name: 'Sci-Fi', count: 0 }, { id: 30, name: 'Sports', count: 0 },
+  { id: 37, name: 'Supernatural', count: 0 }, { id: 41, name: 'Suspense', count: 0 }, { id: 9, name: 'Ecchi', count: 0 },
+  { id: 49, name: 'Erotica', count: 0 }
+];
 
 export type MalAnimeSummary = {
   malId: number;
@@ -85,9 +94,18 @@ export async function fetchMalCatalog(c: Context, options: { query?: string; gen
     items = response.data.map(toMalSummary);
   } catch (error) {
     if (options.query || options.genreId || options.letter) throw error;
-    const fallback = await Promise.allSettled(FALLBACK_MAL_IDS.slice(0, options.limit).map((malId) => fetchMalAnime(c, malId)));
+    const fallback = await Promise.allSettled(FALLBACK_MAL_IDS.map((malId) => fetchMalAnime(c, malId)));
     items = fallback.flatMap((result) => result.status === 'fulfilled' ? [result.value] : []);
     if (!items.length) throw error;
+    if (options.query) {
+      const normalizedQuery = options.query.toLocaleLowerCase('pt-BR');
+      items = items.filter((item) => [item.title, item.titleEnglish, item.titleRomaji, item.titleNative].filter(Boolean).some((title) => title!.toLocaleLowerCase('pt-BR').includes(normalizedQuery)));
+    }
+    if (options.genreId) {
+      const genreName = KNOWN_MAL_GENRES.find((genre) => genre.id === options.genreId)?.name;
+      if (genreName) items = items.filter((item) => item.genres.includes(genreName));
+    }
+    items = items.slice(0, options.limit);
   }
   if (options.letter) {
     const normalized = options.letter.toLocaleLowerCase('pt-BR');
@@ -95,6 +113,7 @@ export async function fetchMalCatalog(c: Context, options: { query?: string; gen
   }
   return { items, count: items.length };
 }
+
 
 export async function fetchMalAnime(c: Context, malId: number): Promise<MalAnimeSummary> {
   const response = await fetchJikan<MalAnimePayload>(c, `/anime/${malId}/full`, 3600);

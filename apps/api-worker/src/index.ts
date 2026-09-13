@@ -17,10 +17,12 @@ import {
   searchProvider
 } from './server-providers';
 import {
+  MalApiError,
   fetchMalAnime,
   fetchMalCatalog,
   fetchMalEpisodes,
   fetchMalGenres,
+  KNOWN_MAL_GENRES,
   malSeasonSlug,
   parseMalSeasonSlug,
   parseMalSlug
@@ -163,10 +165,7 @@ app.get('/v1/catalog/genres', async (c) => {
     return c.json({ source: 'myanimelist', items: await fetchMalGenres(c) }, 200, { 'Cache-Control': 'public, max-age=86400' });
   } catch (error) {
     console.error('MAL genres unavailable, using staging catalog fallback', error);
-    const rows = await all<Row>(c.env.DB, 'SELECT genres FROM anime');
-    const counts = new Map<string, number>();
-    rows.flatMap((row) => parseArray(row.genres)).forEach((genre) => counts.set(genre, (counts.get(genre) ?? 0) + 1));
-    return c.json({ source: 'staging-db-fallback', items: [...counts.entries()].map(([name, count], index) => ({ id: -(index + 1), name, count })) });
+    return c.json({ source: 'myanimelist-known-fallback', items: KNOWN_MAL_GENRES });
   }
 });
 
@@ -494,7 +493,7 @@ app.get('/v1/me/saved-news', async (c) => {
 app.put('/v1/me/saved-news/:articleId', async (c) => { const article = await first<Row>(c.env.DB, 'SELECT id FROM news_articles WHERE id = ?', c.req.param('articleId')); if (!article) throw new HTTPException(404, { message: 'Notícia não encontrada' }); await c.env.DB.prepare('INSERT OR IGNORE INTO user_saved_news (id, user_id, article_id) VALUES (?, ?, ?)').bind(crypto.randomUUID(), c.get('userId'), article.id).run(); return c.json({ ok: true }); });
 app.delete('/v1/me/saved-news/:articleId', async (c) => { await c.env.DB.prepare('DELETE FROM user_saved_news WHERE user_id = ? AND article_id = ?').bind(c.get('userId'), c.req.param('articleId')).run(); return c.json({ ok: true }); });
 
-app.onError((error, c) => { if (error instanceof HTTPException) return c.json({ message: error.message }, error.status); console.error(error); return c.json({ message: 'Erro interno da API' }, 500); });
+app.onError((error, c) => { if (error instanceof HTTPException) return c.json({ message: error.message }, error.status); if (error instanceof MalApiError) return c.json({ message: error.message }, error.status === 429 ? 503 : 502); console.error(error); return c.json({ message: 'Erro interno da API' }, 500); });
 
 async function all<T extends Row>(db: D1Database, query: string, ...bindings: unknown[]) { return (await db.prepare(query).bind(...bindings).all<T>()).results; }
 async function first<T extends Row>(db: D1Database, query: string, ...bindings: unknown[]) { return await db.prepare(query).bind(...bindings).first<T>(); }
