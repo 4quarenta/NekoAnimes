@@ -28,6 +28,7 @@ type MappingEntry = {
   malId: number | null;
   anilistId: number | null;
   providers: Array<{ id: string; animeReference: string }>;
+  backdropUrl?: string | null;
 };
 
 const entries = (mappings.entries as MappingEntry[]) ?? [];
@@ -54,7 +55,7 @@ export async function resolveProviderIdentity(
   }
 
   let anilistId = mapping?.anilistId ?? null;
-  let backdropUrl: string | null = null;
+  let backdropUrl: string | null = mapping?.backdropUrl ?? null;
   if (mal?.malId) {
     try {
       const anilist = await fetchAniListByMalId(c, mal.malId);
