@@ -5,6 +5,7 @@ import android.content.res.Configuration
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
 import android.webkit.WebView
@@ -66,7 +67,7 @@ class MainActivity : ComponentActivity() {
                 val repository = remember { AppManifestRepository(applicationContext) }
                 var shellState by remember { mutableStateOf<ShellState>(ShellState.Loading) }
                 var retryKey by remember { mutableIntStateOf(0) }
-                val internetAvailable = rememberInternetAvailable()
+                val networkAccess = rememberNetworkAccess()
                 LaunchedEffect(retryKey) {
                     shellState = ShellState.Loading
                     shellState = repository.load().fold(
@@ -76,15 +77,13 @@ class MainActivity : ComponentActivity() {
                 }
                 when (val state = shellState) {
                     ShellState.Loading -> LoadingScreen()
-                    is ShellState.Error -> if (internetAvailable) {
-                        ErrorScreen(state.message) { retryKey += 1 }
-                    } else {
-                        ConnectionErrorScreen { retryKey += 1 }
+                    is ShellState.Error -> when (networkAccess) {
+                        NetworkAccessState.Online -> ErrorScreen(state.message) { retryKey += 1 }
+                        else -> ConnectionErrorScreen(connectionErrorMessage(networkAccess)) { retryKey += 1 }
                     }
-                    is ShellState.Ready -> if (internetAvailable) {
-                        AppShell(state.manifest)
-                    } else {
-                        ConnectionErrorScreen { retryKey += 1 }
+                    is ShellState.Ready -> when (networkAccess) {
+                        NetworkAccessState.Online -> AppShell(state.manifest)
+                        else -> ConnectionErrorScreen(connectionErrorMessage(networkAccess)) { retryKey += 1 }
                     }
                 }
             }
@@ -127,7 +126,7 @@ private fun AppShell(manifest: AppManifest) {
             onOpenPlayer = { episodeId, source ->
                 if (playerRequest == null && !playerOpening) {
                     playerOpening = true
-                    playerReturnRoute = currentWebRouteState
+                    playerReturnRoute = webView?.let(::routeFromWebView) ?: currentWebRouteState
                     drawerScope.launch {
                         drawerState.close()
                         playerRequest = PlayerRequest(episodeId, source)
@@ -304,37 +303,40 @@ private fun ErrorScreen(message: String, onRetry: () -> Unit) {
 }
 
 @Composable
-private fun ConnectionErrorScreen(onRetry: () -> Unit) {
+private fun ConnectionErrorScreen(message: String, onRetry: () -> Unit) {
     Box(modifier = Modifier.fillMaxSize().padding(28.dp), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text("Sem conexão com a internet")
-            Text("Conecte-se à internet e tente novamente.")
+            Text(message)
             Button(onClick = onRetry) { Text("Tentar novamente") }
         }
     }
 }
 
-@Composable
-private fun rememberInternetAvailable(): Boolean {
-    val context = LocalContext.current.applicationContext
-    var available by remember {
-        mutableStateOf(hasValidatedInternet(context.getSystemService(ConnectivityManager::class.java)))
-    }
+private fun connectionErrorMessage(access: NetworkAccessState): String = when (access) {
+    NetworkAccessState.Vpn -> "A conexão por VPN está bloqueada. Desative a VPN e tente novamente."
+    NetworkAccessState.Offline -> "Conecte-se à internet e tente novamente."
+    NetworkAccessState.Online -> "Verifique a conexão e tente novamente."
+}
 
-    DisposableEffect(context) {
-        val connectivity = context.getSystemService(ConnectivityManager::class.java)
+@Composable
+private fun rememberNetworkAccess(): NetworkAccessState {
+    val context = LocalContext.current.applicationContext
+    val connectivity = remember(context) { context.getSystemService(ConnectivityManager::class.java) }
+    var access by remember(connectivity) { mutableStateOf(readNetworkAccess(connectivity)) }
+
+    DisposableEffect(connectivity) {
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                available = hasValidatedInternet(connectivity)
+                access = readNetworkAccess(connectivity)
             }
 
             override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
-                available = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-                    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                access = readNetworkAccess(connectivity)
             }
 
             override fun onLost(network: Network) {
-                available = hasValidatedInternet(connectivity)
+                access = readNetworkAccess(connectivity)
             }
         }
 
@@ -342,14 +344,30 @@ private fun rememberInternetAvailable(): Boolean {
         onDispose { runCatching { connectivity.unregisterNetworkCallback(callback) } }
     }
 
-    return available
+    return access
 }
 
-private fun hasValidatedInternet(connectivity: ConnectivityManager): Boolean {
-    val network = connectivity.activeNetwork ?: return false
-    val capabilities = connectivity.getNetworkCapabilities(network) ?: return false
-    return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+private enum class NetworkAccessState {
+    Online,
+    Offline,
+    Vpn
+}
+
+private fun readNetworkAccess(connectivity: ConnectivityManager): NetworkAccessState {
+    val network = connectivity.activeNetwork ?: return NetworkAccessState.Offline
+    val capabilities = connectivity.getNetworkCapabilities(network) ?: return NetworkAccessState.Offline
+    if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) return NetworkAccessState.Vpn
+    return if (capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
         capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    ) NetworkAccessState.Online else NetworkAccessState.Offline
+}
+
+private fun routeFromWebView(webView: WebView): String? {
+    val url = webView.url ?: return null
+    val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return null
+    val path = uri.encodedPath?.takeIf { it.startsWith("/") } ?: return null
+    val query = uri.encodedQuery?.takeIf { it.isNotBlank() }
+    return if (query == null) path else "$path?$query"
 }
 
 private sealed interface ShellState {

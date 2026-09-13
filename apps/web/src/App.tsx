@@ -6,7 +6,11 @@ import { router } from './router';
 
 const NATIVE_ROUTES = ['/', '/catalogo', '/buscar', '/lista', '/salvos', '/conta'] as const;
 type NativeRoute = (typeof NATIVE_ROUTES)[number];
+type NavigableRoute = NativeRoute | `/anime/${string}` | `/noticias/${string}`;
 function isNativeRoute(route: string): route is NativeRoute { return (NATIVE_ROUTES as readonly string[]).includes(route); }
+function isNavigableRoute(route: string): route is NavigableRoute {
+  return isNativeRoute(route) || route.startsWith('/anime/') || route.startsWith('/noticias/');
+}
 function isStreamingOnly(route: string) { return route === '/catalogo' || route === '/lista' || route.startsWith('/anime/'); }
 function isNewsOnly(route: string) { return route === '/salvos' || route.startsWith('/noticias/'); }
 
@@ -35,8 +39,14 @@ export function App() {
 
       if (event.type !== 'navigation.navigate') return;
       const route = event.payload.route;
-      if (!isNativeRoute(route)) return;
-      void router.navigate({ to: route });
+      if (!isNavigableRoute(route)) return;
+      if (route.startsWith('/anime/')) {
+        void router.navigate({ to: '/anime/$slug', params: { slug: route.slice('/anime/'.length) } });
+      } else if (route.startsWith('/noticias/')) {
+        void router.navigate({ to: '/noticias/$slug', params: { slug: route.slice('/noticias/'.length) } });
+      } else if (isNativeRoute(route)) {
+        void router.navigate({ to: route });
+      }
     });
 
     const onResolved = () => {
