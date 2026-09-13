@@ -1,8 +1,10 @@
 import { useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { RouterProvider } from '@tanstack/react-router';
 import { NekoNative } from '@neko/bridge-web';
-import { fetchManifest, fetchServers, saveEpisodeProgress } from './lib/api';
+import { fetchManifest, fetchServers } from './lib/api';
+import { auth } from './lib/auth';
+import { syncPendingProgress } from './lib/progress-sync';
 import { recordLocalProgress } from './lib/local-progress';
 import { useServerPreference } from './lib/server-preference';
 import { router } from './router';
@@ -18,6 +20,19 @@ function isStreamingOnly(route: string) { return route === '/categorias' || rout
 function isNewsOnly(route: string) { return route === '/salvos' || route.startsWith('/noticias/'); }
 
 export function App() {
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    const sync = () => { void syncPendingProgress(); };
+    const refresh = () => { void queryClient.invalidateQueries({predicate:query => String(query.queryKey[0]).startsWith('me-')}); };
+    const { data } = auth.onAuthStateChange(() => {
+      queryClient.removeQueries({predicate:query => String(query.queryKey[0]).startsWith('me-')});
+      sync();
+    });
+    window.addEventListener('online', sync);
+    window.addEventListener('neko-progress-synced', refresh);
+    sync();
+    return () => { data.subscription.unsubscribe(); window.removeEventListener('online',sync); window.removeEventListener('neko-progress-synced',refresh); };
+  }, [queryClient]);
   const servers = useQuery({ queryKey: ['servers'], queryFn: fetchServers, staleTime: 10 * 60 * 1000 });
   const serverId = useServerPreference((state) => state.serverId);
   const setServerId = useServerPreference((state) => state.setServerId);
@@ -44,11 +59,7 @@ export function App() {
             event.payload?.positionSeconds ?? 0,
             event.payload?.durationSeconds ?? 0
           );
-          void saveEpisodeProgress(
-            episodeId,
-            event.payload?.positionSeconds ?? 0,
-            event.payload?.durationSeconds ?? 0
-          ).catch(() => undefined);
+          void syncPendingProgress();
         }
         return;
       }

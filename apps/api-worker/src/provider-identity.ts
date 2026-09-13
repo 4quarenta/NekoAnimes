@@ -1,6 +1,7 @@
 import type { Context } from 'hono';
 import mappings from '../data/provider-mappings.json';
 import { fetchMalAnime, fetchMalCatalog, type MalAnimeSummary } from './mal-client';
+import { readStoredIdentity, fillMetadata } from './catalog-store';
 
 export type ProviderPostType = 'anime' | 'filme' | 'manga';
 
@@ -55,8 +56,10 @@ const ANILIST_CACHE_ORIGIN = 'https://nekoanimes-anilist-cache.invalid';
 
 export async function resolveProviderIdentity(
   c: Context,
-  input: { serverId: string; reference: string; title: string; fallbackPostType: ProviderPostType }
+  input: { serverId: string; reference: string; title: string; fallbackPostType: ProviderPostType; refresh?: boolean }
 ): Promise<ProviderMetadata> {
+  const stored = await readStoredIdentity(c.env.DB, input.serverId, input.reference);
+  if (stored && !input.refresh) return stored;
   const mapping = entries.find((entry) => entry.providers.some((provider) => provider.id === input.serverId && normalizeReference(provider.animeReference) === normalizeReference(input.reference)))
     ?? entries.find((entry) => sameTitle(entry.canonicalTitle, input.title));
   let mal: MalAnimeSummary | null = null;
@@ -107,8 +110,8 @@ export async function resolveProviderIdentity(
 
   const postType = mal ? malType(mal.type) : anilist ? anilistType(anilist.format) : input.fallbackPostType;
   const metadata = mal ?? anilist;
-  return {
-    canonicalId: mapping?.canonicalId ?? (mal ? `mal:${mal.malId}` : anilist?.malId ? `mal:${anilist.malId}` : `anilist:${anilist?.id ?? normalizeTitle(input.title)}`),
+  const result: ProviderMetadata = {
+    canonicalId: mapping?.canonicalId ?? (mal ? `mal:${mal.malId}` : anilist?.malId ? `mal:${anilist.malId}` : anilist?.id ? `anilist:${anilist.id}` : `provider:${input.serverId}:${normalizeReference(input.reference)}`),
     canonicalTitle: mapping?.canonicalTitle ?? metadata?.title ?? input.title,
     malId: mal?.malId ?? anilist?.malId ?? mapping?.malId ?? null,
     anilistId,
@@ -125,6 +128,7 @@ export async function resolveProviderIdentity(
     backdropUrl,
     source: mal ? (anilistId ? 'anilist' : 'myanimelist') : anilist ? 'anilist' : mapping ? 'mapping' : 'none'
   };
+  return stored ? fillMetadata(stored, result) : result;
 }
 
 const ANILIST_MEDIA_FIELDS = `id idMal title { romaji english native } description format status seasonYear averageScore genres coverImage { large extraLarge } bannerImage`;
@@ -145,7 +149,7 @@ async function fetchAniListByMalId(c: Context, malId: number): Promise<AniListAn
 
 async function fetchAniListByTitle(c: Context, title: string): Promise<AniListAnimeSummary | null> {
   const query = `query($search:String){ Page(perPage:5){ media(search:$search,type:ANIME,sort:SEARCH_MATCH){ ${ANILIST_MEDIA_FIELDS} } } }`;
-  const cacheKey = new Request(`${ANILIST_CACHE_ORIGIN}/v3/title/${encodeURIComponent(normalizeTitle(title))}`);
+  const cacheKey = new Request(`${ANILIST_CACHE_ORIGIN}/v4/title/${encodeURIComponent(normalizeTitle(title))}`);
   const edgeCache = (caches as unknown as { default: Cache }).default;
   const cached = await edgeCache.match(cacheKey);
   if (cached) return await cached.json<AniListAnimeSummary | null>();
@@ -153,7 +157,8 @@ async function fetchAniListByTitle(c: Context, title: string): Promise<AniListAn
   if (!response.ok) throw new Error(`AniList HTTP ${response.status}`);
   const body = await response.json<{ data?: { Page?: { media?: Array<Record<string, unknown>> } } }>();
   const candidates = (body.data?.Page?.media ?? []).map(toAniListSummary);
-  const result = candidates.find((candidate) => [candidate.title, candidate.titleEnglish, candidate.titleRomaji, candidate.titleNative].filter(Boolean).some((value) => sameTitle(String(value), title))) ?? candidates[0] ?? null;
+  const exact = candidates.filter((candidate) => [candidate.title, candidate.titleEnglish, candidate.titleRomaji, candidate.titleNative].filter(Boolean).some((value) => sameTitle(String(value), title)));
+  const result = exact.length === 1 ? exact[0]! : null;
   if (result) c.executionCtx.waitUntil(edgeCache.put(cacheKey, new Response(JSON.stringify(result), { headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=86400' } })));
   return result;
 }
@@ -189,7 +194,7 @@ function malType(value: string): ProviderPostType {
 }
 
 function anilistType(value: string | null): ProviderPostType {
-  if (value === 'MOVIE' || value === 'SPECIAL') return 'filme';
+  if (value === 'MOVIE') return 'filme';
   return 'anime';
 }
 

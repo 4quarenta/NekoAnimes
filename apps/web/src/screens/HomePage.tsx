@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { fetchContinueWatching, fetchManifest, fetchNews, fetchProviderCatalog } from '../lib/api';
+import { fetchContinueWatching, fetchProviderCategories, fetchManifest, fetchNews, fetchProviderCatalog } from '../lib/api';
 import { auth, type AuthSession } from '../lib/auth';
 import { useServerPreference } from '../lib/server-preference';
+import { readLocalProgressItems, type LocalContinueWatching } from '../lib/local-progress';
 import { providerSlug } from '../lib/provider-links';
 import { AnimeListRow, AppScreen, Eyebrow, EmptyState, ScreenHeader, Section, TextRow } from '../components/AppScreen';
 
@@ -17,7 +18,14 @@ export function HomePage() {
   const manifest = useQuery({ queryKey: ['app-manifest'], queryFn: fetchManifest });
   const serverId = useServerPreference((state) => state.serverId);
   const news = useQuery({ queryKey: ['news-home'], queryFn: () => fetchNews({ limit: 30 }), enabled: manifest.data?.mode === 'news' });
-  const watching = useQuery({ queryKey: ['me-continue-home', session?.user.id], queryFn: fetchContinueWatching, enabled: manifest.data?.mode === 'streaming' && Boolean(session), staleTime: 30 * 1000 });
+  const watching = useQuery({ queryKey: ['me-continue', session?.user.id], queryFn: fetchContinueWatching, enabled: manifest.data?.mode === 'streaming' && Boolean(session), staleTime: 30 * 1000 });
+  const [localProgress,setLocalProgress] = useState<LocalContinueWatching[]>([]);
+  const categories=useQuery({queryKey:['provider-categories',serverId],queryFn:()=>fetchProviderCategories(serverId!),enabled:Boolean(serverId)&&manifest.data?.mode==='streaming',staleTime:15*60*1000});
+  const progressMap = new Map((watching.data ?? []).map(item=>[item.animeId,item]));
+  for(const item of localProgress) if(item.pendingSync || !progressMap.has(item.animeId)) {
+    if(item.completed) progressMap.delete(item.animeId); else progressMap.set(item.animeId,item);
+  }
+  const progressItems=[...progressMap.values()].sort((a,b)=>new Date(b.updatedAt).getTime()-new Date(a.updatedAt).getTime());
   const catalog = useQuery({ queryKey: ['provider-catalog-home', serverId], queryFn: () => fetchProviderCatalog(serverId!, { limit: 6 }), enabled: manifest.data?.mode === 'streaming' && Boolean(serverId) });
 
   useEffect(() => {
@@ -27,10 +35,12 @@ export function HomePage() {
   }, []);
 
   useEffect(() => {
-    const refresh = () => void watching.refetch();
-    window.addEventListener('neko-progress-updated', refresh);
-    return () => window.removeEventListener('neko-progress-updated', refresh);
-  }, [watching.refetch]);
+    const refresh = () => setLocalProgress(readLocalProgressItems());
+    refresh();
+    window.addEventListener('neko-progress-updated',refresh);
+    window.addEventListener('neko-progress-synced',refresh);
+    return () => {window.removeEventListener('neko-progress-updated',refresh);window.removeEventListener('neko-progress-synced',refresh);};
+  },[session?.user.id]);
 
   if (manifest.isPending) return <AppScreen><div className="neko-skeleton" /><div className="neko-skeleton short" /></AppScreen>;
   if (manifest.isError) return <AppScreen><p className="neko-error">Não foi possível carregar a configuração.</p></AppScreen>;
@@ -75,11 +85,12 @@ export function HomePage() {
       <Section title="Continuar assistindo" action={<button className="neko-link" onClick={() => void navigate({ to: '/lista' })}>Ver lista</button>}>
         {!session ? <div className="neko-list"><TextRow title="Entre na conta para sincronizar" meta="Seu progresso aparecerá aqui" trailing="›" onClick={() => void navigate({ to: '/conta' })} /></div> : null}
         {session && watching.isPending ? <div className="neko-skeleton short" /> : null}
-        {session && watching.data?.length ? <div className="neko-list">{watching.data.map((item) => {
+        {session && progressItems.length ? <div className="neko-list">{progressItems.map((item) => {
           const progress = item.durationSeconds > 0 ? Math.min(100, Math.round(item.positionSeconds / item.durationSeconds * 100)) : 0;
           return <AnimeListRow key={item.episodeId} title={item.title} meta={`T${item.seasonNumber} · Episódio ${String(item.episodeNumber).padStart(2, '0')}`} imageUrl={item.imageUrl} postType={item.type} scoreBasisPoints={item.scoreBasisPoints} genres={item.genres} trailing={`${progress}%`} onClick={() => void navigate({ to: '/anime/$slug', params: { slug: item.slug }, search: { provider: undefined, ref: undefined } })} />;
         })}</div> : null}
-        {session && watching.data && !watching.data.length ? <EmptyState title="Nada em andamento" description="Seu progresso aparecerá aqui depois que começar a assistir." /> : null}
+        {session && watching.data && !progressItems.length ? <EmptyState title="Nada em andamento" description="Seu progresso aparecerá aqui depois que começar a assistir." /> : null}
+        {session && localProgress.some(item=>item.pendingSync) ? <p className="neko-account-notice">Progresso salvo neste dispositivo; aguardando sincronização. Você pode tentar novamente na Conta.</p> : null}
         {session && watching.isError ? <p className="neko-error">Não foi possível carregar seu progresso agora.</p> : null}
       </Section>
       <Section title="Catálogo em destaque" action={<button className="neko-link" onClick={() => void navigate({ to: '/categorias' })}>Ver categorias</button>}>
@@ -88,7 +99,7 @@ export function HomePage() {
         {catalog.isError ? <p className="neko-error">Não foi possível carregar o catálogo de {serverId ?? 'servidor'}.</p> : null}
       </Section>
       <Section title="Explorar categorias" action={<button className="neko-link" onClick={() => void navigate({ to: '/categorias' })}>Abrir categorias</button>}>
-        <div className="neko-category-strip" aria-label="Categorias"><span>Ação</span><span>Aventura</span><span>Comédia</span><span>Drama</span><span>Fantasia</span></div>
+        <div className="neko-category-strip" aria-label="Categorias">{categories.data?.items.slice(0,5).map(item=><button className="neko-link" key={item.id} onClick={()=>void navigate({to:'/categorias/$genreId',params:{genreId:item.id}})}>{item.name}</button>)}</div>
       </Section>
     </AppScreen>
   );

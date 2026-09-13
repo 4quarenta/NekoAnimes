@@ -153,7 +153,26 @@ export async function searchProvider(serverId: string, query: string): Promise<S
 export async function browseProvider(serverId: string, options: { letter?: string; genre?: string; page?: number; limit?: number } = {}): Promise<{ items: ServerAnimeMatch[]; hasNextPage: boolean }> {
   const provider = getProvider(serverId);
   const page = options.page ?? 1;
-  const response = await getProviderHtml(provider, provider.catalogPath(options.letter, options.genre, page));
+  let path = provider.catalogPath(options.letter, undefined, page);
+  if (options.genre) {
+    const category = (await getProviderCategories(serverId)).find(item => item.id === options.genre);
+    if (!category) throw new ProviderError('Categoria não disponível neste servidor', 'unavailable');
+    path = `${category.reference.replace(/\/$/, '')}/${page > 1 ? `page/${page}/` : ''}`;
+  }
+  if (provider.id === 'goyabu') {
+    // The provider renders subsequent pages via this same public JSON endpoint.
+    const params = new URLSearchParams({page:String(page),per_page:'30',genero:options.genre ?? '',letra:options.letter ?? ''});
+    const response = await getProviderHtml(provider, `/wp-json/cronos/v1/animes/filter?${params}`);
+    let body: {success?:boolean;animes?:Array<{url?:string;title?:string}>;total_pages?:number};
+    try { body = JSON.parse(response.html); } catch { throw new ProviderError('Paginação inválida retornada pelo servidor','unavailable'); }
+    if (!body.success || !Array.isArray(body.animes)) throw new ProviderError('Catálogo indisponível no servidor','unavailable');
+    const items = body.animes.flatMap(item => {
+      const reference = typeof item.url === 'string' ? referenceFromHref(provider,item.url) : null;
+      return reference && provider.isAnimeReference(reference) && typeof item.title === 'string' ? [toAnimeMatch(provider,provider.cleanTitle(decodeHtml(item.title)),new URL(reference,provider.baseUrl).toString(),1)] : [];
+    });
+    return {items,hasNextPage:Number(body.total_pages)>page};
+  }
+  const response = await getProviderHtml(provider, path);
   let matches = extractBrowseMatches(provider, parseAnchors(response.html));
   let hasNextPage = hasProviderNextPage(provider, parseAnchors(response.html), page);
   const letter = options.letter?.toLowerCase();
@@ -163,13 +182,54 @@ export async function browseProvider(serverId: string, options: { letter?: strin
   if (!matches.length && letter && provider.id === 'animesdigital') {
     matches = (await searchProvider(serverId, `${letter}n`)).filter((match) => normalizeForMatch(match.title).startsWith(letter));
   }
-  if (matches.length > (options.limit ?? 50)) hasNextPage = true;
-  return { items: matches.slice(0, options.limit ?? 50), hasNextPage };
+  // Return the complete upstream page: truncation would skip its remaining titles.
+  return { items: matches, hasNextPage };
+}
+
+export type ProviderCategory = { id: string; name: string; reference: string };
+export function extractProviderCategories(serverId: string, html: string): ProviderCategory[] {
+  const provider = getProvider(serverId);
+  const items = new Map<string, ProviderCategory>();
+  for (const anchor of parseAnchors(html)) {
+    const reference = referenceFromHref(provider, anchor.href);
+    const match = reference && /^\/(?:generos?|genres?|categoria)\/([^/?#]+)\/?$/.exec(reference);
+    if (!match?.[1] || /^(?:letra-|dublad|legendad|sem-censura)/i.test(match[1])) continue;
+    const name = anchor.text.replace(/\s*\(?\d+\)?\s*$/, '').trim();
+    if (name.length < 2 || name.length > 80 || !/\p{L}/u.test(name)) continue;
+    items.set(match[1], { id: match[1], name, reference: reference! });
+  }
+  return [...items.values()].sort((a,b) => a.name.localeCompare(b.name, 'pt-BR'));
+}
+
+export async function getProviderCategories(serverId: string): Promise<ProviderCategory[]> {
+  const provider = getProvider(serverId);
+  const key = new Request(`https://nekoanimes-provider-cache.local/categories/v2/${serverId}`);
+  const cache = (caches as unknown as { default: Cache }).default;
+  const cached = await cache.match(key);
+  if (cached) return cached.json<ProviderCategory[]>();
+  const home = await getProviderHtml(provider, '/');
+  let items = extractProviderCategories(serverId, home.html);
+  const index = parseAnchors(home.html).map(a => referenceFromHref(provider,a.href)).find(ref => ref && /^\/(?:generos|genres|categorias)\/?$/.test(ref));
+  if (index) items = [...new Map([...items,...extractProviderCategories(serverId,(await getProviderHtml(provider,index)).html)].map(item => [item.id,item])).values()];
+  if (!items.length) throw new ProviderError('O servidor não retornou categorias disponíveis', 'unavailable');
+  await cache.put(key,new Response(JSON.stringify(items),{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=900'}}));
+  return items.sort((a,b) => a.name.localeCompare(b.name,'pt-BR'));
+}
+
+export function providerEpisodeId(serverId: string, reference: string) {
+  // Two independent 32-bit hashes keep native bridge IDs short and source-specific.
+  let a = 2166136261, b = 5381;
+  for (const char of reference.replace(/\/$/, '')) { a = Math.imul(a ^ char.charCodeAt(0), 16777619); b = Math.imul(b, 33) ^ char.charCodeAt(0); }
+  return `${serverId}:ep:${(a >>> 0).toString(16)}${(b >>> 0).toString(16)}`;
 }
 
 export async function getProviderAnime(serverId: string, reference: string): Promise<ServerAnimeDetail> {
   const provider = getProvider(serverId);
   const safeReference = assertReference(provider, reference, 'anime');
+  const cache = (caches as unknown as { default: Cache }).default;
+  const key = new Request(`https://nekoanimes-provider-cache.local/anime/v2/${serverId}/${encodeURIComponent(safeReference.replace(/\/$/,''))}`);
+  const cached = await cache.match(key);
+  if (cached) return { ...await cached.json<ServerAnimeDetail>(), server: provider };
   const response = await getProviderHtml(provider, safeReference);
   const title = provider.cleanTitle(parseH1(response.html) ?? lastPathPart(safeReference) ?? 'Anime');
   const anchors = parseAnchors(response.html);
@@ -189,7 +249,7 @@ export async function getProviderAnime(serverId: string, reference: string): Pro
     if (result.status === 'fulfilled') episodes.push(...result.value);
   }
 
-  return {
+  const detail: ServerAnimeDetail = {
     server: provider,
     anime: {
       title,
@@ -201,6 +261,8 @@ export async function getProviderAnime(serverId: string, reference: string): Pro
     fetchedAt: new Date().toISOString(),
     postType: inferPostType(title, safeReference)
   };
+  await cache.put(key,new Response(JSON.stringify(detail),{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=120'}}));
+  return detail;
 }
 
 export async function getProviderEpisode(serverId: string, reference: string) {
@@ -215,7 +277,7 @@ export async function getProviderEpisode(serverId: string, reference: string) {
 
   return {
     server: provider,
-    id: `${provider.id}:${seasonNumber}:${number}`,
+    id: providerEpisodeId(provider.id, referenceFromUrl(provider,response.url)),
     title,
     number,
     seasonNumber,
@@ -362,7 +424,7 @@ function extractEpisodeCandidates(provider: ProviderConfig, anchors: HtmlAnchor[
     candidates.push({
       sourcePriority,
       episode: {
-        id: `${provider.id}:${seasonNumber}:${episodeNumber}`,
+        id: providerEpisodeId(provider.id,reference),
         title: cleanEpisodeTitle(anchor.text || `Episódio ${episodeNumber}`),
         number: episodeNumber,
         seasonNumber,
@@ -388,7 +450,7 @@ function extractScriptEpisodeCandidates(provider: ProviderConfig, html: string, 
       return [{
         sourcePriority,
         episode: {
-          id: `${provider.id}:1:${number}`,
+          id: providerEpisodeId(provider.id,reference),
           title: cleanEpisodeTitle(item.episode_name || `Episódio ${number}`),
           number,
           seasonNumber: 1,
@@ -591,7 +653,8 @@ function parseAnchors(html: string): HtmlAnchor[] {
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(html)) !== null) {
     const href = match[1] ?? match[2] ?? match[3] ?? '';
-    const text = stripTags(match[4] ?? '');
+    const title = /<(?:div|span)\b[^>]*class=["'][^"']*\btitle\b[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|span)>/i.exec(match[4] ?? '')?.[1];
+    const text = (title ? stripTags(title) : stripTags(match[4] ?? '')) || decodeHtml(/\b(?:title|alt)=["']([^"']+)["']/i.exec(match[0])?.[1] ?? '');
     if (href) anchors.push({ href: decodeHtml(href), text });
   }
   return anchors;

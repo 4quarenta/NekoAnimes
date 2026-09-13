@@ -47,6 +47,8 @@ android {
     productFlavors {
         create("direct") {
             dimension = "distribution"
+            versionCode = 10037
+            versionName = "1.0.37"
             buildConfigField("boolean", "SELF_UPDATE_ENABLED", "true")
             buildConfigField("String", "DISTRIBUTION_CHANNEL", "\"direct\"")
         }

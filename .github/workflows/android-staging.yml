@@ -2,10 +2,6 @@ name: Android staging
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - 'apps/android/**'
-      - '.github/workflows/android-staging.yml'
 
 concurrency:
   group: neko-android-staging
@@ -24,6 +20,7 @@ jobs:
       NEKO_WEB_APP_URL: https://nekoanimes-staging.pages.dev
       NEKO_WEB_APP_ORIGIN: https://nekoanimes-staging.pages.dev
       NEKO_API_BASE_URL: ${{ vars.NEKO_API_BASE_URL || 'https://nekoanimes-api-staging.john-alleff01.workers.dev' }}
+      STAGING_SIGNING_CONFIGURED: ${{ secrets.NEKO_STAGING_DEBUG_KEYSTORE_BASE64 != '' }}
       CLOUDFLARE_CONFIGURED: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
     steps:
       - uses: actions/checkout@v4
@@ -40,6 +37,15 @@ jobs:
       - name: Validate staging configuration
         shell: bash
         run: test -n "$NEKO_API_BASE_URL"
+      - name: Restore stable staging debug signing (when configured)
+        if: ${{ env.STAGING_SIGNING_CONFIGURED == 'true' }}
+        env:
+          STAGING_KEYSTORE: ${{ secrets.NEKO_STAGING_DEBUG_KEYSTORE_BASE64 }}
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.android"
+          printf '%s' "$STAGING_KEYSTORE" | base64 --decode > "$HOME/.android/debug.keystore"
+          chmod 600 "$HOME/.android/debug.keystore"
       - name: Build direct debug against staging
         run: |
           gradle --no-daemon :app:assembleDirectDebug \
@@ -52,43 +58,41 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/neko-staging"
-          cp app/build/outputs/apk/direct/debug/app-direct-debug.apk "$RUNNER_TEMP/neko-staging/NekoAnimes-v1.0.36.apk"
-          cp app/build/outputs/apk/direct/debug/app-direct-debug.apk "$RUNNER_TEMP/neko-staging/NekoAnimes-v1.0.36-staging.apk"
+          cp app/build/outputs/apk/direct/debug/app-direct-debug.apk "$RUNNER_TEMP/neko-staging/NekoAnimes-v1.0.37.apk"
+          cp app/build/outputs/apk/direct/debug/app-direct-debug.apk "$RUNNER_TEMP/neko-staging/NekoAnimes-v1.0.37-staging.apk"
           cd "$RUNNER_TEMP/neko-staging"
-          sha256sum NekoAnimes-v1.0.36.apk > NekoAnimes-v1.0.36.apk.sha256
-          sha256sum NekoAnimes-v1.0.36-staging.apk > NekoAnimes-v1.0.36-staging.apk.sha256
-          echo "sha256=$(cut -d' ' -f1 NekoAnimes-v1.0.36.apk.sha256)" >> "$GITHUB_OUTPUT"
+          sha256sum NekoAnimes-v1.0.37.apk > NekoAnimes-v1.0.37.apk.sha256
+          sha256sum NekoAnimes-v1.0.37-staging.apk > NekoAnimes-v1.0.37-staging.apk.sha256
+          echo "sha256=$(cut -d' ' -f1 NekoAnimes-v1.0.37.apk.sha256)" >> "$GITHUB_OUTPUT"
       - name: Upload GitHub artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nekoanimes-v1.0.36-staging
+          name: nekoanimes-v1.0.37-ci-validation
           path: ${{ runner.temp }}/neko-staging/*
           if-no-files-found: error
       - name: Publish APK to R2
-        if: ${{ env.CLOUDFLARE_CONFIGURED == 'true' }}
+        if: ${{ env.CLOUDFLARE_CONFIGURED == 'true' && env.STAGING_SIGNING_CONFIGURED == 'true' }}
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: r2 object put nekoanimes-releases-staging/android/v1.0.36/NekoAnimes-v1.0.36.apk --file ${{ runner.temp }}/neko-staging/NekoAnimes-v1.0.36.apk --content-type application/vnd.android.package-archive --remote
+          command: r2 object put nekoanimes-releases-staging/android/v1.0.37/NekoAnimes-v1.0.37.apk --file ${{ runner.temp }}/neko-staging/NekoAnimes-v1.0.37.apk --content-type application/vnd.android.package-archive --remote
       - name: Publish APK checksum to R2
-        if: ${{ env.CLOUDFLARE_CONFIGURED == 'true' }}
+        if: ${{ env.CLOUDFLARE_CONFIGURED == 'true' && env.STAGING_SIGNING_CONFIGURED == 'true' }}
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: r2 object put nekoanimes-releases-staging/android/v1.0.36/NekoAnimes-v1.0.36.apk.sha256 --file ${{ runner.temp }}/neko-staging/NekoAnimes-v1.0.36.apk.sha256 --content-type text/plain --remote
+          command: r2 object put nekoanimes-releases-staging/android/v1.0.37/NekoAnimes-v1.0.37.apk.sha256 --file ${{ runner.temp }}/neko-staging/NekoAnimes-v1.0.37.apk.sha256 --content-type text/plain --remote
       - name: Create GitHub staging prerelease
+        if: ${{ env.STAGING_SIGNING_CONFIGURED == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
         working-directory: ${{ github.workspace }}
         run: |
-          gh release create v1.0.36-staging \
-            "${{ runner.temp }}/neko-staging/NekoAnimes-v1.0.36-staging.apk" \
-            "${{ runner.temp }}/neko-staging/NekoAnimes-v1.0.36-staging.apk.sha256" \
-            --prerelease --title "NekoAnimes v1.0.36 staging" \
+          gh release create v1.0.37-staging \
+            "${{ runner.temp }}/neko-staging/NekoAnimes-v1.0.37-staging.apk" \
+            "${{ runner.temp }}/neko-staging/NekoAnimes-v1.0.37-staging.apk.sha256" \
+            --prerelease --title "NekoAnimes v1.0.37 staging" \
             --notes "Staging direct APK for physical Android smoke tests." \
-            --repo "${{ github.repository }}" || \
-          gh release upload v1.0.36-staging \
-            "${{ runner.temp }}/neko-staging/NekoAnimes-v1.0.36-staging.apk" \
-            "${{ runner.temp }}/neko-staging/NekoAnimes-v1.0.36-staging.apk.sha256" --clobber
+            --repo "${{ github.repository }}"

@@ -1,10 +1,10 @@
-import { AppManifestSchema, type AppManifest } from '@neko/contracts';
-import { getAccessToken } from './auth';
+import { AppManifestSchema, sameAnimeTitle, type AppManifest } from '@neko/contracts';
+import { getAccessToken, clearSession } from './auth';
 import { API_URL } from './config';
 
 async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, { cache: 'no-store' });
-  if (!response.ok) throw new Error(`API respondeu ${response.status}`);
+  if (!response.ok) throw await responseError(response);
   return response.json() as Promise<T>;
 }
 
@@ -20,7 +20,8 @@ async function authJson<T>(path: string, init: RequestInit = {}): Promise<T> {
       ...(init.headers ?? {})
     }
   });
-  if (!response.ok) throw new Error(`API respondeu ${response.status}`);
+  if (response.status === 401) { clearSession(); throw new Error('AUTH_REQUIRED'); }
+  if (!response.ok) throw await responseError(response);
   return response.json() as Promise<T>;
 }
 
@@ -49,7 +50,7 @@ export type ServerEpisode = { id: string; title: string; number: number; seasonN
 export type ServerSeason = { id: string; number: number; title: string; episodes: ServerEpisode[] };
 export type ProviderIdentity = { canonicalId: string; canonicalTitle: string; malId: number | null; anilistId: number | null; postType: ProviderPostType; status?: string | null; synopsis: string | null; titleEnglish: string | null; titleRomaji: string | null; titleNative: string | null; year: number | null; genres: string[]; scoreBasisPoints: number | null; imageUrl: string | null; backdropUrl: string | null; source: 'myanimelist' | 'anilist' | 'mapping' | 'none' };
 export type RemoteAnimeMetadata = Pick<ProviderIdentity, 'canonicalTitle' | 'malId' | 'anilistId' | 'postType' | 'synopsis' | 'titleEnglish' | 'titleRomaji' | 'titleNative' | 'year' | 'genres' | 'scoreBasisPoints' | 'imageUrl' | 'backdropUrl'>;
-export type ServerAnimeDetail = { server: ServerDescriptor; anime: { title: string; reference: string; url: string; year?: number }; seasons: ServerSeason[]; postType: ProviderPostType; identity?: ProviderIdentity; fetchedAt: string };
+export type ServerAnimeDetail = { workSlug?: string; server: ServerDescriptor; anime: { title: string; reference: string; url: string; year?: number }; seasons: ServerSeason[]; postType: ProviderPostType; identity?: ProviderIdentity; fetchedAt: string };
 export type ServerResolution = { query: string; season: number; episode: number; servers: Array<{ server: ServerDescriptor; status: 'ok' | 'unavailable' | 'timeout' | 'error'; available: boolean; anime?: ServerAnimeMatch; episode?: ServerEpisode; sources?: ServerPlaybackSource[]; error?: 'provider_unavailable' | 'provider_timeout' }>; fetchedAt: string };
 export type ServerProviderResolution = { query: string; season: number; episodeNumber: number; server: ServerDescriptor; anime: ServerAnimeMatch; episode: ServerEpisode; sources: ServerPlaybackSource[]; fetchedAt: string };
 export type ProviderCatalogResponse = { server: ServerDescriptor; items: ServerAnimeMatch[]; count: number; page: number; pageSize: number; hasNextPage: boolean; source: 'provider'; fetchedAt: string };
@@ -66,13 +67,14 @@ export function fetchServerSearch(query: string) { return getJson<ServerSearchRe
 export function fetchServerAnime(serverId: string, reference: string) { const search = new URLSearchParams({ ref: reference }); return getJson<ServerAnimeDetail>(`/v1/servers/${encodeURIComponent(serverId)}/anime?${search}`); }
 export async function fetchAniListMetadata(title: string): Promise<RemoteAnimeMetadata | null> {
   const query = `query($search:String){ Page(perPage:5){ media(search:$search,type:ANIME,sort:SEARCH_MATCH){ id idMal title { romaji english native } description format status seasonYear averageScore genres coverImage { large extraLarge } bannerImage } } }`;
-  const searchTitles = [...new Set([title, title.replace(/\s+(?:temporada|season)?\s*\d+(?:\.\d+)?\s*$/i, '').trim()])].filter(Boolean);
+  const searchTitles = [title];
   let media: Record<string, unknown> | undefined;
   for (const searchTitle of searchTitles) {
     const response = await fetch('https://graphql.anilist.co', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ query, variables: { search: searchTitle } }), cache: 'force-cache' });
     if (!response.ok) throw new Error(`AniList respondeu ${response.status}`);
     const body = await response.json() as { data?: { Page?: { media?: Array<Record<string, unknown>> } } };
-    media = body.data?.Page?.media?.[0];
+    const matches = body.data?.Page?.media?.filter(candidate => Object.values(candidate.title as Record<string, string> ?? {}).some(alias => alias && sameAnimeTitle(alias, title))) ?? [];
+    media = matches.length === 1 ? matches[0] : undefined;
     if (media) break;
   }
   if (!media) return null;
@@ -85,7 +87,7 @@ export async function fetchAniListMetadata(title: string): Promise<RemoteAnimeMe
     canonicalTitle: String(titles?.romaji ?? titles?.english ?? titles?.native ?? title),
     malId: typeof media.idMal === 'number' ? media.idMal : null,
     anilistId: typeof media.id === 'number' ? media.id : null,
-    postType: format === 'MOVIE' || format === 'SPECIAL' ? 'filme' : 'anime',
+    postType: format === 'MOVIE' ? 'filme' : 'anime',
     synopsis: description || null,
     titleEnglish: typeof titles?.english === 'string' ? titles.english : null,
     titleRomaji: typeof titles?.romaji === 'string' ? titles.romaji : null,
@@ -111,3 +113,13 @@ export function saveEpisodeProgress(episodeId: string, positionSeconds: number, 
 export function fetchSavedNews() { return authJson<SavedNewsItem[]>('/v1/me/saved-news'); }
 export function saveNewsForUser(articleId: string) { return authJson(`/v1/me/saved-news/${encodeURIComponent(articleId)}`, { method: 'PUT', body: '{}' }); }
 export function removeSavedNewsForUser(articleId: string) { return authJson(`/v1/me/saved-news/${encodeURIComponent(articleId)}`, { method: 'DELETE' }); }
+
+async function responseError(response: Response) {
+  const body = await response.json().catch(() => null) as { message?: string } | null;
+  return new Error(body?.message ?? `API respondeu ${response.status}`);
+}
+export type ProviderCategory = { id: string; name: string; reference: string };
+export function fetchProviderCategories(serverId: string) { return getJson<{items:ProviderCategory[]}>(`/v1/servers/${encodeURIComponent(serverId)}/categories`); }
+export function fetchSavedServerAnime(serverId: string, slug: string) { return getJson<ServerAnimeDetail>(`/v1/servers/${encodeURIComponent(serverId)}/anime?${new URLSearchParams({slug})}`); }
+export function saveProviderLibrary(serverId: string, reference: string, workSlug?: string) { return authJson<{animeId:string;slug:string}>('/v1/me/provider-library',{method:'PUT',body:JSON.stringify({serverId,reference,workSlug})}); }
+export function saveProviderProgress(data: {serverId:string;reference:string;workSlug?:string;episodeReference:string;seasonNumber:number;episodeNumber:number;positionSeconds:number;durationSeconds:number}) { return authJson<{animeId:string;slug:string;episodeId:string}>('/v1/me/provider-progress',{method:'PUT',body:JSON.stringify(data)}); }

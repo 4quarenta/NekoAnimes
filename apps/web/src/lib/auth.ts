@@ -26,6 +26,8 @@ export const auth = {
 };
 
 export function getAccessToken() { return readSession()?.access_token ?? null; }
+export function currentUserId() { return readSession()?.user.id ?? 'guest'; }
+export function clearSession() { writeSession(null); }
 
 async function authenticate(path: string, credentials: { email: string; password: string }) {
   try {

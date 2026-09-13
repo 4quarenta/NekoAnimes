@@ -33,6 +33,7 @@ export function LibraryPage() {
       <Eyebrow>NekoAnimes</Eyebrow>
       <ScreenHeader title="Minha lista" subtitle="Continue de onde parou e organize o que quer assistir." />
       <Section title="Continuar assistindo">
+        {watching.isError ? <p className="neko-error">{watching.error.message}</p> : null}
         {watching.isPending ? <div className="neko-skeleton short" /> : null}
         {watching.data?.length ? (
           <div className="neko-list">
@@ -44,6 +45,7 @@ export function LibraryPage() {
         ) : watching.data ? <EmptyState title="Nada em andamento" description="Seu progresso aparecerá aqui depois que começar a assistir." /> : null}
       </Section>
       <Section title="Minha lista">
+        {library.isError ? <p className="neko-error">{library.error.message}</p> : null}
         {library.isPending ? <div className="neko-skeleton short" /> : null}
         {library.data?.length ? (
           <div className="neko-list">

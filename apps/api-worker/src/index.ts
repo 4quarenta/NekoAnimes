@@ -11,6 +11,7 @@ import {
   ProviderError,
   checkProviderHealth,
   browseProvider,
+  getProviderCategories,
   getProviderAnime,
   getProviderEpisode,
   hasProvider,
@@ -28,7 +29,10 @@ import {
   parseMalSeasonSlug,
   parseMalSlug
 } from './mal-client';
-import { resolveProviderIdentity, type ProviderMetadata } from './provider-identity';
+import { resolveProviderIdentity } from './provider-identity';
+import { ProviderSelectionSchema, ProviderProgressSchema } from '@neko/contracts';
+import { persistIdentity, canonicalReference } from './catalog-store';
+import { resolveLibraryWork, saveProviderWork } from './provider-library';
 
 type Variables = { userId: string; userEmail?: string; tokenHash?: string };
 type App = Hono<{ Bindings: Env; Variables: Variables }>;
@@ -265,6 +269,12 @@ app.get('/v1/servers/search', async (c) => {
 // Catalog browsing is provider-scoped. The selected provider is the only
 // source consulted for this request; results are never merged with MAL or
 // another provider.
+app.get('/v1/servers/:serverId/categories', async (c) => {
+  assertServerId(c.req.param('serverId'));
+  try { return c.json({ items: await getProviderCategories(c.req.param('serverId')), source: 'provider' }, 200, { 'Cache-Control': 'public, max-age=900' }); }
+  catch (error) { throw providerHttpException(error); }
+});
+
 app.get('/v1/servers/:serverId/catalog', async (c) => {
   const serverId = c.req.param('serverId');
   assertServerId(serverId);
@@ -279,7 +289,8 @@ app.get('/v1/servers/:serverId/catalog', async (c) => {
   try {
     const browse = query ? { items: await searchProvider(serverId, query), hasNextPage: false } : await browseProvider(serverId, { letter: letter?.toUpperCase(), genre, page, limit });
     const server = listServerDescriptors().find((item) => item.id === serverId)!;
-    return c.json({ server, items: browse.items.slice(0, limit), count: Math.min(browse.items.length, limit), page, pageSize: limit, hasNextPage: browse.hasNextPage, source: 'provider', fetchedAt: new Date().toISOString() }, 200, { 'Cache-Control': 'public, max-age=120' });
+    const items = genre ? browse.items : browse.items.slice(0, limit);
+    return c.json({ server, items, count: items.length, page, pageSize: items.length, hasNextPage: browse.hasNextPage, source: 'provider', fetchedAt: new Date().toISOString() }, 200, { 'Cache-Control': 'public, max-age=120' });
   } catch (error) {
     throw providerHttpException(error);
   }
@@ -420,6 +431,12 @@ app.get('/v1/servers/:serverId/resolve/:query/:season/:episode', async (c) => {
 
 app.get('/v1/servers/:serverId/anime', async (c) => {
   assertServerId(c.req.param('serverId'));
+  const slug = c.req.query('slug');
+  if (slug) {
+    if (slug.length > 1500) throw new HTTPException(400, { message: 'Obra inválida' });
+    try { return c.json(await resolveLibraryWork(c, c.req.param('serverId'), slug)); }
+    catch (error) { throw error instanceof HTTPException ? error : providerHttpException(error); }
+  }
   const reference = c.req.query('ref')?.trim() ?? '';
   if (!reference || reference.length > 1000 || !reference.startsWith('/')) throw new HTTPException(400, { message: 'Referência inválida' });
   try {
@@ -484,6 +501,7 @@ app.post('/v1/auth/login', async (c) => {
 });
 
 const requireAuth = async (c: Context<{ Bindings: Env; Variables: Variables }>, next: Next) => {
+  c.header('Cache-Control', 'private, no-store');
   const match = /^Bearer\s+([^\s]+)$/i.exec(c.req.header('Authorization') ?? '');
   const token = match?.[1] ?? '';
   if (!token || token.length > 512) throw new HTTPException(401, { message: 'Autenticação necessária' });
@@ -511,30 +529,15 @@ app.post('/v1/catalog/provider-data', async (c) => {
       serverId,
       reference: detail.anime.reference,
       title: detail.anime.title,
-      fallbackPostType: detail.postType
+      fallbackPostType: detail.postType,
+      refresh: true
     });
-    const clientMetadata = sanitizeClientMetadata(body.metadata);
-    const enrichedIdentity = mergeProviderMetadata(identity, clientMetadata);
-    if (!hasUsableMetadata(enrichedIdentity)) throw new HTTPException(503, { message: 'Nenhum dado de anime foi encontrado nas fontes disponíveis' });
+    // Client metadata cannot rewrite shared MAL/provider ownership.
+    if (!identity.imageUrl && !identity.synopsis) throw new HTTPException(503, { message: 'As fontes não retornaram capa ou sinopse. Nenhum dado foi aplicado.' });
+    const saved = await persistIdentity(c.env.DB, identity, serverId, detail.anime.reference);
+    const enrichedIdentity = saved.identity;
     const animeId = enrichedIdentity.canonicalId;
-    const slug = await uniqueAnimeSlug(c.env.DB, savedAnimeSlug(enrichedIdentity, detail.anime.title, serverId), animeId);
-    const status = enrichedIdentity.status ?? 'unknown';
-    const type = enrichedIdentity.postType === 'filme' ? 'movie' : enrichedIdentity.postType === 'manga' ? 'manga' : 'tv';
-    await c.env.DB.prepare(`INSERT INTO anime (id, slug, title, title_english, title_romaji, title_native, synopsis, type, status, year, score_basis_points, genres, image_url, backdrop_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(id) DO UPDATE SET slug = excluded.slug, title = excluded.title, title_english = excluded.title_english, title_romaji = excluded.title_romaji, title_native = excluded.title_native, synopsis = excluded.synopsis, type = excluded.type, status = excluded.status, year = excluded.year, score_basis_points = excluded.score_basis_points, genres = excluded.genres, image_url = excluded.image_url, backdrop_url = excluded.backdrop_url, updated_at = CURRENT_TIMESTAMP`)
-      .bind(animeId, slug, enrichedIdentity.canonicalTitle, enrichedIdentity.titleEnglish, enrichedIdentity.titleRomaji, enrichedIdentity.titleNative, enrichedIdentity.synopsis, type, status, enrichedIdentity.year, enrichedIdentity.scoreBasisPoints, JSON.stringify(enrichedIdentity.genres), enrichedIdentity.imageUrl, enrichedIdentity.backdropUrl)
-      .run();
-    const externalIds = [
-      { provider: serverId, externalId: detail.anime.reference },
-      ...(enrichedIdentity.malId ? [{ provider: 'myanimelist', externalId: String(enrichedIdentity.malId) }] : []),
-      ...(enrichedIdentity.anilistId ? [{ provider: 'anilist', externalId: String(enrichedIdentity.anilistId) }] : [])
-    ];
-    for (const external of externalIds) {
-      await c.env.DB.prepare(`INSERT INTO anime_external_ids (id, anime_id, provider, external_id) VALUES (?, ?, ?, ?)
-        ON CONFLICT(provider, external_id) DO UPDATE SET anime_id = excluded.anime_id`)
-        .bind(crypto.randomUUID(), animeId, external.provider, external.externalId)
-        .run();
-    }
+    const slug = saved.slug;
     return c.json({ ok: true, saved: true, anime: { id: animeId, slug, title: enrichedIdentity.canonicalTitle, imageUrl: enrichedIdentity.imageUrl, backdropUrl: enrichedIdentity.backdropUrl }, identity: enrichedIdentity, sources: { myanimelist: Boolean(enrichedIdentity.malId), anilist: Boolean(enrichedIdentity.anilistId), anidb: false }, savedAt: new Date().toISOString() });
   } catch (error) {
     throw error instanceof HTTPException ? error : providerHttpException(error);
@@ -542,6 +545,38 @@ app.post('/v1/catalog/provider-data', async (c) => {
 });
 
 app.get('/v1/me', (c) => c.json({ id: c.get('userId'), email: c.get('userEmail') ?? null }));
+app.put('/v1/me/provider-library', async (c) => {
+  const parsed = ProviderSelectionSchema.safeParse(await c.req.json());
+  if (!parsed.success) throw new HTTPException(400, { message: 'Referência do servidor inválida' });
+  try {
+    const saved = await saveProviderWork(c, parsed.data.serverId, parsed.data.reference, parsed.data.workSlug);
+    await c.env.DB.prepare(`INSERT INTO user_library(id,user_id,anime_id,status) VALUES(?,?,?,'watchlist') ON CONFLICT(user_id,anime_id) DO NOTHING`).bind(crypto.randomUUID(), c.get('userId'), saved.identity.canonicalId).run();
+    return c.json({ ok: true, animeId: saved.identity.canonicalId, slug: saved.slug });
+  } catch (error) { throw error instanceof HTTPException ? error : providerHttpException(error); }
+});
+app.put('/v1/me/provider-progress', async (c) => {
+  const parsed = ProviderProgressSchema.safeParse(await c.req.json());
+  if (!parsed.success) throw new HTTPException(400, { message: 'Progresso ou referência inválidos' });
+  const data = parsed.data;
+  try {
+    const saved = await saveProviderWork(c, data.serverId, data.reference, data.workSlug);
+    const episode = saved.detail.seasons.find(s => s.number === data.seasonNumber)?.episodes.find(e => e.number === data.episodeNumber && canonicalReference(e.reference) === canonicalReference(data.episodeReference));
+    if (!episode) throw new HTTPException(409, { message: 'O episódio não pertence a esta obra/temporada no servidor.' });
+    const animeId = saved.identity.canonicalId;
+    const oldSeason = await c.env.DB.prepare('SELECT id FROM anime_seasons WHERE anime_id=? AND number=?').bind(animeId, data.seasonNumber).first<{id:string}>();
+    const seasonId = oldSeason?.id ?? `${animeId}:s${data.seasonNumber}`;
+    const oldEpisode = await c.env.DB.prepare('SELECT id FROM episodes WHERE season_id=? AND number=?').bind(seasonId, data.episodeNumber).first<{id:string}>();
+    const episodeId = oldEpisode?.id ?? `${seasonId}:e${data.episodeNumber}`;
+    const position = Math.floor(data.positionSeconds), duration = Math.floor(data.durationSeconds);
+    const completed = duration > 0 && position / duration >= .9 ? 1 : 0;
+    await c.env.DB.batch([
+      c.env.DB.prepare('INSERT INTO anime_seasons(id,anime_id,number,title,episodes_count) VALUES(?,?,?,?,?) ON CONFLICT(anime_id,number) DO NOTHING').bind(seasonId,animeId,data.seasonNumber,`Temporada ${data.seasonNumber}`,saved.detail.seasons.find(s => s.number === data.seasonNumber)!.episodes.length),
+      c.env.DB.prepare('INSERT INTO episodes(id,season_id,number,title) VALUES(?,?,?,?) ON CONFLICT(season_id,number) DO NOTHING').bind(episodeId,seasonId,data.episodeNumber,episode.title),
+      c.env.DB.prepare(`INSERT INTO user_episode_progress(id,user_id,episode_id,position_seconds,duration_seconds,completed) VALUES(?,?,?,?,?,?) ON CONFLICT(user_id,episode_id) DO UPDATE SET position_seconds=excluded.position_seconds,duration_seconds=excluded.duration_seconds,completed=excluded.completed,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')`).bind(crypto.randomUUID(),c.get('userId'),episodeId,position,duration,completed)
+    ]);
+    return c.json({ ok: true, animeId, slug: saved.slug, episodeId });
+  } catch (error) { throw error instanceof HTTPException ? error : providerHttpException(error); }
+});
 app.get('/v1/me/library', async (c) => {
   const rows = await all<Row>(c.env.DB, `SELECT anime.id AS anime_id, anime.slug, anime.title, anime.year, anime.type, anime.genres, anime.score_basis_points, anime.image_url, user_library.status, user_library.updated_at FROM user_library INNER JOIN anime ON anime.id = user_library.anime_id WHERE user_library.user_id = ? ORDER BY user_library.updated_at DESC`, c.get('userId'));
   return c.json(rows.map((row) => ({ animeId: row.anime_id, slug: row.slug, title: row.title, year: row.year, type: row.type, genres: parseArray(row.genres), scoreBasisPoints: row.score_basis_points, status: row.status, imageUrl: typeof row.image_url === 'string' ? row.image_url : null, updatedAt: row.updated_at })));
@@ -555,7 +590,7 @@ app.put('/v1/me/library/:animeId', async (c) => {
 });
 app.delete('/v1/me/library/:animeId', async (c) => { await c.env.DB.prepare('DELETE FROM user_library WHERE user_id = ? AND anime_id = ?').bind(c.get('userId'), c.req.param('animeId')).run(); return c.json({ ok: true }); });
 app.get('/v1/me/continue-watching', async (c) => {
-  const rows = await all<Row>(c.env.DB, `SELECT anime.id AS anime_id, anime.slug, anime.title, anime.type, anime.genres, anime.score_basis_points, anime.image_url, anime_seasons.number AS season_number, episodes.id AS episode_id, episodes.number AS episode_number, episodes.title AS episode_title, user_episode_progress.position_seconds, user_episode_progress.duration_seconds, user_episode_progress.completed, user_episode_progress.updated_at FROM user_episode_progress INNER JOIN episodes ON episodes.id = user_episode_progress.episode_id INNER JOIN anime_seasons ON anime_seasons.id = episodes.season_id INNER JOIN anime ON anime.id = anime_seasons.anime_id WHERE user_episode_progress.user_id = ? AND user_episode_progress.completed = 0 ORDER BY user_episode_progress.updated_at DESC LIMIT 20`, c.get('userId'));
+  const rows = await all<Row>(c.env.DB, `SELECT * FROM (SELECT ROW_NUMBER() OVER (PARTITION BY anime.id ORDER BY julianday(user_episode_progress.updated_at) DESC, user_episode_progress.rowid DESC) AS rn, anime.id AS anime_id, anime.slug, anime.title, anime.type, anime.genres, anime.score_basis_points, anime.image_url, anime_seasons.number AS season_number, episodes.id AS episode_id, episodes.number AS episode_number, episodes.title AS episode_title, user_episode_progress.position_seconds, user_episode_progress.duration_seconds, user_episode_progress.completed, user_episode_progress.updated_at FROM user_episode_progress INNER JOIN episodes ON episodes.id = user_episode_progress.episode_id INNER JOIN anime_seasons ON anime_seasons.id = episodes.season_id INNER JOIN anime ON anime.id = anime_seasons.anime_id WHERE user_episode_progress.user_id = ?  ) WHERE rn=1 AND completed=0 ORDER BY julianday(updated_at) DESC LIMIT 20`, c.get('userId'));
   return c.json(rows.map((row) => ({ animeId: row.anime_id, slug: row.slug, title: row.title, seasonNumber: row.season_number, episodeId: row.episode_id, episodeNumber: row.episode_number, episodeTitle: row.episode_title, positionSeconds: row.position_seconds, durationSeconds: row.duration_seconds, completed: Boolean(row.completed), type: row.type, genres: parseArray(row.genres), scoreBasisPoints: row.score_basis_points, imageUrl: typeof row.image_url === 'string' ? row.image_url : null, updatedAt: row.updated_at })));
 });
 app.put('/v1/me/progress/:episodeId', async (c) => {
@@ -580,58 +615,6 @@ async function first<T extends Row>(db: D1Database, query: string, ...bindings: 
 function whereClause(conditions: string[]) { return conditions.length ? ` WHERE ${conditions.join(' AND ')}` : ''; }
 function parseArray(value: unknown): string[] { try { const parsed = JSON.parse(String(value ?? '[]')); return Array.isArray(parsed) ? parsed.map(String) : []; } catch { return []; } }
 function parseObject(value: unknown): Record<string, unknown> { try { const parsed = JSON.parse(String(value ?? '{}')); return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {}; } catch { return {}; } }
-async function uniqueAnimeSlug(db: D1Database, baseSlug: string, animeId: string): Promise<string> {
-  const existing = await first<Row>(db, 'SELECT id FROM anime WHERE slug = ?', baseSlug);
-  if (!existing || String(existing.id) === animeId) return baseSlug;
-  return `${baseSlug}-${animeId.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase()}`;
-}
-function savedAnimeSlug(identity: { malId: number | null; anilistId: number | null }, title: string, serverId: string): string {
-  if (identity.malId) return `mal-${identity.malId}`;
-  if (identity.anilistId) return `anilist-${identity.anilistId}`;
-  const titleSlug = title.toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'anime';
-  return `provider-${serverId}-${titleSlug}`;
-}
-function sanitizeClientMetadata(value: unknown): Partial<ProviderMetadata> {
-  if (!value || typeof value !== 'object') return {};
-  const raw = value as Record<string, unknown>;
-  const result: Record<string, unknown> = {};
-  const textFields = ['canonicalTitle', 'synopsis', 'titleEnglish', 'titleRomaji', 'titleNative'] as const;
-  for (const field of textFields) {
-    if (typeof raw[field] === 'string' && raw[field].trim().length > 0 && raw[field].trim().length <= 20_000) result[field] = raw[field].trim();
-  }
-  for (const field of ['imageUrl', 'backdropUrl'] as const) {
-    if (typeof raw[field] === 'string' && isSafeMetadataUrl(raw[field])) result[field] = raw[field];
-  }
-  for (const field of ['malId', 'anilistId', 'year', 'scoreBasisPoints'] as const) {
-    if (typeof raw[field] === 'number' && Number.isSafeInteger(raw[field]) && raw[field] > 0) result[field] = raw[field];
-  }
-  if (raw.postType === 'anime' || raw.postType === 'filme' || raw.postType === 'manga') result.postType = raw.postType;
-  if (Array.isArray(raw.genres)) result.genres = raw.genres.filter((genre): genre is string => typeof genre === 'string' && genre.trim().length > 0 && genre.trim().length <= 80).slice(0, 20).map((genre) => genre.trim());
-  return result as Partial<ProviderMetadata>;
-}
-function isSafeMetadataUrl(value: string): boolean {
-  try { const url = new URL(value); return url.protocol === 'https:' && value.length <= 2048; } catch { return false; }
-}
-function mergeProviderMetadata(identity: ProviderMetadata, client: Partial<ProviderMetadata>): ProviderMetadata {
-  const merged = { ...identity };
-  const fields = ['canonicalTitle', 'synopsis', 'titleEnglish', 'titleRomaji', 'titleNative', 'year', 'scoreBasisPoints', 'imageUrl', 'backdropUrl', 'postType'] as const;
-  for (const field of fields) {
-    const value = client[field];
-    if (value !== null && value !== undefined && value !== '') (merged as Record<string, unknown>)[field] = value;
-  }
-  if (client.genres?.length) merged.genres = client.genres;
-  if (!identity.malId && client.malId) merged.malId = client.malId;
-  if (!identity.anilistId && client.anilistId) merged.anilistId = client.anilistId;
-  if (!identity.malId && !identity.anilistId) {
-    if (merged.malId) merged.canonicalId = `mal:${merged.malId}`;
-    else if (merged.anilistId) merged.canonicalId = `anilist:${merged.anilistId}`;
-  }
-  if (client.malId || client.anilistId) merged.source = 'anilist';
-  return merged;
-}
-function hasUsableMetadata(metadata: ProviderMetadata): boolean {
-  return Boolean(metadata.malId || metadata.anilistId || metadata.synopsis || metadata.imageUrl || metadata.backdropUrl || metadata.year || metadata.genres.length || metadata.titleEnglish || metadata.titleRomaji || metadata.titleNative);
-}
 function animeSummary(row: Row) { return { id: row.id, slug: row.slug, title: row.title, year: row.year, type: row.type, status: row.status, genres: parseArray(row.genres), scoreBasisPoints: row.score_basis_points, imageUrl: typeof row.image_url === 'string' ? row.image_url : null }; }
 function animeDetail(row: Row) { return { ...animeSummary(row), titleEnglish: row.title_english, titleRomaji: row.title_romaji, titleNative: row.title_native, synopsis: row.synopsis }; }
 function season(row: Row) { return { id: row.id, animeId: row.anime_id, number: row.number, title: row.title, episodesCount: row.episodes_count }; }

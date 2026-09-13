@@ -19,9 +19,12 @@
     "build:admin": "npm run build --workspace @neko/admin",
     "build": "npm run build:web && npm run build:api && npm run build:api-worker && npm run build:admin",
     "typecheck": "npm run typecheck --workspaces --if-present",
+    "test:contracts": "npm test --workspace @neko/api-worker",
+    "test:web": "node tools/web-smoke.mjs",
     "format": "prettier --write ."
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "prettier": "^3.6.0",
     "typescript": "^5.9.0"
   },

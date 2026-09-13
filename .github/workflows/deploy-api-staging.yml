@@ -18,8 +18,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
       - run: npm install --no-audit --no-fund
+      - name: Validate types and provider contracts
+        run: |
+          npm run typecheck
+          npm run test:contracts
       - name: Ensure persisted anime metadata columns
         shell: bash
         env:
@@ -38,19 +41,6 @@ jobs:
           fi
           if ! has_column backdrop_url; then
             npx wrangler d1 execute nekoanimes-staging-db --remote --config apps/api-worker/wrangler.jsonc --command "ALTER TABLE anime ADD COLUMN backdrop_url TEXT;"
-          fi
-      - name: Configure Worker secrets
-        shell: bash
-        env:
-          APK_URL: ${{ secrets.NEKO_ANDROID_APK_URL }}
-          APK_SHA256: ${{ secrets.NEKO_ANDROID_APK_SHA256 }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: |
-          set -euo pipefail
-          if [[ -n "$APK_URL" && -n "$APK_SHA256" ]]; then
-            printf '%s' "$APK_URL" | npx wrangler secret put ANDROID_APK_URL --config apps/api-worker/wrangler.jsonc
-            printf '%s' "$APK_SHA256" | npx wrangler secret put ANDROID_APK_SHA256 --config apps/api-worker/wrangler.jsonc
           fi
       - name: Validate Worker bundle
         run: npx wrangler deploy --config apps/api-worker/wrangler.jsonc --dry-run

@@ -103,7 +103,7 @@ internal fun NekoPlayerScreen(
         is PlayerState.Error -> Box(modifier = Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) { Text(current.message, color = Color.White) }
         is PlayerState.Ready -> {
             val descriptor = current.descriptor
-            val player = remember(descriptor.episodeId) {
+            val player = remember(descriptor.episodeId, descriptor.source.url) {
                 val bloggerMedia = isGoogleVideoSource(descriptor.source.url)
                 val httpFactory = DefaultHttpDataSource.Factory()
                     .setUserAgent(
@@ -137,16 +137,24 @@ internal fun NekoPlayerScreen(
                     }
             }
             activePlayer = player
+            var buffering by remember(player) { mutableStateOf(player.playbackState == Player.STATE_BUFFERING || player.playbackState == Player.STATE_IDLE) }
 
             DisposableEffect(player) {
                 val listener = object : Player.Listener {
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        buffering = playbackState == Player.STATE_BUFFERING || (playbackState == Player.STATE_IDLE && player.playerError == null)
+                    }
                     override fun onPlayerError(error: PlaybackException) {
+                        buffering = false
                         val detail = error.message?.takeIf { it.isNotBlank() } ?: error.errorCodeName
                         playbackError = detail
-                        Log.e("NekoPlayer", "ExoPlayer falhou para ${descriptor.source.url}", error)
+                        Log.e("NekoPlayer", "ExoPlayer falhou: ${error.errorCodeName}", error)
                     }
                 }
                 player.addListener(listener)
+                // prepare() precedes this listener; also inspect the initial state.
+                buffering = player.playbackState == Player.STATE_BUFFERING || player.playbackState == Player.STATE_IDLE
+                player.playerError?.let { playbackError = it.errorCodeName; buffering = false }
                 onDispose {
                     player.removeListener(listener)
                     if (activePlayer === player) activePlayer = null
@@ -160,6 +168,9 @@ internal fun NekoPlayerScreen(
                     factory = { viewContext -> PlayerView(viewContext).apply { this.player = player; useController = true; keepScreenOn = true } },
                     update = { it.player = player }
                 )
+                if (buffering && playbackError == null) {
+                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = Color(0xFFA78BFA))
+                }
                 playbackError?.let { error ->
                     Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.82f)), contentAlignment = Alignment.Center) {
                         Text("Não foi possível reproduzir este vídeo.\n$error", color = Color.White)
