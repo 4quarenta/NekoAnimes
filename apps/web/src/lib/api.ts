@@ -62,7 +62,7 @@ export function fetchProviderCatalog(serverId: string, params: { letter?: string
 export function fetchServerSearch(query: string) { return getJson<ServerSearchResponse>(`/v1/servers/search?q=${encodeURIComponent(query)}`); }
 export function fetchServerAnime(serverId: string, reference: string) { const search = new URLSearchParams({ ref: reference }); return getJson<ServerAnimeDetail>(`/v1/servers/${encodeURIComponent(serverId)}/anime?${search}`); }
 export function fetchServerResolution(query: string, season: number, episode: number) { return getJson<ServerResolution>(`/v1/servers/resolve/${encodeURIComponent(query)}/${season}/${episode}`); }
-export function fetchServerProviderResolution(serverId: string, query: string, season: number, episode: number, reference?: string) { const suffix = reference ? `?ref=${encodeURIComponent(reference)}` : ''; return getJson<ServerProviderResolution>(`/v1/servers/${encodeURIComponent(serverId)}/resolve/${encodeURIComponent(query)}/${season}/${episode}${suffix}`); }
+export function fetchServerProviderResolution(serverId: string, query: string, season: number, episode: number, animeReference?: string, episodeReference?: string) { const search = new URLSearchParams(); if (animeReference) search.set('ref', animeReference); if (episodeReference) search.set('episodeRef', episodeReference); const suffix = search.size ? `?${search}` : ''; return getJson<ServerProviderResolution>(`/v1/servers/${encodeURIComponent(serverId)}/resolve/${encodeURIComponent(query)}/${season}/${episode}${suffix}`); }
 
 export function fetchMe() { return authJson<{ id: string; email: string | null }>('/v1/me'); }
 export function fetchLibrary() { return authJson<LibraryItem[]>('/v1/me/library'); }

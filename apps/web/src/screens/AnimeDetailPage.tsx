@@ -26,7 +26,7 @@ export function AnimeDetailPage() {
   const selectedSeason = item?.seasons.find((season) => season.id === selectedSeasonId);
   const selectedProviderSeason = providerAnime.data?.seasons.find((season) => season.id === selectedSeasonId);
   const legacyEpisodeQuery = useQuery({ queryKey: ['episodes', selectedSeasonId, visible], queryFn: () => fetchEpisodes(selectedSeasonId!, 0, visible), enabled: Boolean(selectedSeasonId && !providerMode) });
-  const providerResolution = useQuery({ queryKey: ['provider-resolution', providerId, providerAnime.data?.anime.title, selectedEpisode?.reference], queryFn: () => fetchServerProviderResolution(providerId!, providerAnime.data!.anime.title, selectedEpisode!.seasonNumber, selectedEpisode!.number, selectedEpisode!.reference), enabled: Boolean(providerMode && providerId && selectedEpisode), staleTime: 10 * 60 * 1000 });
+  const providerResolution = useQuery({ queryKey: ['provider-resolution', providerId, providerAnime.data?.anime.reference, selectedEpisode?.reference], queryFn: () => fetchServerProviderResolution(providerId!, providerAnime.data!.anime.title, selectedEpisode!.seasonNumber, selectedEpisode!.number, providerAnime.data!.anime.reference, selectedEpisode!.reference), enabled: Boolean(providerMode && providerId && selectedEpisode), staleTime: 10 * 60 * 1000 });
 
   useEffect(() => {
     const resolution = providerResolution.data;

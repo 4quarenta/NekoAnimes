@@ -380,6 +380,7 @@ app.get('/v1/servers/:serverId/resolve/:query/:season/:episode', async (c) => {
 
   try {
     const requestedReference = c.req.query('ref')?.trim();
+    const requestedEpisodeReference = c.req.query('episodeRef')?.trim();
     const match = requestedReference ? undefined : (await searchProvider(serverId, query))[0];
     if (!requestedReference && !match) throw new HTTPException(404, { message: 'Anime não encontrado neste provider' });
     const detail = await getProviderAnime(serverId, requestedReference ?? match!.reference);
@@ -391,7 +392,9 @@ app.get('/v1/servers/:serverId/resolve/:query/:season/:episode', async (c) => {
       url: detail.anime.url,
       confidence: 1
     };
-    const episode = detail.seasons.find((item) => item.number === seasonNumber)?.episodes.find((item) => item.number === episodeNumber);
+    const episode = requestedEpisodeReference
+      ? detail.seasons.flatMap((season) => season.episodes).find((item) => item.reference === requestedEpisodeReference)
+      : detail.seasons.find((item) => item.number === seasonNumber)?.episodes.find((item) => item.number === episodeNumber);
     if (!episode) throw new HTTPException(404, { message: 'Episódio não encontrado neste provider' });
     const providerEpisode = await getProviderEpisode(serverId, episode.reference);
     const sources = providerEpisode.playback.sources.map((source) => ({
