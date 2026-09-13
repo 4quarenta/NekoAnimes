@@ -6,14 +6,14 @@ import { fetchManifest, fetchServers, saveEpisodeProgress } from './lib/api';
 import { useServerPreference } from './lib/server-preference';
 import { router } from './router';
 
-const NATIVE_ROUTES = ['/', '/catalogo', '/buscar', '/categorias', '/lista', '/salvos', '/conta', '/servidores'] as const;
+const NATIVE_ROUTES = ['/', '/buscar', '/categorias', '/lista', '/salvos', '/conta', '/servidores'] as const;
 type NativeRoute = (typeof NATIVE_ROUTES)[number];
 type NavigableRoute = NativeRoute | `/anime/${string}` | `/noticias/${string}` | `/categorias/${string}`;
 function isNativeRoute(route: string): route is NativeRoute { return (NATIVE_ROUTES as readonly string[]).includes(route); }
 function isNavigableRoute(route: string): route is NavigableRoute {
   return isNativeRoute(route) || route.startsWith('/anime/') || route.startsWith('/noticias/') || route.startsWith('/categorias/');
 }
-function isStreamingOnly(route: string) { return route === '/catalogo' || route === '/categorias' || route.startsWith('/categorias/') || route === '/lista' || route === '/servidores' || route.startsWith('/anime/'); }
+function isStreamingOnly(route: string) { return route === '/categorias' || route.startsWith('/categorias/') || route === '/lista' || route === '/servidores' || route.startsWith('/anime/'); }
 function isNewsOnly(route: string) { return route === '/salvos' || route.startsWith('/noticias/'); }
 
 export function App() {

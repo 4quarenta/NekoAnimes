@@ -65,7 +65,7 @@ type HtmlAnchor = { href: string; text: string };
 type ProviderResponse = { html: string; url: string };
 type ProviderConfig = ServerDescriptor & {
   searchPath: (query: string) => string;
-  catalogPath: (letter?: string, genre?: string) => string;
+  catalogPath: (letter?: string, genre?: string, page?: number) => string;
   fallbackAnimePath: (query: string) => string;
   isAnimeReference: (reference: string) => boolean;
   isEpisodeReference: (reference: string) => boolean;
@@ -78,7 +78,7 @@ export const ANIMES_DIGITAL: ProviderConfig = {
   baseUrl: 'https://animesdigital.org',
   capabilities: { search: true, anime: true, episodes: true, playback: true },
   searchPath: (query) => `/?s=${encodeURIComponent(query)}`,
-  catalogPath: (letter, genre) => genre ? `/genero/${providerGenreSlug(genre)}/` : `/?s=${letter ? letter.toLowerCase() : 'an'}`,
+  catalogPath: (letter, genre, page) => genre ? `/genero/${providerGenreSlug(genre)}${page && page > 1 ? `/page/${page}` : ''}/` : `/?s=${letter ? letter.toLowerCase() : 'an'}${page && page > 1 ? `&paged=${page}` : ''}`,
   fallbackAnimePath: (query) => `/anime/a/${slugify(query)}`,
   isAnimeReference: (reference) => reference.startsWith('/anime/a/'),
   isEpisodeReference: (reference) => reference.startsWith('/video/a/') || /^\/\?p=\d+$/i.test(reference),
@@ -91,7 +91,7 @@ export const ANIMES_ONLINE_CC: ProviderConfig = {
   baseUrl: 'https://animesonlinecc.to',
   capabilities: { search: true, anime: true, episodes: true, playback: true },
   searchPath: (query) => `/?s=${encodeURIComponent(query)}`,
-  catalogPath: (letter, genre) => genre ? `/genero/${providerGenreSlug(genre)}/` : letter ? `/genero/letra-${letter.toLowerCase()}/` : '/anime/',
+  catalogPath: (letter, genre, page) => genre ? `/genero/${providerGenreSlug(genre)}${page && page > 1 ? `/page/${page}` : ''}/` : letter ? `/genero/letra-${letter.toLowerCase()}${page && page > 1 ? `/page/${page}` : ''}/` : `/anime/${page && page > 1 ? `page/${page}/` : ''}`,
   fallbackAnimePath: (query) => `/anime/${slugify(query)}`,
   isAnimeReference: (reference) => reference.startsWith('/anime/'),
   isEpisodeReference: (reference) => reference.includes('/episodio/'),
@@ -104,7 +104,7 @@ export const GOYABU: ProviderConfig = {
   baseUrl: 'https://goyabu.io',
   capabilities: { search: true, anime: true, episodes: true, playback: true },
   searchPath: (query) => `/?s=${encodeURIComponent(query)}`,
-  catalogPath: (letter, genre) => genre ? `/generos/${providerGenreSlug(genre)}` : `/lista-de-animes?l=${letter?.toLowerCase() ?? 'todos'}`,
+  catalogPath: (letter, genre, page) => genre ? `/generos/${providerGenreSlug(genre)}${page && page > 1 ? `/page/${page}` : ''}` : `/lista-de-animes?l=${letter?.toLowerCase() ?? 'todos'}${page && page > 1 ? `&paged=${page}` : ''}`,
   fallbackAnimePath: (query) => `/anime/${slugify(query)}`,
   isAnimeReference: (reference) => reference.startsWith('/anime/'),
   isEpisodeReference: (reference) => /^\/\d+\/?(?:\?.*)?$/.test(reference) || reference.includes('/episodio/'),
@@ -148,10 +148,12 @@ export async function searchProvider(serverId: string, query: string): Promise<S
   }
 }
 
-export async function browseProvider(serverId: string, options: { letter?: string; genre?: string; limit?: number } = {}): Promise<ServerAnimeMatch[]> {
+export async function browseProvider(serverId: string, options: { letter?: string; genre?: string; page?: number; limit?: number } = {}): Promise<{ items: ServerAnimeMatch[]; hasNextPage: boolean }> {
   const provider = getProvider(serverId);
-  const response = await getProviderHtml(provider, provider.catalogPath(options.letter, options.genre));
+  const page = options.page ?? 1;
+  const response = await getProviderHtml(provider, provider.catalogPath(options.letter, options.genre, page));
   let matches = extractBrowseMatches(provider, parseAnchors(response.html));
+  const hasNextPage = hasProviderNextPage(provider, parseAnchors(response.html), page);
   const letter = options.letter?.toLowerCase();
   matches = matches.filter((match) => !letter || normalizeForMatch(match.title).startsWith(letter));
   // Animes Digital does not expose a stable all-titles/letter endpoint. Its
@@ -159,7 +161,7 @@ export async function browseProvider(serverId: string, options: { letter?: strin
   if (!matches.length && letter && provider.id === 'animesdigital') {
     matches = (await searchProvider(serverId, `${letter}n`)).filter((match) => normalizeForMatch(match.title).startsWith(letter));
   }
-  return matches.slice(0, options.limit ?? 50);
+  return { items: matches.slice(0, options.limit ?? 50), hasNextPage };
 }
 
 export async function getProviderAnime(serverId: string, reference: string): Promise<ServerAnimeDetail> {
@@ -323,6 +325,15 @@ function extractBrowseMatches(provider: ProviderConfig, anchors: HtmlAnchor[]): 
     if (!deduped.has(reference)) deduped.set(reference, match);
   }
   return [...deduped.values()].sort((a, b) => a.title.localeCompare(b.title));
+}
+
+function hasProviderNextPage(provider: ProviderConfig, anchors: HtmlAnchor[], currentPage: number): boolean {
+  return anchors.some((anchor) => {
+    const reference = referenceFromHref(provider, anchor.href);
+    if (!reference) return false;
+    const page = /\/page\/(\d+)\/?$/i.exec(reference)?.[1] ?? /[?&]paged=(\d+)/i.exec(reference)?.[1];
+    return Number(page) > currentPage;
+  });
 }
 
 function toAnimeMatch(provider: ProviderConfig, title: string, url: string, confidence: number): ServerAnimeMatch {

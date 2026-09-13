@@ -270,16 +270,15 @@ app.get('/v1/servers/:serverId/catalog', async (c) => {
   const query = c.req.query('q')?.trim();
   const letter = c.req.query('letter')?.trim();
   const genre = c.req.query('genre')?.trim();
+  const page = clampInt(c.req.query('page'), 1, 1, 100);
   const limit = clampInt(c.req.query('limit'), 50, 1, 100);
   if (letter && !/^[A-Z]$/i.test(letter)) throw new HTTPException(400, { message: 'Letra inválida' });
   if (query) validateProviderQuery(query);
   if (genre && (genre.length < 2 || genre.length > 80)) throw new HTTPException(400, { message: 'Gênero inválido' });
   try {
-    const items = query
-      ? await searchProvider(serverId, query)
-      : await browseProvider(serverId, { letter: letter?.toUpperCase(), genre, limit });
+    const browse = query ? { items: await searchProvider(serverId, query), hasNextPage: false } : await browseProvider(serverId, { letter: letter?.toUpperCase(), genre, page, limit });
     const server = listServerDescriptors().find((item) => item.id === serverId)!;
-    return c.json({ server, items: items.slice(0, limit), count: Math.min(items.length, limit), source: 'provider', fetchedAt: new Date().toISOString() }, 200, { 'Cache-Control': 'public, max-age=120' });
+    return c.json({ server, items: browse.items.slice(0, limit), count: Math.min(browse.items.length, limit), page, pageSize: limit, hasNextPage: browse.hasNextPage, source: 'provider', fetchedAt: new Date().toISOString() }, 200, { 'Cache-Control': 'public, max-age=120' });
   } catch (error) {
     throw providerHttpException(error);
   }
@@ -595,7 +594,7 @@ function providerErrorCode(error: unknown): 'provider_unavailable' | 'provider_t
 function providerHttpException(error: unknown): HTTPException { return new HTTPException(error instanceof ProviderError && error.kind === 'timeout' ? 504 : 503, { message: error instanceof Error ? error.message : 'Provider indisponível' }); }
 function defaultAds() { return { enabled: false, engine: 'max' as const, banner: { enabled: false }, appOpen: { enabled: false, minIntervalMinutes: 60, skipFirstOpens: 3 }, interstitial: { enabled: false, minIntervalMinutes: 30, maxPerSession: 2 } }; }
 function isAdsConfig(value: unknown): value is ReturnType<typeof defaultAds> { return Boolean(value && typeof value === 'object' && 'enabled' in value && 'banner' in value && 'appOpen' in value && 'interstitial' in value); }
-function streamingNavigation() { return [{ id: 'home', label: 'Início', icon: 'home', route: '/' }, { id: 'catalog', label: 'A–Z', icon: 'catalog', route: '/catalogo' }, { id: 'search', label: 'Buscar', icon: 'search', route: '/buscar' }, { id: 'categories', label: 'Categorias', icon: 'category', route: '/categorias' }, { id: 'library', label: 'Lista', icon: 'library', route: '/lista' }, { id: 'account', label: 'Conta', icon: 'profile', route: '/conta' }, { id: 'servers', label: 'Servidores', icon: 'server', route: '/servidores' }]; }
+function streamingNavigation() { return [{ id: 'home', label: 'Início', icon: 'home', route: '/' }, { id: 'search', label: 'Buscar', icon: 'search', route: '/buscar' }, { id: 'categories', label: 'Categorias', icon: 'category', route: '/categorias' }, { id: 'library', label: 'Lista', icon: 'library', route: '/lista' }, { id: 'account', label: 'Conta', icon: 'profile', route: '/conta' }, { id: 'servers', label: 'Servidores', icon: 'server', route: '/servidores' }]; }
 function newsNavigation() { return [{ id: 'home', label: 'Início', icon: 'home', route: '/' }, { id: 'search', label: 'Buscar', icon: 'search', route: '/buscar' }, { id: 'saved', label: 'Salvos', icon: 'bookmark', route: '/salvos' }, { id: 'account', label: 'Conta', icon: 'profile', route: '/conta' }]; }
 
 export default app;

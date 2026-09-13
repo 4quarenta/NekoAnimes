@@ -59,13 +59,13 @@ export function HomePage() {
       <Section title="Continuar assistindo" action={<button className="neko-link" onClick={() => void navigate({ to: '/lista' })}>Ver lista</button>}>
         <div className="neko-list"><TextRow title="Entre na conta para sincronizar" meta="Seu progresso aparecerá aqui" trailing="›" onClick={() => void navigate({ to: '/conta' })} /></div>
       </Section>
-      <Section title="Catálogo em destaque" action={<button className="neko-link" onClick={() => void navigate({ to: '/catalogo' })}>Ver tudo</button>}>
+      <Section title="Catálogo em destaque" action={<button className="neko-link" onClick={() => void navigate({ to: '/categorias' })}>Ver categorias</button>}>
         {catalog.isPending ? <div className="neko-skeleton short" /> : null}
         {catalog.data?.items.length ? <div className="neko-list">{catalog.data.items.map((item) => <TextRow key={item.reference} title={item.title} meta={catalog.data?.server.name} trailing="›" onClick={() => void navigate({ to: '/anime/$slug', params: { slug: providerSlug(item) }, search: { provider: item.serverId, ref: item.reference } })} />)}</div> : null}
         {catalog.isError ? <p className="neko-error">Não foi possível carregar o catálogo de {serverId ?? 'servidor'}.</p> : null}
       </Section>
-      <Section title="Explorar A–Z" action={<button className="neko-link" onClick={() => void navigate({ to: '/catalogo' })}>Abrir catálogo</button>}>
-        <div className="neko-letter-preview">{'ABCDEFG'.split('').map((letter) => <span key={letter}>{letter}</span>)}</div>
+      <Section title="Explorar categorias" action={<button className="neko-link" onClick={() => void navigate({ to: '/categorias' })}>Abrir categorias</button>}>
+        <div className="neko-category-strip" aria-label="Categorias"><span>Ação</span><span>Aventura</span><span>Comédia</span><span>Drama</span><span>Fantasia</span></div>
       </Section>
     </AppScreen>
   );
