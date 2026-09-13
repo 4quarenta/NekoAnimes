@@ -153,7 +153,7 @@ export async function browseProvider(serverId: string, options: { letter?: strin
   const page = options.page ?? 1;
   const response = await getProviderHtml(provider, provider.catalogPath(options.letter, options.genre, page));
   let matches = extractBrowseMatches(provider, parseAnchors(response.html));
-  const hasNextPage = hasProviderNextPage(provider, parseAnchors(response.html), page);
+  let hasNextPage = hasProviderNextPage(provider, parseAnchors(response.html), page);
   const letter = options.letter?.toLowerCase();
   matches = matches.filter((match) => !letter || normalizeForMatch(match.title).startsWith(letter));
   // Animes Digital does not expose a stable all-titles/letter endpoint. Its
@@ -161,6 +161,7 @@ export async function browseProvider(serverId: string, options: { letter?: strin
   if (!matches.length && letter && provider.id === 'animesdigital') {
     matches = (await searchProvider(serverId, `${letter}n`)).filter((match) => normalizeForMatch(match.title).startsWith(letter));
   }
+  if (matches.length > (options.limit ?? 50)) hasNextPage = true;
   return { items: matches.slice(0, options.limit ?? 50), hasNextPage };
 }
 
