@@ -47,9 +47,29 @@ SPA: https://nekoanimes-staging.pages.dev
 
 API: https://nekoanimes-api-staging.john-alleff01.workers.dev
 
-APK planejado para esta revisão: https://pub-d7e4841d19c54db9bbeedcdc3af062c1.r2.dev/android/v1.0.37/NekoAnimes-v1.0.37.apk
+APK publicado: https://pub-d7e4841d19c54db9bbeedcdc3af062c1.r2.dev/android/v1.0.37/NekoAnimes-v1.0.37.apk
 
 Prerelease: https://github.com/4quarenta/NekoAnimes/releases/tag/v1.0.37-staging
+
+### Resultado verificado
+
+- Commit de implementação: `b15ab6b153fb6ba02ae85fe66b518622db8d5b02`.
+- CI Android: https://github.com/4quarenta/NekoAnimes/actions/runs/34787292648 — **success**, incluindo compilação e Artifact. Publicações automáticas foram corretamente ignoradas porque não há secret de assinatura estável configurado.
+- Compilação Android local: **BUILD SUCCESSFUL**, `:app:assembleDirectDebug`.
+- APK: 27.602.573 bytes; package `com.nekoanimes.app`; versionCode `10037`; versionName `1.0.37-debug`.
+- SHA-256 do APK publicado: `0f6089960031a34c5f05a4a410eefc948d67307dee49278c75e4092440daefae`.
+- Worker publicado: `1672cae5-1ff4-4e6f-b144-b142ae2d115b`.
+- Pages: https://4556f673.nekoanimes-staging.pages.dev — produção staging também atualizada. Refresh de `/`, `/categorias`, `/categorias/acao`, `/anime/mal-32182`, `/lista` e `/conta`: HTTP 200 e bundle correto.
+- Nove testes de contrato passaram. Smoke visual de favoritos, ordem dos episódios, loading/erro/retry, bridge, categorias, paginação e perfil passou; sem erros JavaScript.
+- Teste público autenticado de favorito Animes Online → Animes Digital, biblioteca e progresso passou. Conta temporária removida.
+
+### Instalação nativa pendente — incompatibilidade de assinatura
+
+A versão instalada 1.0.36 tem certificado SHA-256 `b9f30b5d0a26a1b4358a86c8baaecdef33cd3848333e28be51705890f8c39c3f`; a compilação local nova tem `385f2754a209785fb9a02004294a86adaecef904032ad99b311157092ad28557`. O nome do pacote foi preservado, mas Android não permite atualização entre essas assinaturas. A keystore antiga não foi localizada nos locais de assinatura examinados. Nenhum app foi desinstalado.
+
+O APK 1.0.37 foi publicado com aviso de que não é uma atualização in-place da instalação examinada. O manifesto de auto-update continua intencionalmente em **1.0.36**. Para migrar é necessária a keystore antiga ou autorização para backup/reinstalação, com possibilidade de novo login. O spinner nativo foi compilado e passou pelo CI, mas sua execução no aparelho ainda depende dessa migração. Antes de promover a nova assinatura, também é necessário persistir sua keystore no secret de CI para evitar repetir o problema.
+
+Progressos antigos armazenados no formato local global não foram apagados nem atribuídos automaticamente a uma conta diferente. A nova fila é separada por usuário.
 
 - Workflows manuais; Android CI não sobrescreve releases. Publicação pelo CI exige `NEKO_STAGING_DEBUG_KEYSTORE_BASE64` estável; sem isso, gera apenas Artifact de validação, não um download anunciado pelo atualizador. Isso evita publicar APK com assinatura descartável incompatível.
 - Fontes externas podem estar indisponíveis e títulos homônimos/edições exigem vínculo conferido; não prometemos correspondência universal. Vínculos antigos incorretos não foram apagados automaticamente.
