@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useParams } from '@tanstack/react-router';
 import { AppScreen, EmptyState, Eyebrow, ScreenHeader, Section, TextRow } from '../components/AppScreen';
 import { fetchCatalog, fetchGenres } from '../lib/api';
 
@@ -14,17 +13,19 @@ const genreLabels: Record<string, string> = {
 
 function displayGenre(name: string) { return genreLabels[name] ?? name; }
 
+function GenreCard({ id, name, count, onClick }: { id: number; name: string; count: number; onClick: () => void }) {
+  return (
+    <button className="neko-category-card" type="button" onClick={onClick}>
+      <span className="neko-category-mark" aria-hidden="true">✦</span>
+      <strong>{displayGenre(name)}</strong>
+      <small>{count ? `${count.toLocaleString('pt-BR')} títulos` : 'Ver títulos'}</small>
+    </button>
+  );
+}
+
 export function CategoriesPage() {
   const navigate = useNavigate();
-  const [selectedGenreId, setSelectedGenreId] = useState<number | null>(null);
   const genres = useQuery({ queryKey: ['catalog-genres'], queryFn: fetchGenres, staleTime: 60 * 60 * 1000 });
-  const selectedGenre = genres.data?.items.find((genre) => genre.id === selectedGenreId);
-  const anime = useQuery({
-    queryKey: ['catalog-genre', selectedGenreId],
-    queryFn: () => fetchCatalog({ genreId: selectedGenreId!, limit: 24 }),
-    enabled: selectedGenreId !== null,
-    staleTime: 10 * 60 * 1000
-  });
 
   return (
     <AppScreen>
@@ -35,33 +36,41 @@ export function CategoriesPage() {
         {genres.isError ? <p className="neko-error">Não foi possível carregar as categorias agora.</p> : null}
         {genres.data?.items.length ? (
           <div className="neko-category-grid">
-            {genres.data.items.map((genre) => (
-              <button
-                className={selectedGenreId === genre.id ? 'neko-category-card is-active' : 'neko-category-card'}
-                key={genre.id}
-                type="button"
-                onClick={() => setSelectedGenreId((current) => current === genre.id ? null : genre.id)}
-              >
-                <span className="neko-category-mark" aria-hidden="true">✦</span>
-                <strong>{displayGenre(genre.name)}</strong>
-                <small>{genre.count ? `${genre.count.toLocaleString('pt-BR')} títulos` : 'Ver títulos'}</small>
-              </button>
-            ))}
+            {genres.data.items.map((genre) => <GenreCard key={genre.id} {...genre} onClick={() => void navigate({ to: '/categorias/$genreId', params: { genreId: String(genre.id) } })} />)}
           </div>
         ) : null}
       </Section>
+    </AppScreen>
+  );
+}
 
-      {selectedGenre ? (
-        <Section title={displayGenre(selectedGenre.name)} action={<button className="neko-link" type="button" onClick={() => setSelectedGenreId(null)}>Fechar</button>}>
-          {anime.isPending ? <div className="neko-skeleton short" /> : null}
-          {anime.isError ? <p className="neko-error">Não foi possível carregar os animes desta categoria.</p> : null}
-          {anime.data?.items.length ? (
-            <div className="neko-list">
-              {anime.data.items.map((item) => <TextRow key={item.id} title={item.title} meta={[item.year, item.status].filter(Boolean).join(' · ')} trailing="›" imageUrl={item.imageUrl} onClick={() => void navigate({ to: '/anime/$slug', params: { slug: item.slug } })} />)}
-            </div>
-          ) : anime.data ? <EmptyState title="Nenhum anime encontrado" description="A categoria não retornou títulos neste momento." /> : null}
-        </Section>
-      ) : null}
+export function CategoryDetailPage() {
+  const navigate = useNavigate();
+  const { genreId } = useParams({ from: '/categorias/$genreId' });
+  const parsedGenreId = Number(genreId);
+  const genres = useQuery({ queryKey: ['catalog-genres'], queryFn: fetchGenres, staleTime: 60 * 60 * 1000 });
+  const selectedGenre = genres.data?.items.find((genre) => genre.id === parsedGenreId);
+  const anime = useQuery({
+    queryKey: ['catalog-genre', parsedGenreId],
+    queryFn: () => fetchCatalog({ genreId: parsedGenreId, limit: 24 }),
+    enabled: Number.isInteger(parsedGenreId) && parsedGenreId > 0,
+    staleTime: 10 * 60 * 1000
+  });
+
+  return (
+    <AppScreen>
+      <button className="neko-link neko-category-back" type="button" onClick={() => void navigate({ to: '/categorias' })}>‹ Todas as categorias</button>
+      <Eyebrow>MyAnimeList</Eyebrow>
+      <ScreenHeader title={selectedGenre ? displayGenre(selectedGenre.name) : 'Categoria'} subtitle="Animes encontrados nesta categoria." />
+      <Section title="Animes">
+        {anime.isPending ? <div className="neko-skeleton short" /> : null}
+        {anime.isError ? <p className="neko-error">Não foi possível carregar os animes desta categoria.</p> : null}
+        {anime.data?.items.length ? (
+          <div className="neko-list">
+            {anime.data.items.map((item) => <TextRow key={item.id} title={item.title} meta={[item.year, item.status].filter(Boolean).join(' · ')} trailing="›" imageUrl={item.imageUrl} onClick={() => void navigate({ to: '/anime/$slug', params: { slug: item.slug } })} />)}
+          </div>
+        ) : anime.data ? <EmptyState title="Nenhum anime encontrado" description="A categoria não retornou títulos neste momento." /> : null}
+      </Section>
     </AppScreen>
   );
 }

@@ -28,7 +28,7 @@ export const AppManifestSchema = z.object({
   configVersion: z.number().int().positive(),
   mode: AppModeSchema,
   webAppUrl: z.string().url(),
-  navigation: z.array(NavigationItemSchema).min(1).max(5),
+  navigation: z.array(NavigationItemSchema).min(1).max(8),
   features: z.object({
     player: z.boolean(),
     downloads: z.boolean(),

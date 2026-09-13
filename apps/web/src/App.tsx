@@ -6,12 +6,12 @@ import { router } from './router';
 
 const NATIVE_ROUTES = ['/', '/catalogo', '/buscar', '/categorias', '/lista', '/salvos', '/conta'] as const;
 type NativeRoute = (typeof NATIVE_ROUTES)[number];
-type NavigableRoute = NativeRoute | `/anime/${string}` | `/noticias/${string}`;
+type NavigableRoute = NativeRoute | `/anime/${string}` | `/noticias/${string}` | `/categorias/${string}`;
 function isNativeRoute(route: string): route is NativeRoute { return (NATIVE_ROUTES as readonly string[]).includes(route); }
 function isNavigableRoute(route: string): route is NavigableRoute {
-  return isNativeRoute(route) || route.startsWith('/anime/') || route.startsWith('/noticias/');
+  return isNativeRoute(route) || route.startsWith('/anime/') || route.startsWith('/noticias/') || route.startsWith('/categorias/');
 }
-function isStreamingOnly(route: string) { return route === '/catalogo' || route === '/categorias' || route === '/lista' || route.startsWith('/anime/'); }
+function isStreamingOnly(route: string) { return route === '/catalogo' || route === '/categorias' || route.startsWith('/categorias/') || route === '/lista' || route.startsWith('/anime/'); }
 function isNewsOnly(route: string) { return route === '/salvos' || route.startsWith('/noticias/'); }
 
 export function App() {
@@ -44,6 +44,8 @@ export function App() {
         void router.navigate({ to: '/anime/$slug', params: { slug: route.slice('/anime/'.length) } });
       } else if (route.startsWith('/noticias/')) {
         void router.navigate({ to: '/noticias/$slug', params: { slug: route.slice('/noticias/'.length) } });
+      } else if (route.startsWith('/categorias/')) {
+        void router.navigate({ to: '/categorias/$genreId', params: { genreId: route.slice('/categorias/'.length) } });
       } else if (isNativeRoute(route)) {
         void router.navigate({ to: route });
       }
@@ -53,6 +55,7 @@ export function App() {
       const route = window.location.pathname;
       if (route.startsWith('/anime/')) NekoNative.routeChanged(route);
       else if (route.startsWith('/noticias/')) NekoNative.routeChanged('/');
+      else if (route.startsWith('/categorias/')) NekoNative.routeChanged('/categorias');
       else if (isNativeRoute(route)) NekoNative.routeChanged(route);
     };
     const off = router.subscribe('onResolved', onResolved);
