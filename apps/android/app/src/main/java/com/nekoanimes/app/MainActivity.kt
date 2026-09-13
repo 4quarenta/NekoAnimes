@@ -1,6 +1,11 @@
 package com.nekoanimes.app
 
 import android.app.Activity
+import android.content.Context
+import android.content.res.Configuration
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.os.Bundle
 import android.os.SystemClock
 import android.webkit.WebView
@@ -8,6 +13,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +27,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -33,6 +40,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import com.nekoanimes.app.ads.NekoAdOrchestrator
 import com.nekoanimes.app.ads.NekoBannerSlot
@@ -59,6 +67,7 @@ class MainActivity : ComponentActivity() {
                 val repository = remember { AppManifestRepository(applicationContext) }
                 var shellState by remember { mutableStateOf<ShellState>(ShellState.Loading) }
                 var retryKey by remember { mutableIntStateOf(0) }
+                val internetAvailable = rememberInternetAvailable()
                 LaunchedEffect(retryKey) {
                     shellState = ShellState.Loading
                     shellState = repository.load().fold(
@@ -68,8 +77,16 @@ class MainActivity : ComponentActivity() {
                 }
                 when (val state = shellState) {
                     ShellState.Loading -> LoadingScreen()
-                    is ShellState.Error -> ErrorScreen(state.message) { retryKey += 1 }
-                    is ShellState.Ready -> AppShell(state.manifest)
+                    is ShellState.Error -> if (internetAvailable) {
+                        ErrorScreen(state.message) { retryKey += 1 }
+                    } else {
+                        ConnectionErrorScreen { retryKey += 1 }
+                    }
+                    is ShellState.Ready -> if (internetAvailable) {
+                        AppShell(state.manifest)
+                    } else {
+                        ConnectionErrorScreen { retryKey += 1 }
+                    }
                 }
             }
         }
@@ -92,6 +109,7 @@ private fun AppShell(manifest: AppManifest) {
     var showExitDialog by remember { mutableStateOf(false) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val drawerScope = rememberCoroutineScope()
+    val isPortrait = LocalConfiguration.current.orientation == Configuration.ORIENTATION_PORTRAIT
     val primaryItems = remember(manifest.configVersion) {
         manifest.navigation.filterNot(::isDrawerItem)
     }
@@ -146,6 +164,7 @@ private fun AppShell(manifest: AppManifest) {
     }
 
     val playing = playerRequest
+    val navigationVisible = playing == null && !playerOpening && isPortrait
 
     BackHandler(enabled = playing == null) {
         if (drawerState.isOpen) {
@@ -195,38 +214,40 @@ private fun AppShell(manifest: AppManifest) {
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        NekoNavigationDrawer(
-            drawerState = drawerState,
-            items = drawerItems,
-            selectedRoute = selectedRoute,
-            onSelected = ::navigateTo
-        ) {
-            Scaffold(
-                modifier = Modifier.fillMaxSize(),
-                bottomBar = {
-                    Column {
-                        NekoBannerSlot(manifest.ads)
-                        NekoNavigationBar(
-                            items = primaryItems,
-                            selectedRoute = selectedRoute,
-                            onSelected = ::navigateTo
-                        )
-                    }
-                }
-            ) { padding ->
-                WebViewHost(
-                    url = manifest.webAppUrl,
-                    bridge = bridge,
-                    modifier = Modifier.fillMaxSize().padding(padding),
-                    onHorizontalSwipe = ::navigateBySwipe,
-                    gesturesEnabled = playerRequest == null && !playerOpening,
-                    onOpenDrawer = {
-                        if (playerRequest == null && !playerOpening && !drawerState.isOpen) {
-                            drawerScope.launch { drawerState.open() }
+        if (navigationVisible) {
+            NekoNavigationDrawer(
+                drawerState = drawerState,
+                items = drawerItems,
+                selectedRoute = selectedRoute,
+                onSelected = ::navigateTo
+            ) {
+                Scaffold(
+                    modifier = Modifier.fillMaxSize(),
+                    bottomBar = {
+                        Column {
+                            NekoBannerSlot(manifest.ads)
+                            NekoNavigationBar(
+                                items = primaryItems,
+                                selectedRoute = selectedRoute,
+                                onSelected = ::navigateTo
+                            )
                         }
-                    },
-                    onWebViewReady = { webView = it }
-                )
+                    }
+                ) { padding ->
+                    WebViewHost(
+                        url = manifest.webAppUrl,
+                        bridge = bridge,
+                        modifier = Modifier.fillMaxSize().padding(padding),
+                        onHorizontalSwipe = ::navigateBySwipe,
+                        gesturesEnabled = navigationVisible,
+                        onOpenDrawer = {
+                            if (navigationVisible && !drawerState.isOpen) {
+                                drawerScope.launch { drawerState.open() }
+                            }
+                        },
+                        onWebViewReady = { webView = it }
+                    )
+                }
             }
         }
 
@@ -235,17 +256,25 @@ private fun AppShell(manifest: AppManifest) {
                 episodeId = playing.episodeId,
                 sourceOverride = playing.source,
                 onClose = { positionSeconds, durationSeconds ->
-                    val returnRoute = playerReturnRoute
-                    playerRequest = null
-                    playerReturnRoute = null
-                    playerOpening = false
-                    ads.onAppEvent("episode_closed", "player")
-                    webView?.let {
-                        bridge.sendPlayerClosed(it, playing.episodeId, positionSeconds, durationSeconds)
-                        if (!returnRoute.isNullOrBlank()) bridge.sendNavigation(it, returnRoute)
+                    if (!playerOpening) {
+                        playerOpening = true
+                        val returnRoute = playerReturnRoute
+                        drawerScope.launch {
+                            drawerState.close()
+                            playerRequest = null
+                            playerReturnRoute = null
+                            ads.onAppEvent("episode_closed", "player")
+                            webView?.let {
+                                bridge.sendPlayerClosed(it, playing.episodeId, positionSeconds, durationSeconds)
+                                if (!returnRoute.isNullOrBlank()) bridge.sendNavigation(it, returnRoute)
+                            }
+                            playerOpening = false
+                        }
                     }
                 }
             )
+        } else if (!navigationVisible) {
+            Box(modifier = Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black))
         }
     }
 }
@@ -273,6 +302,54 @@ private fun ErrorScreen(message: String, onRetry: () -> Unit) {
             Button(onClick = onRetry) { Text("Tentar novamente") }
         }
     }
+}
+
+@Composable
+private fun ConnectionErrorScreen(onRetry: () -> Unit) {
+    Box(modifier = Modifier.fillMaxSize().padding(28.dp), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Text("Sem conexão com a internet")
+            Text("Conecte-se à internet e tente novamente.")
+            Button(onClick = onRetry) { Text("Tentar novamente") }
+        }
+    }
+}
+
+@Composable
+private fun rememberInternetAvailable(): Boolean {
+    val context = LocalContext.current.applicationContext
+    var available by remember { mutableStateOf(hasValidatedInternet(context)) }
+
+    DisposableEffect(context) {
+        val connectivity = context.getSystemService(ConnectivityManager::class.java)
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                available = hasValidatedInternet(connectivity)
+            }
+
+            override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
+                available = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                    capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+            }
+
+            override fun onLost(network: Network) {
+                available = hasValidatedInternet(connectivity)
+            }
+        }
+
+        runCatching { connectivity.registerDefaultNetworkCallback(callback) }
+        onDispose { runCatching { connectivity.unregisterNetworkCallback(callback) } }
+    }
+
+    return available
+}
+
+private fun hasValidatedInternet(context: Context): Boolean {
+    val connectivity = context.getSystemService(ConnectivityManager::class.java)
+    val network = connectivity.activeNetwork ?: return false
+    val capabilities = connectivity.getNetworkCapabilities(network) ?: return false
+    return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+        capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
 }
 
 private sealed interface ShellState {
