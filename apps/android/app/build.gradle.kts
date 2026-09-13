@@ -18,8 +18,8 @@ android {
         applicationId = "com.nekoanimes.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 10033
-        versionName = "1.0.33"
+        versionCode = 10034
+        versionName = "1.0.34"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "MAX_SDK_KEY", "\"${providers.gradleProperty("MAX_SDK_KEY").orElse("").get()}\"")
@@ -59,7 +59,6 @@ android {
 
     buildTypes {
         debug {
-            applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
             buildConfigField("String", "WEB_APP_URL", "\"${nekoUrl("nekoWebAppUrl", "http://10.0.2.2:5173")}\"")
             buildConfigField("String", "WEB_APP_ORIGIN", "\"${nekoUrl("nekoWebAppOrigin", "http://10.0.2.2:5173")}\"")
