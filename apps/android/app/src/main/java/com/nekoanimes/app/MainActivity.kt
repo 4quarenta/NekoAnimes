@@ -1,7 +1,6 @@
 package com.nekoanimes.app
 
 import android.app.Activity
-import android.content.Context
 import android.content.res.Configuration
 import android.net.ConnectivityManager
 import android.net.Network
@@ -318,7 +317,9 @@ private fun ConnectionErrorScreen(onRetry: () -> Unit) {
 @Composable
 private fun rememberInternetAvailable(): Boolean {
     val context = LocalContext.current.applicationContext
-    var available by remember { mutableStateOf(hasValidatedInternet(context)) }
+    var available by remember {
+        mutableStateOf(hasValidatedInternet(context.getSystemService(ConnectivityManager::class.java)))
+    }
 
     DisposableEffect(context) {
         val connectivity = context.getSystemService(ConnectivityManager::class.java)
@@ -344,8 +345,7 @@ private fun rememberInternetAvailable(): Boolean {
     return available
 }
 
-private fun hasValidatedInternet(context: Context): Boolean {
-    val connectivity = context.getSystemService(ConnectivityManager::class.java)
+private fun hasValidatedInternet(connectivity: ConnectivityManager): Boolean {
     val network = connectivity.activeNetwork ?: return false
     val capabilities = connectivity.getNetworkCapabilities(network) ?: return false
     return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
