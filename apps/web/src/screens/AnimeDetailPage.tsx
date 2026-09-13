@@ -132,7 +132,8 @@ export function AnimeDetailPage() {
     setDataState('loading');
     setDataMessage(null);
     try {
-      const result = await saveProviderAnimeData(providerId, providerAnime.data.anime.reference);
+      const clientMetadata = await fetchAniListMetadata(providerAnime.data.anime.title).catch(() => null) ?? remoteMetadata.data ?? null;
+      const result = await saveProviderAnimeData(providerId, providerAnime.data.anime.reference, clientMetadata);
       setLoadedMetadata(result.identity);
       setDataState('loaded');
       setDataMessage(result.sources.anidb ? 'Dados carregados, aplicados e salvos: MAL, AniList e AniDB.' : 'Dados carregados, aplicados e salvos: MAL e AniList.');
