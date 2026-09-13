@@ -161,7 +161,11 @@ private fun AppShell(manifest: AppManifest) {
             onOpenPlayer = { episodeId, source ->
                 if (playerRequest == null && !playerOpening) {
                     playerOpening = true
-                    playerReturnRoute = webView?.let(::routeFromWebView) ?: currentWebRouteState
+                    // The SPA route is authoritative because WebView.url can
+                    // still point at the shell after a history.pushState.
+                    playerReturnRoute = currentWebRouteState.takeIf { it != "/" }
+                        ?: webView?.let(::routeFromWebView)
+                        ?: currentWebRouteState
                     drawerScope.launch {
                         drawerState.close()
                         playerRequest = PlayerRequest(episodeId, source)

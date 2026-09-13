@@ -49,22 +49,23 @@ export function App() {
 
       if (event.type !== 'navigation.navigate') return;
       const route = event.payload.route;
-      if (!isNavigableRoute(route)) return;
-      if (route.startsWith('/anime/')) {
-        void router.navigate({ to: '/anime/$slug', params: { slug: route.slice('/anime/'.length) }, search: { provider: undefined, ref: undefined } });
-      } else if (route.startsWith('/noticias/')) {
-        void router.navigate({ to: '/noticias/$slug', params: { slug: route.slice('/noticias/'.length) } });
-      } else if (route.startsWith('/categorias/')) {
-        void router.navigate({ to: '/categorias/$genreId', params: { genreId: route.slice('/categorias/'.length) } });
-      } else if (route === '/servidores') {
+      const parsed = parseAppRoute(route);
+      if (!parsed || !isNavigableRoute(parsed.pathname)) return;
+      if (parsed.pathname.startsWith('/anime/')) {
+        void router.navigate({ to: '/anime/$slug', params: { slug: parsed.pathname.slice('/anime/'.length) }, search: { provider: parsed.search.get('provider') ?? undefined, ref: parsed.search.get('ref') ?? undefined } });
+      } else if (parsed.pathname.startsWith('/noticias/')) {
+        void router.navigate({ to: '/noticias/$slug', params: { slug: parsed.pathname.slice('/noticias/'.length) } });
+      } else if (parsed.pathname.startsWith('/categorias/')) {
+        void router.navigate({ to: '/categorias/$genreId', params: { genreId: parsed.pathname.slice('/categorias/'.length) } });
+      } else if (parsed.pathname === '/servidores') {
         void router.navigate({ to: '/servidores' });
-      } else if (isNativeRoute(route)) {
-        void router.navigate({ to: route });
+      } else if (isNativeRoute(parsed.pathname)) {
+        void router.navigate({ to: parsed.pathname });
       }
     });
 
     const onResolved = () => {
-      const route = window.location.pathname;
+      const route = `${window.location.pathname}${window.location.search}`;
       if (route.startsWith('/anime/')) NekoNative.routeChanged(route);
       else if (route.startsWith('/noticias/')) NekoNative.routeChanged('/');
       else if (route.startsWith('/categorias/')) NekoNative.routeChanged('/categorias');
@@ -76,4 +77,13 @@ export function App() {
   }, []);
 
   return <RouterProvider router={router} />;
+}
+
+function parseAppRoute(route: string): { pathname: string; search: URLSearchParams } | null {
+  try {
+    const parsed = new URL(route, 'https://nekoanimes.local');
+    return { pathname: parsed.pathname, search: parsed.searchParams };
+  } catch {
+    return null;
+  }
 }
