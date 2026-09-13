@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate, useParams } from '@tanstack/react-router';
-import { AppScreen, EmptyState, Eyebrow, ScreenHeader, Section, TextRow } from '../components/AppScreen';
+import { AnimeListRow, AppScreen, EmptyState, Eyebrow, ScreenHeader, Section } from '../components/AppScreen';
 import { fetchGenres, fetchProviderCatalog, fetchServers } from '../lib/api';
 import { useServerPreference } from '../lib/server-preference';
 import { providerSlug } from '../lib/provider-links';
@@ -74,7 +74,7 @@ export function CategoryDetailPage() {
         {anime.isError ? <p className="neko-error">Não foi possível carregar os animes desta categoria.</p> : null}
           {anime.data?.items.length ? (
             <div className="neko-list">
-              {anime.data.items.map((item) => <TextRow key={item.reference} title={item.title} meta={serverName} trailing="›" onClick={() => void navigate({ to: '/anime/$slug', params: { slug: providerSlug(item) }, search: { provider: item.serverId, ref: item.reference } })} />)}
+              {anime.data.items.map((item) => <AnimeListRow key={item.reference} title={item.title} meta={serverName} onClick={() => void navigate({ to: '/anime/$slug', params: { slug: providerSlug(item) }, search: { provider: item.serverId, ref: item.reference } })} />)}
             </div>
           ) : anime.data ? <EmptyState title="Nenhum anime encontrado" description="A categoria não retornou títulos neste momento." /> : null}
           {anime.data ? (

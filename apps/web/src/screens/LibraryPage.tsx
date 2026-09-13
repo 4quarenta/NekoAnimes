@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { fetchContinueWatching, fetchLibrary } from '../lib/api';
 import { auth, type AuthSession } from '../lib/auth';
-import { AppScreen, EmptyState, Eyebrow, ScreenHeader, Section, TextRow } from '../components/AppScreen';
+import { AnimeListRow, AppScreen, EmptyState, Eyebrow, ScreenHeader, Section } from '../components/AppScreen';
 
 export function LibraryPage() {
   const navigate = useNavigate();
@@ -38,7 +38,7 @@ export function LibraryPage() {
           <div className="neko-list">
             {watching.data.map((item) => {
               const pct = item.durationSeconds > 0 ? Math.min(100, Math.round(item.positionSeconds / item.durationSeconds * 100)) : 0;
-              return <TextRow key={item.episodeId} title={item.title} meta={`T${item.seasonNumber} · Episódio ${item.episodeNumber}`} trailing={`${pct}%`} onClick={() => void navigate({ to: '/anime/$slug', params: { slug: item.slug }, search: { provider: undefined, ref: undefined } })} />;
+              return <AnimeListRow key={item.episodeId} title={item.title} meta={`T${item.seasonNumber} · Episódio ${item.episodeNumber}`} imageUrl={item.imageUrl} trailing={`${pct}%`} onClick={() => void navigate({ to: '/anime/$slug', params: { slug: item.slug }, search: { provider: undefined, ref: undefined } })} />;
             })}
           </div>
         ) : watching.data ? <EmptyState title="Nada em andamento" description="Seu progresso aparecerá aqui depois que começar a assistir." /> : null}
@@ -47,7 +47,7 @@ export function LibraryPage() {
         {library.isPending ? <div className="neko-skeleton short" /> : null}
         {library.data?.length ? (
           <div className="neko-list">
-            {library.data.map((item) => <TextRow key={item.animeId} title={item.title} meta={[item.year, item.genres[0], labelStatus(item.status)].filter(Boolean).join(' · ')} trailing="›" onClick={() => void navigate({ to: '/anime/$slug', params: { slug: item.slug }, search: { provider: undefined, ref: undefined } })} />)}
+            {library.data.map((item) => <AnimeListRow key={item.animeId} title={item.title} meta={[item.year, item.genres[0], labelStatus(item.status)].filter(Boolean).join(' · ')} imageUrl={item.imageUrl} onClick={() => void navigate({ to: '/anime/$slug', params: { slug: item.slug }, search: { provider: undefined, ref: undefined } })} />)}
           </div>
         ) : library.data ? <EmptyState title="Sua lista está vazia" description="Adicione um anime pela página de detalhes para encontrá-lo aqui." /> : null}
       </Section>

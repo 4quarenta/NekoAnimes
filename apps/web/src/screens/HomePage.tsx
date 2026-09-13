@@ -3,7 +3,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { fetchManifest, fetchNews, fetchProviderCatalog } from '../lib/api';
 import { useServerPreference } from '../lib/server-preference';
 import { providerSlug } from '../lib/provider-links';
-import { AppScreen, Eyebrow, EmptyState, ScreenHeader, Section, TextRow } from '../components/AppScreen';
+import { AnimeListRow, AppScreen, Eyebrow, EmptyState, ScreenHeader, Section, TextRow } from '../components/AppScreen';
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(value));
@@ -52,7 +52,7 @@ export function HomePage() {
   return (
     <AppScreen>
       <Eyebrow>NekoAnimes</Eyebrow>
-      <ScreenHeader title="O que você vai assistir?" subtitle="Rápido, direto e sem uma parede de capas." />
+      <ScreenHeader title="O que você vai assistir?" subtitle="Rápido, direto e com listas organizadas para encontrar seu próximo anime." />
       <button className="neko-search-launcher" type="button" onClick={() => void navigate({ to: '/buscar' })}>
         <span>⌕</span><span>Buscar anime...</span>
       </button>
@@ -61,7 +61,7 @@ export function HomePage() {
       </Section>
       <Section title="Catálogo em destaque" action={<button className="neko-link" onClick={() => void navigate({ to: '/categorias' })}>Ver categorias</button>}>
         {catalog.isPending ? <div className="neko-skeleton short" /> : null}
-        {catalog.data?.items.length ? <div className="neko-list">{catalog.data.items.map((item) => <TextRow key={item.reference} title={item.title} meta={catalog.data?.server.name} trailing="›" onClick={() => void navigate({ to: '/anime/$slug', params: { slug: providerSlug(item) }, search: { provider: item.serverId, ref: item.reference } })} />)}</div> : null}
+        {catalog.data?.items.length ? <div className="neko-list">{catalog.data.items.map((item) => <AnimeListRow key={item.reference} title={item.title} meta={catalog.data?.server.name} onClick={() => void navigate({ to: '/anime/$slug', params: { slug: providerSlug(item) }, search: { provider: item.serverId, ref: item.reference } })} />)}</div> : null}
         {catalog.isError ? <p className="neko-error">Não foi possível carregar o catálogo de {serverId ?? 'servidor'}.</p> : null}
       </Section>
       <Section title="Explorar categorias" action={<button className="neko-link" onClick={() => void navigate({ to: '/categorias' })}>Abrir categorias</button>}>

@@ -1,4 +1,6 @@
 import type { PropsWithChildren, ReactNode } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { fetchAniListMetadata } from '../lib/api';
 
 export function AppScreen({ children }: PropsWithChildren) {
   return <main className="neko-screen">{children}</main>;
@@ -34,17 +36,19 @@ export function TextRow({
   meta,
   trailing,
   imageUrl,
+  showImagePlaceholder,
   onClick
 }: {
   title: string;
   meta?: string;
   trailing?: ReactNode;
   imageUrl?: string | null;
+  showImagePlaceholder?: boolean;
   onClick?: () => void;
 }) {
   const content = (
     <>
-      {imageUrl ? <img className="neko-row-image" src={imageUrl} alt="" loading="lazy" /> : null}
+      {imageUrl ? <img className="neko-row-image" src={imageUrl} alt="" loading="lazy" /> : showImagePlaceholder ? <span className="neko-row-image neko-row-image-placeholder" aria-hidden="true">✦</span> : null}
       <span className="neko-row-copy">
         <strong>{title}</strong>
         {meta ? <small>{meta}</small> : null}
@@ -58,6 +62,31 @@ export function TextRow({
   ) : (
     <div className="neko-row">{content}</div>
   );
+}
+
+export function AnimeListRow({
+  title,
+  meta,
+  trailing = '›',
+  imageUrl,
+  onClick
+}: {
+  title: string;
+  meta?: string;
+  trailing?: ReactNode;
+  imageUrl?: string | null;
+  onClick?: () => void;
+}) {
+  const metadata = useQuery({
+    queryKey: ['anime-list-poster', title],
+    queryFn: () => fetchAniListMetadata(title),
+    enabled: !imageUrl && Boolean(title.trim()),
+    staleTime: 24 * 60 * 60 * 1000,
+    gcTime: 7 * 24 * 60 * 60 * 1000,
+    retry: false
+  });
+
+  return <TextRow title={title} meta={meta} trailing={trailing} imageUrl={imageUrl ?? metadata.data?.imageUrl} showImagePlaceholder onClick={onClick} />;
 }
 
 export function EmptyState({ title, description }: { title: string; description: string }) {

@@ -33,8 +33,8 @@ export type AnimeSeason = { id: string; animeId: string; number: number; title: 
 export type Episode = { id: string; seasonId: string; number: number; title: string | null; durationSeconds: number | null; airedAt: string | null };
 export type AnimeDetail = CatalogAnime & { titleEnglish: string | null; titleRomaji: string | null; titleNative: string | null; synopsis: string | null; externalIds: Array<{ provider: string; externalId: string }>; seasons: AnimeSeason[] };
 export type NewsArticle = { id: string; slug: string; title: string; summary: string | null; category: string; sourceName: string; sourceUrl: string; imageUrl: string | null; imageAllowed: boolean; publishedAt: string };
-export type LibraryItem = { animeId: string; slug: string; title: string; year: number | null; genres: string[]; status: string; updatedAt: string };
-export type ContinueWatchingItem = { animeId: string; slug: string; title: string; seasonNumber: number; episodeId: string; episodeNumber: number; episodeTitle: string | null; positionSeconds: number; durationSeconds: number; completed: boolean; updatedAt: string };
+export type LibraryItem = { animeId: string; slug: string; title: string; year: number | null; genres: string[]; status: string; imageUrl?: string | null; updatedAt: string };
+export type ContinueWatchingItem = { animeId: string; slug: string; title: string; seasonNumber: number; episodeId: string; episodeNumber: number; episodeTitle: string | null; positionSeconds: number; durationSeconds: number; completed: boolean; imageUrl?: string | null; updatedAt: string };
 export type SavedNewsItem = { id: string; slug: string; title: string; category: string; sourceName: string; publishedAt: string };
 export type CatalogGenre = { id: number; name: string; count: number };
 
