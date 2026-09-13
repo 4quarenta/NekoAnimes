@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { NekoNative } from '@neko/bridge-web';
-import { fetchAnime, fetchEpisodes, fetchServerAnime, fetchServerProviderResolution, setLibraryItem, type AnimeDetail, type Episode, type ServerEpisode } from '../lib/api';
+import { fetchAnime, fetchAniListMetadata, fetchEpisodes, fetchServerAnime, fetchServerProviderResolution, setLibraryItem, type AnimeDetail, type Episode, type RemoteAnimeMetadata, type ServerEpisode } from '../lib/api';
 import { readLocalContinueWatching, rememberActivePlayback, type LocalContinueWatching } from '../lib/local-progress';
 import { useServerPreference } from '../lib/server-preference';
 import { AppScreen, Eyebrow, ScreenHeader, Section } from '../components/AppScreen';
@@ -18,8 +18,10 @@ export function AnimeDetailPage() {
   const providerReference = search.ref;
   const legacyAnime = useQuery({ queryKey: ['anime', slug], queryFn: () => fetchAnime(slug), enabled: !providerReference });
   const providerAnime = useQuery({ queryKey: ['provider-anime', providerId, providerReference], queryFn: () => fetchServerAnime(providerId!, providerReference!), enabled: Boolean(providerId && providerReference), staleTime: 10 * 60 * 1000 });
-  const item = useMemo(() => providerAnime.data ? normalizeProviderAnime(providerAnime.data, slug) : legacyAnime.data, [legacyAnime.data, providerAnime.data, slug]);
   const providerMode = Boolean(providerAnime.data);
+  const providerIdentity = providerAnime.data?.identity;
+  const remoteMetadata = useQuery({ queryKey: ['anilist-metadata', providerAnime.data?.anime.title], queryFn: () => fetchAniListMetadata(providerAnime.data!.anime.title), enabled: Boolean(providerMode && providerAnime.data?.anime.title && (!providerIdentity?.imageUrl || !providerIdentity.synopsis)), staleTime: 24 * 60 * 60 * 1000, retry: 1 });
+  const item = useMemo(() => providerAnime.data ? normalizeProviderAnime(providerAnime.data, slug, remoteMetadata.data) : legacyAnime.data, [legacyAnime.data, providerAnime.data, remoteMetadata.data, slug]);
   const [seasonId, setSeasonId] = useState<string | null>(null);
   const [visible, setVisible] = useState(60);
   const [episodeOrder, setEpisodeOrder] = useState<EpisodeOrder>('asc');
@@ -141,10 +143,11 @@ export function AnimeDetailPage() {
   );
 }
 
-function normalizeProviderAnime(detail: Awaited<ReturnType<typeof fetchServerAnime>>, slug: string): AnimeDetail {
+function normalizeProviderAnime(detail: Awaited<ReturnType<typeof fetchServerAnime>>, slug: string, remoteMetadata?: RemoteAnimeMetadata | null): AnimeDetail {
   const identity = detail.identity;
-  const id = identity?.canonicalId ?? `provider:${detail.server.id}:${detail.anime.reference}`;
-  return { id, slug, title: identity?.canonicalTitle ?? detail.anime.title, titleEnglish: identity?.titleEnglish ?? null, titleRomaji: identity?.titleRomaji ?? null, titleNative: identity?.titleNative ?? null, synopsis: identity?.synopsis ?? null, type: identity?.postType ?? detail.postType, status: 'disponível', year: identity?.year ?? detail.anime.year ?? null, genres: identity?.genres ?? [], scoreBasisPoints: identity?.scoreBasisPoints ?? null, imageUrl: identity?.imageUrl ?? null, externalIds: [{ provider: detail.server.id, externalId: detail.anime.reference }, ...(identity?.malId ? [{ provider: 'myanimelist', externalId: String(identity.malId) }] : []), ...(identity?.anilistId ? [{ provider: 'anilist', externalId: String(identity.anilistId) }] : [])], seasons: detail.seasons.map((season) => ({ id: season.id, animeId: id, number: season.number, title: season.title, episodesCount: season.episodes.length })) };
+  const metadata = { ...identity, ...remoteMetadata };
+  const id = identity?.canonicalId ?? (metadata.malId ? `mal:${metadata.malId}` : metadata.anilistId ? `anilist:${metadata.anilistId}` : `provider:${detail.server.id}:${detail.anime.reference}`);
+  return { id, slug, title: metadata.canonicalTitle ?? detail.anime.title, titleEnglish: metadata.titleEnglish ?? null, titleRomaji: metadata.titleRomaji ?? null, titleNative: metadata.titleNative ?? null, synopsis: metadata.synopsis ?? null, type: metadata.postType ?? detail.postType, status: 'disponível', year: metadata.year ?? detail.anime.year ?? null, genres: metadata.genres ?? [], scoreBasisPoints: metadata.scoreBasisPoints ?? null, imageUrl: metadata.imageUrl ?? null, externalIds: [{ provider: detail.server.id, externalId: detail.anime.reference }, ...(metadata.malId ? [{ provider: 'myanimelist', externalId: String(metadata.malId) }] : []), ...(metadata.anilistId ? [{ provider: 'anilist', externalId: String(metadata.anilistId) }] : [])], seasons: detail.seasons.map((season) => ({ id: season.id, animeId: id, number: season.number, title: season.title, episodesCount: season.episodes.length })) };
 }
 
 function episodeNumber(episode: Episode | ServerEpisode): number { return episode.number; }

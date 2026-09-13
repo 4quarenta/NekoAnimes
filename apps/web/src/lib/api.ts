@@ -48,6 +48,7 @@ export type ServerPlaybackSource = { id: string; url: string; playbackUrl?: stri
 export type ServerEpisode = { id: string; title: string; number: number; seasonNumber: number; reference: string; url: string; releasedAt?: string; available: boolean; sources?: ServerPlaybackSource[] };
 export type ServerSeason = { id: string; number: number; title: string; episodes: ServerEpisode[] };
 export type ProviderIdentity = { canonicalId: string; canonicalTitle: string; malId: number | null; anilistId: number | null; postType: ProviderPostType; synopsis: string | null; titleEnglish: string | null; titleRomaji: string | null; titleNative: string | null; year: number | null; genres: string[]; scoreBasisPoints: number | null; imageUrl: string | null; backdropUrl: string | null; source: 'myanimelist' | 'anilist' | 'mapping' | 'none' };
+export type RemoteAnimeMetadata = Pick<ProviderIdentity, 'canonicalTitle' | 'malId' | 'anilistId' | 'postType' | 'synopsis' | 'titleEnglish' | 'titleRomaji' | 'titleNative' | 'year' | 'genres' | 'scoreBasisPoints' | 'imageUrl' | 'backdropUrl'>;
 export type ServerAnimeDetail = { server: ServerDescriptor; anime: { title: string; reference: string; url: string; year?: number }; seasons: ServerSeason[]; postType: ProviderPostType; identity?: ProviderIdentity; fetchedAt: string };
 export type ServerResolution = { query: string; season: number; episode: number; servers: Array<{ server: ServerDescriptor; status: 'ok' | 'unavailable' | 'timeout' | 'error'; available: boolean; anime?: ServerAnimeMatch; episode?: ServerEpisode; sources?: ServerPlaybackSource[]; error?: 'provider_unavailable' | 'provider_timeout' }>; fetchedAt: string };
 export type ServerProviderResolution = { query: string; season: number; episodeNumber: number; server: ServerDescriptor; anime: ServerAnimeMatch; episode: ServerEpisode; sources: ServerPlaybackSource[]; fetchedAt: string };
@@ -63,6 +64,39 @@ export function fetchServers() { return getJson<{ servers: ServerDescriptor[] }>
 export function fetchProviderCatalog(serverId: string, params: { letter?: string; query?: string; genre?: string; page?: number; limit?: number } = {}) { const search = new URLSearchParams(); if (params.letter) search.set('letter', params.letter); if (params.query) search.set('q', params.query); if (params.genre) search.set('genre', params.genre); if (params.page) search.set('page', String(params.page)); if (params.limit) search.set('limit', String(params.limit)); const suffix = search.size ? `?${search}` : ''; return getJson<ProviderCatalogResponse>(`/v1/servers/${encodeURIComponent(serverId)}/catalog${suffix}`); }
 export function fetchServerSearch(query: string) { return getJson<ServerSearchResponse>(`/v1/servers/search?q=${encodeURIComponent(query)}`); }
 export function fetchServerAnime(serverId: string, reference: string) { const search = new URLSearchParams({ ref: reference }); return getJson<ServerAnimeDetail>(`/v1/servers/${encodeURIComponent(serverId)}/anime?${search}`); }
+export async function fetchAniListMetadata(title: string): Promise<RemoteAnimeMetadata | null> {
+  const query = `query($search:String){ Page(perPage:5){ media(search:$search,type:ANIME,sort:SEARCH_MATCH){ id idMal title { romaji english native } description format status seasonYear averageScore genres coverImage { large extraLarge } bannerImage } } }`;
+  const searchTitles = [...new Set([title, title.replace(/\s+(?:temporada|season)?\s*\d+(?:\.\d+)?\s*$/i, '').trim()])].filter(Boolean);
+  let media: Record<string, unknown> | undefined;
+  for (const searchTitle of searchTitles) {
+    const response = await fetch('https://graphql.anilist.co', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ query, variables: { search: searchTitle } }), cache: 'force-cache' });
+    if (!response.ok) throw new Error(`AniList respondeu ${response.status}`);
+    const body = await response.json() as { data?: { Page?: { media?: Array<Record<string, unknown>> } } };
+    media = body.data?.Page?.media?.[0];
+    if (media) break;
+  }
+  if (!media) return null;
+  const titles = media.title as Record<string, unknown> | undefined;
+  const cover = media.coverImage as Record<string, unknown> | undefined;
+  const description = typeof media.description === 'string' ? media.description.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() : null;
+  const averageScore = typeof media.averageScore === 'number' ? media.averageScore : null;
+  const format = typeof media.format === 'string' ? media.format : null;
+  return {
+    canonicalTitle: String(titles?.romaji ?? titles?.english ?? titles?.native ?? title),
+    malId: typeof media.idMal === 'number' ? media.idMal : null,
+    anilistId: typeof media.id === 'number' ? media.id : null,
+    postType: format === 'MOVIE' || format === 'SPECIAL' ? 'filme' : 'anime',
+    synopsis: description || null,
+    titleEnglish: typeof titles?.english === 'string' ? titles.english : null,
+    titleRomaji: typeof titles?.romaji === 'string' ? titles.romaji : null,
+    titleNative: typeof titles?.native === 'string' ? titles.native : null,
+    year: typeof media.seasonYear === 'number' ? media.seasonYear : null,
+    genres: Array.isArray(media.genres) ? media.genres.map(String) : [],
+    scoreBasisPoints: averageScore === null ? null : Math.round(averageScore * 10),
+    imageUrl: typeof cover?.extraLarge === 'string' ? cover.extraLarge : typeof cover?.large === 'string' ? cover.large : null,
+    backdropUrl: typeof media.bannerImage === 'string' ? media.bannerImage : null
+  };
+}
 export function fetchServerResolution(query: string, season: number, episode: number) { return getJson<ServerResolution>(`/v1/servers/resolve/${encodeURIComponent(query)}/${season}/${episode}`); }
 export function fetchServerProviderResolution(serverId: string, query: string, season: number, episode: number, animeReference?: string, episodeReference?: string) { const search = new URLSearchParams(); if (animeReference) search.set('ref', animeReference); if (episodeReference) search.set('episodeRef', episodeReference); const suffix = search.size ? `?${search}` : ''; return getJson<ServerProviderResolution>(`/v1/servers/${encodeURIComponent(serverId)}/resolve/${encodeURIComponent(query)}/${season}/${episode}${suffix}`); }
 
