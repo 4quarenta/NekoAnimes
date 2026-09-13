@@ -51,6 +51,7 @@ fun WebViewHost(
                     settings.domStorageEnabled = true
                     settings.allowFileAccess = false
                     settings.allowContentAccess = false
+                    settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
                     settings.javaScriptCanOpenWindowsAutomatically = false
                     settings.setSupportMultipleWindows(false)
                     settings.userAgentString = "${settings.userAgentString} NekoAnimes/Android"
