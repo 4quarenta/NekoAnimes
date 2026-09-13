@@ -251,16 +251,19 @@ private fun AppShell(manifest: AppManifest) {
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        if (navigationVisible) {
-            NekoNavigationDrawer(
-                drawerState = drawerState,
-                items = drawerItems,
-                selectedRoute = selectedRoute,
-                onSelected = ::navigateTo
-            ) {
-                Scaffold(
-                    modifier = Modifier.fillMaxSize(),
-                    bottomBar = {
+        // Keep the WebView mounted while the native player is visible. If it
+        // is removed here, closing the player recreates it at the manifest URL
+        // (the home page) and the return navigation is sent to a stale view.
+        NekoNavigationDrawer(
+            drawerState = drawerState,
+            items = drawerItems,
+            selectedRoute = selectedRoute,
+            onSelected = ::navigateTo
+        ) {
+            Scaffold(
+                modifier = Modifier.fillMaxSize(),
+                bottomBar = {
+                    if (navigationVisible) {
                         Column {
                             NekoBannerSlot(manifest.ads)
                             NekoNavigationBar(
@@ -270,21 +273,21 @@ private fun AppShell(manifest: AppManifest) {
                             )
                         }
                     }
-                ) { padding ->
-                    WebViewHost(
-                        url = manifest.webAppUrl,
-                        bridge = bridge,
-                        modifier = Modifier.fillMaxSize().padding(padding),
-                        onHorizontalSwipe = ::navigateBySwipe,
-                        gesturesEnabled = navigationVisible,
-                        onOpenDrawer = {
-                            if (navigationVisible && !drawerState.isOpen) {
-                                drawerScope.launch { drawerState.open() }
-                            }
-                        },
-                        onWebViewReady = { webView = it }
-                    )
                 }
+            ) { padding ->
+                WebViewHost(
+                    url = manifest.webAppUrl,
+                    bridge = bridge,
+                    modifier = Modifier.fillMaxSize().padding(padding),
+                    onHorizontalSwipe = ::navigateBySwipe,
+                    gesturesEnabled = navigationVisible,
+                    onOpenDrawer = {
+                        if (navigationVisible && !drawerState.isOpen) {
+                            drawerScope.launch { drawerState.open() }
+                        }
+                    },
+                    onWebViewReady = { webView = it }
+                )
             }
         }
 
