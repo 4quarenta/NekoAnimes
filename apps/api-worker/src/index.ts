@@ -157,7 +157,7 @@ app.get('/v1/catalog/anime', async (c) => {
     console.error('MAL catalog unavailable, using staging catalog fallback', error);
     if (letter && /^[A-Z]$/i.test(letter)) { conditions.push('title LIKE ? COLLATE NOCASE'); bindings.push(`${letter}%`); }
     if (query) { conditions.push('(title LIKE ? COLLATE NOCASE OR title_english LIKE ? COLLATE NOCASE OR title_romaji LIKE ? COLLATE NOCASE)'); bindings.push(`%${query}%`, `%${query}%`, `%${query}%`); }
-    const rows = await all<Row>(c.env.DB, `SELECT id, slug, title, year, type, status, genres, score_basis_points FROM anime${whereClause(conditions)} ORDER BY title COLLATE NOCASE LIMIT ?`, ...bindings, limit);
+    const rows = await all<Row>(c.env.DB, `SELECT id, slug, title, year, type, status, genres, score_basis_points, image_url FROM anime${whereClause(conditions)} ORDER BY title COLLATE NOCASE LIMIT ?`, ...bindings, limit);
     return c.json({ source: 'staging-db-fallback', items: rows.map(animeSummary), count: rows.length, degraded: true });
   }
 });
@@ -498,6 +498,46 @@ app.post('/v1/auth/logout', async (c) => { await c.env.DB.prepare('DELETE FROM s
 app.use('/v1/me', requireAuth);
 app.use('/v1/me/*', requireAuth);
 
+app.use('/v1/catalog/provider-data', requireAuth);
+app.post('/v1/catalog/provider-data', async (c) => {
+  const body = await c.req.json<{ serverId?: string; reference?: string }>();
+  const serverId = body.serverId?.trim() ?? '';
+  const reference = body.reference?.trim() ?? '';
+  assertServerId(serverId);
+  if (!reference || reference.length > 1000 || !reference.startsWith('/')) throw new HTTPException(400, { message: 'Referência do anime inválida' });
+  try {
+    const detail = await getProviderAnime(serverId, reference);
+    const identity = await resolveProviderIdentity(c, {
+      serverId,
+      reference: detail.anime.reference,
+      title: detail.anime.title,
+      fallbackPostType: detail.postType
+    });
+    const animeId = identity.canonicalId;
+    const slug = await uniqueAnimeSlug(c.env.DB, savedAnimeSlug(identity, detail.anime.title, serverId), animeId);
+    const status = identity.status ?? 'unknown';
+    const type = identity.postType === 'filme' ? 'movie' : identity.postType === 'manga' ? 'manga' : 'tv';
+    await c.env.DB.prepare(`INSERT INTO anime (id, slug, title, title_english, title_romaji, title_native, synopsis, type, status, year, score_basis_points, genres, image_url, backdrop_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET slug = excluded.slug, title = excluded.title, title_english = excluded.title_english, title_romaji = excluded.title_romaji, title_native = excluded.title_native, synopsis = excluded.synopsis, type = excluded.type, status = excluded.status, year = excluded.year, score_basis_points = excluded.score_basis_points, genres = excluded.genres, image_url = excluded.image_url, backdrop_url = excluded.backdrop_url, updated_at = CURRENT_TIMESTAMP`)
+      .bind(animeId, slug, identity.canonicalTitle, identity.titleEnglish, identity.titleRomaji, identity.titleNative, identity.synopsis, type, status, identity.year, identity.scoreBasisPoints, JSON.stringify(identity.genres), identity.imageUrl, identity.backdropUrl)
+      .run();
+    const externalIds = [
+      { provider: serverId, externalId: detail.anime.reference },
+      ...(identity.malId ? [{ provider: 'myanimelist', externalId: String(identity.malId) }] : []),
+      ...(identity.anilistId ? [{ provider: 'anilist', externalId: String(identity.anilistId) }] : [])
+    ];
+    for (const external of externalIds) {
+      await c.env.DB.prepare(`INSERT INTO anime_external_ids (id, anime_id, provider, external_id) VALUES (?, ?, ?, ?)
+        ON CONFLICT(provider, external_id) DO UPDATE SET anime_id = excluded.anime_id`)
+        .bind(crypto.randomUUID(), animeId, external.provider, external.externalId)
+        .run();
+    }
+    return c.json({ ok: true, saved: true, anime: { id: animeId, slug, title: identity.canonicalTitle, imageUrl: identity.imageUrl, backdropUrl: identity.backdropUrl }, sources: { myanimelist: Boolean(identity.malId), anilist: Boolean(identity.anilistId), anidb: false }, savedAt: new Date().toISOString() });
+  } catch (error) {
+    throw error instanceof HTTPException ? error : providerHttpException(error);
+  }
+});
+
 app.get('/v1/me', (c) => c.json({ id: c.get('userId'), email: c.get('userEmail') ?? null }));
 app.get('/v1/me/library', async (c) => {
   const rows = await all<Row>(c.env.DB, `SELECT anime.id AS anime_id, anime.slug, anime.title, anime.year, anime.genres, anime.image_url, user_library.status, user_library.updated_at FROM user_library INNER JOIN anime ON anime.id = user_library.anime_id WHERE user_library.user_id = ? ORDER BY user_library.updated_at DESC`, c.get('userId'));
@@ -537,6 +577,17 @@ async function first<T extends Row>(db: D1Database, query: string, ...bindings: 
 function whereClause(conditions: string[]) { return conditions.length ? ` WHERE ${conditions.join(' AND ')}` : ''; }
 function parseArray(value: unknown): string[] { try { const parsed = JSON.parse(String(value ?? '[]')); return Array.isArray(parsed) ? parsed.map(String) : []; } catch { return []; } }
 function parseObject(value: unknown): Record<string, unknown> { try { const parsed = JSON.parse(String(value ?? '{}')); return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {}; } catch { return {}; } }
+async function uniqueAnimeSlug(db: D1Database, baseSlug: string, animeId: string): Promise<string> {
+  const existing = await first<Row>(db, 'SELECT id FROM anime WHERE slug = ?', baseSlug);
+  if (!existing || String(existing.id) === animeId) return baseSlug;
+  return `${baseSlug}-${animeId.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase()}`;
+}
+function savedAnimeSlug(identity: { malId: number | null; anilistId: number | null }, title: string, serverId: string): string {
+  if (identity.malId) return `mal-${identity.malId}`;
+  if (identity.anilistId) return `anilist-${identity.anilistId}`;
+  const titleSlug = title.toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'anime';
+  return `provider-${serverId}-${titleSlug}`;
+}
 function animeSummary(row: Row) { return { id: row.id, slug: row.slug, title: row.title, year: row.year, type: row.type, status: row.status, genres: parseArray(row.genres), scoreBasisPoints: row.score_basis_points, imageUrl: typeof row.image_url === 'string' ? row.image_url : null }; }
 function animeDetail(row: Row) { return { ...animeSummary(row), titleEnglish: row.title_english, titleRomaji: row.title_romaji, titleNative: row.title_native, synopsis: row.synopsis }; }
 function season(row: Row) { return { id: row.id, animeId: row.anime_id, number: row.number, title: row.title, episodesCount: row.episodes_count }; }

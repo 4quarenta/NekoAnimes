@@ -10,6 +10,7 @@ export type ProviderMetadata = {
   malId: number | null;
   anilistId: number | null;
   postType: ProviderPostType;
+  status: string | null;
   synopsis: string | null;
   titleEnglish: string | null;
   titleRomaji: string | null;
@@ -112,6 +113,7 @@ export async function resolveProviderIdentity(
     malId: mal?.malId ?? anilist?.malId ?? mapping?.malId ?? null,
     anilistId,
     postType,
+    status: mal?.status ?? anilist?.status ?? null,
     synopsis: mal?.synopsis ?? anilist?.synopsis ?? null,
     titleEnglish: mal?.titleEnglish ?? anilist?.titleEnglish ?? null,
     titleRomaji: mal?.titleRomaji ?? anilist?.titleRomaji ?? null,

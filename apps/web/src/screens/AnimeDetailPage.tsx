@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { NekoNative } from '@neko/bridge-web';
-import { fetchAnime, fetchAniListMetadata, fetchEpisodes, fetchServerAnime, fetchServerProviderResolution, setLibraryItem, type AnimeDetail, type Episode, type RemoteAnimeMetadata, type ServerEpisode } from '../lib/api';
+import { fetchAnime, fetchAniListMetadata, fetchEpisodes, fetchServerAnime, fetchServerProviderResolution, saveProviderAnimeData, setLibraryItem, type AnimeDetail, type Episode, type RemoteAnimeMetadata, type ServerEpisode } from '../lib/api';
 import { readLocalContinueWatching, rememberActivePlayback, type LocalContinueWatching } from '../lib/local-progress';
 import { useServerPreference } from '../lib/server-preference';
 import { AppScreen, Eyebrow, ScreenHeader, Section } from '../components/AppScreen';
@@ -26,6 +26,8 @@ export function AnimeDetailPage() {
   const [visible, setVisible] = useState(60);
   const [episodeOrder, setEpisodeOrder] = useState<EpisodeOrder>('asc');
   const [libraryState, setLibraryState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [dataState, setDataState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
+  const [dataMessage, setDataMessage] = useState<string | null>(null);
   const [selectedEpisode, setSelectedEpisode] = useState<ServerEpisode | null>(null);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [viewedEpisodes, setViewedEpisodes] = useState<Set<string>>(new Set());
@@ -118,6 +120,24 @@ export function AnimeDetailPage() {
     catch (saveError) { setLibraryState('idle'); if (saveError instanceof Error && saveError.message === 'AUTH_REQUIRED') void navigate({ to: '/conta' }); }
   }
 
+  async function loadAnimeData() {
+    if (!providerMode || !providerAnime.data || !providerId) return;
+    setDataState('loading');
+    setDataMessage(null);
+    try {
+      const result = await saveProviderAnimeData(providerId, providerAnime.data.anime.reference);
+      setDataState('loaded');
+      setDataMessage(result.sources.anidb ? 'Dados salvos: MAL, AniList e AniDB.' : 'Dados salvos: MAL e AniList.');
+    } catch (loadError) {
+      if (loadError instanceof Error && loadError.message === 'AUTH_REQUIRED') {
+        void navigate({ to: '/conta' });
+        return;
+      }
+      setDataState('error');
+      setDataMessage('Não foi possível carregar os dados agora. Tente novamente.');
+    }
+  }
+
   return (
     <AppScreen>
       {backdropUrl ? <div className="neko-anime-hero" style={{ backgroundImage: `linear-gradient(180deg, rgba(13, 10, 28, .18), var(--neko-bg) 92%), url(${backdropUrl})` }} aria-hidden="true" /> : null}
@@ -127,7 +147,11 @@ export function AnimeDetailPage() {
         {currentItem.imageUrl ? <img className="neko-anime-poster" src={currentItem.imageUrl} alt={`Capa de ${currentItem.title}`} /> : null}
         {providerAnime.data?.identity ? <div className="neko-external-meta"><span>MAL {providerAnime.data.identity.malId ?? '—'}</span><span>AniList {providerAnime.data.identity.anilistId ?? '—'}</span></div> : null}
         <div className="neko-chips"><span>{currentItem.status}</span>{currentItem.genres.slice(0, 4).map((genre) => <span key={genre}>{genre}</span>)}{currentItem.scoreBasisPoints ? <span>★ {(currentItem.scoreBasisPoints / 100).toFixed(2)}</span> : null}</div>
-        <button className="neko-primary-button neko-library-button" type="button" disabled={libraryState !== 'idle'} onClick={() => void addToLibrary()}>{libraryState === 'saving' ? 'Adicionando...' : libraryState === 'saved' ? '✓ Na sua lista' : '+ Adicionar à minha lista'}</button>
+        <div className="neko-anime-actions">
+          <button className="neko-primary-button neko-library-button" type="button" disabled={libraryState !== 'idle'} onClick={() => void addToLibrary()}>{libraryState === 'saving' ? 'Adicionando...' : libraryState === 'saved' ? '✓ Na sua lista' : '+ Adicionar à minha lista'}</button>
+          <button className="neko-secondary-button neko-library-button" type="button" disabled={!providerMode || dataState === 'loading' || dataState === 'loaded'} onClick={() => void loadAnimeData()}>{dataState === 'loading' ? 'Carregando...' : dataState === 'loaded' ? '✓ Dados salvos' : 'Carregar dados'}</button>
+        </div>
+        {dataMessage ? <p className={dataState === 'error' ? 'neko-error neko-data-message' : 'neko-data-message'}>{dataMessage}</p> : null}
         {currentItem.synopsis ? <p className="neko-synopsis">{currentItem.synopsis}</p> : null}
         <Section title="Temporadas"><div className="neko-season-tabs">{currentItem.seasons.map((season) => <button type="button" key={season.id} className={season.id === selectedSeasonId ? 'is-active' : ''} onClick={() => { setSeasonId(season.id); setVisible(60); }}>{season.title ?? `Temporada ${season.number}`}</button>)}</div></Section>
         <Section title="Episódios" action={<select className="neko-episode-order" value={episodeOrder} onChange={(event) => setEpisodeOrder(event.target.value as EpisodeOrder)} aria-label="Ordem dos episódios"><option value="asc">Mais antigos</option><option value="desc">Mais recentes</option></select>}>
