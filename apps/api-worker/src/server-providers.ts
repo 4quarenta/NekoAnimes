@@ -65,6 +65,7 @@ type HtmlAnchor = { href: string; text: string };
 type ProviderResponse = { html: string; url: string };
 type ProviderConfig = ServerDescriptor & {
   searchPath: (query: string) => string;
+  catalogPath: (letter?: string, genre?: string) => string;
   fallbackAnimePath: (query: string) => string;
   isAnimeReference: (reference: string) => boolean;
   isEpisodeReference: (reference: string) => boolean;
@@ -77,6 +78,7 @@ export const ANIMES_DIGITAL: ProviderConfig = {
   baseUrl: 'https://animesdigital.org',
   capabilities: { search: true, anime: true, episodes: true, playback: true },
   searchPath: (query) => `/?s=${encodeURIComponent(query)}`,
+  catalogPath: (letter, genre) => genre ? `/genero/${providerGenreSlug(genre)}/` : `/animes-legendados-online001${letter ? `?l=${letter.toLowerCase()}` : ''}`,
   fallbackAnimePath: (query) => `/anime/a/${slugify(query)}`,
   isAnimeReference: (reference) => reference.startsWith('/anime/a/'),
   isEpisodeReference: (reference) => reference.startsWith('/video/a/') || /^\/\?p=\d+$/i.test(reference),
@@ -89,6 +91,7 @@ export const ANIMES_ONLINE_CC: ProviderConfig = {
   baseUrl: 'https://animesonlinecc.to',
   capabilities: { search: true, anime: true, episodes: true, playback: true },
   searchPath: (query) => `/?s=${encodeURIComponent(query)}`,
+  catalogPath: (letter, genre) => genre ? `/genero/${providerGenreSlug(genre)}/` : letter ? `/genero/letra-${letter.toLowerCase()}/` : '/anime/',
   fallbackAnimePath: (query) => `/anime/${slugify(query)}`,
   isAnimeReference: (reference) => reference.startsWith('/anime/'),
   isEpisodeReference: (reference) => reference.includes('/episodio/'),
@@ -101,6 +104,7 @@ export const GOYABU: ProviderConfig = {
   baseUrl: 'https://goyabu.io',
   capabilities: { search: true, anime: true, episodes: true, playback: true },
   searchPath: (query) => `/?s=${encodeURIComponent(query)}`,
+  catalogPath: (letter, genre) => genre ? `/generos/${providerGenreSlug(genre)}` : `/lista-de-animes?l=${letter?.toLowerCase() ?? 'todos'}`,
   fallbackAnimePath: (query) => `/anime/${slugify(query)}`,
   isAnimeReference: (reference) => reference.startsWith('/anime/'),
   isEpisodeReference: (reference) => /^\/\d+\/?(?:\?.*)?$/.test(reference) || reference.includes('/episodio/'),
@@ -120,7 +124,7 @@ export class ProviderError extends Error {
 }
 
 export function listServerDescriptors(): ServerDescriptor[] {
-  return PROVIDERS.map(({ searchPath: _searchPath, fallbackAnimePath: _fallbackAnimePath, isAnimeReference: _isAnimeReference, isEpisodeReference: _isEpisodeReference, cleanTitle: _cleanTitle, ...descriptor }) => descriptor);
+  return PROVIDERS.map(({ searchPath: _searchPath, catalogPath: _catalogPath, fallbackAnimePath: _fallbackAnimePath, isAnimeReference: _isAnimeReference, isEpisodeReference: _isEpisodeReference, cleanTitle: _cleanTitle, ...descriptor }) => descriptor);
 }
 
 export function hasProvider(serverId: string): boolean {
@@ -142,6 +146,16 @@ export async function searchProvider(serverId: string, query: string): Promise<S
   } catch {
     return [];
   }
+}
+
+export async function browseProvider(serverId: string, options: { letter?: string; genre?: string; limit?: number } = {}): Promise<ServerAnimeMatch[]> {
+  const provider = getProvider(serverId);
+  const response = await getProviderHtml(provider, provider.catalogPath(options.letter, options.genre));
+  const matches = extractBrowseMatches(provider, parseAnchors(response.html));
+  const letter = options.letter?.toLowerCase();
+  return matches
+    .filter((match) => !letter || normalizeForMatch(match.title).startsWith(letter))
+    .slice(0, options.limit ?? 50);
 }
 
 export async function getProviderAnime(serverId: string, reference: string): Promise<ServerAnimeDetail> {
@@ -292,6 +306,19 @@ function extractAnimeMatches(provider: ProviderConfig, query: string, anchors: H
     if (!existing || match.confidence > existing.confidence) deduped.set(reference, match);
   }
   return [...deduped.values()].sort((a, b) => b.confidence - a.confidence || a.title.localeCompare(b.title));
+}
+
+function extractBrowseMatches(provider: ProviderConfig, anchors: HtmlAnchor[]): ServerAnimeMatch[] {
+  const deduped = new Map<string, ServerAnimeMatch>();
+  for (const anchor of anchors) {
+    const reference = referenceFromHref(provider, anchor.href);
+    if (!reference || !provider.isAnimeReference(reference)) continue;
+    const title = provider.cleanTitle(anchor.text);
+    if (!title || title.length < 2) continue;
+    const match = toAnimeMatch(provider, title, new URL(reference, provider.baseUrl).toString(), 1);
+    if (!deduped.has(reference)) deduped.set(reference, match);
+  }
+  return [...deduped.values()].sort((a, b) => a.title.localeCompare(b.title));
 }
 
 function toAnimeMatch(provider: ProviderConfig, title: string, url: string, confidence: number): ServerAnimeMatch {
@@ -564,6 +591,14 @@ function decodeHtml(value: string): string {
 
 function normalizeForMatch(value: string): string {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function providerGenreSlug(value: string): string {
+  const normalized = normalizeForMatch(value);
+  const aliases: Record<string, string> = {
+    action: 'acao', adventure: 'aventura', comedy: 'comedia', drama: 'drama', fantasy: 'fantasia', horror: 'horror', mystery: 'misterio', romance: 'romance', 'sci-fi': 'ficcao-cientifica', sports: 'esporte', supernatural: 'sobrenatural', suspense: 'suspense'
+  };
+  return aliases[normalized] ?? normalized;
 }
 
 function slugify(value: string): string {

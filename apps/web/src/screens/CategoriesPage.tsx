@@ -1,7 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from '@tanstack/react-router';
 import { AppScreen, EmptyState, Eyebrow, ScreenHeader, Section, TextRow } from '../components/AppScreen';
-import { fetchCatalog, fetchGenres } from '../lib/api';
+import { fetchGenres, fetchProviderCatalog, fetchServers } from '../lib/api';
+import { useServerPreference } from '../lib/server-preference';
+import { providerSlug } from '../lib/provider-links';
 
 const genreLabels: Record<string, string> = {
   Action: 'Ação', Adventure: 'Aventura', 'Avant Garde': 'Vanguarda', 'Award Winning': 'Premiados',
@@ -46,14 +48,17 @@ export function CategoriesPage() {
 
 export function CategoryDetailPage() {
   const navigate = useNavigate();
+  const serverId = useServerPreference((state) => state.serverId);
   const { genreId } = useParams({ from: '/categorias/$genreId' });
   const parsedGenreId = Number(genreId);
   const genres = useQuery({ queryKey: ['catalog-genres'], queryFn: fetchGenres, staleTime: 60 * 60 * 1000 });
+  const servers = useQuery({ queryKey: ['servers'], queryFn: fetchServers, staleTime: 10 * 60 * 1000 });
   const selectedGenre = genres.data?.items.find((genre) => genre.id === parsedGenreId);
+  const serverName = servers.data?.servers.find((server) => server.id === serverId)?.name;
   const anime = useQuery({
-    queryKey: ['catalog-genre', parsedGenreId],
-    queryFn: () => fetchCatalog({ genreId: parsedGenreId, limit: 24 }),
-    enabled: Number.isInteger(parsedGenreId) && parsedGenreId > 0,
+    queryKey: ['provider-catalog-genre', serverId, selectedGenre?.name],
+    queryFn: () => fetchProviderCatalog(serverId!, { genre: selectedGenre!.name, limit: 24 }),
+    enabled: Number.isInteger(parsedGenreId) && parsedGenreId > 0 && Boolean(selectedGenre && serverId),
     staleTime: 10 * 60 * 1000
   });
 
@@ -61,13 +66,13 @@ export function CategoryDetailPage() {
     <AppScreen>
       <button className="neko-link neko-category-back" type="button" onClick={() => void navigate({ to: '/categorias' })}>‹ Todas as categorias</button>
       <Eyebrow>MyAnimeList</Eyebrow>
-      <ScreenHeader title={selectedGenre ? displayGenre(selectedGenre.name) : 'Categoria'} subtitle="Animes encontrados nesta categoria." />
+      <ScreenHeader title={selectedGenre ? displayGenre(selectedGenre.name) : 'Categoria'} subtitle={serverName ? `Animes de ${serverName} nesta categoria.` : 'Animes encontrados nesta categoria.'} />
       <Section title="Animes">
         {anime.isPending ? <div className="neko-skeleton short" /> : null}
         {anime.isError ? <p className="neko-error">Não foi possível carregar os animes desta categoria.</p> : null}
         {anime.data?.items.length ? (
           <div className="neko-list">
-            {anime.data.items.map((item) => <TextRow key={item.id} title={item.title} meta={[item.year, item.status].filter(Boolean).join(' · ')} trailing="›" imageUrl={item.imageUrl} onClick={() => void navigate({ to: '/anime/$slug', params: { slug: item.slug } })} />)}
+            {anime.data.items.map((item) => <TextRow key={item.reference} title={item.title} meta={serverName} trailing="›" onClick={() => void navigate({ to: '/anime/$slug', params: { slug: providerSlug(item) }, search: { provider: item.serverId, ref: item.reference } })} />)}
           </div>
         ) : anime.data ? <EmptyState title="Nenhum anime encontrado" description="A categoria não retornou títulos neste momento." /> : null}
       </Section>

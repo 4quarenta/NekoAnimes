@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { fetchCatalog, fetchManifest, fetchNews } from '../lib/api';
+import { fetchManifest, fetchNews, fetchProviderCatalog } from '../lib/api';
+import { useServerPreference } from '../lib/server-preference';
+import { providerSlug } from '../lib/provider-links';
 import { AppScreen, Eyebrow, EmptyState, ScreenHeader, Section, TextRow } from '../components/AppScreen';
 
 function formatDate(value: string) {
@@ -10,8 +12,9 @@ function formatDate(value: string) {
 export function HomePage() {
   const navigate = useNavigate();
   const manifest = useQuery({ queryKey: ['app-manifest'], queryFn: fetchManifest });
+  const serverId = useServerPreference((state) => state.serverId);
   const news = useQuery({ queryKey: ['news-home'], queryFn: () => fetchNews({ limit: 30 }), enabled: manifest.data?.mode === 'news' });
-  const catalog = useQuery({ queryKey: ['catalog-home'], queryFn: () => fetchCatalog({ limit: 6 }), enabled: manifest.data?.mode === 'streaming' });
+  const catalog = useQuery({ queryKey: ['provider-catalog-home', serverId], queryFn: () => fetchProviderCatalog(serverId!, { limit: 6 }), enabled: manifest.data?.mode === 'streaming' && Boolean(serverId) });
 
   if (manifest.isPending) return <AppScreen><div className="neko-skeleton" /><div className="neko-skeleton short" /></AppScreen>;
   if (manifest.isError) return <AppScreen><p className="neko-error">Não foi possível carregar a configuração.</p></AppScreen>;
@@ -58,7 +61,8 @@ export function HomePage() {
       </Section>
       <Section title="Catálogo em destaque" action={<button className="neko-link" onClick={() => void navigate({ to: '/catalogo' })}>Ver tudo</button>}>
         {catalog.isPending ? <div className="neko-skeleton short" /> : null}
-        {catalog.data?.items.length ? <div className="neko-list">{catalog.data.items.map((item) => <TextRow key={item.id} title={item.title} meta={[item.year, item.genres[0], item.status].filter(Boolean).join(' · ')} imageUrl={item.imageUrl} trailing="›" onClick={() => void navigate({ to: '/anime/$slug', params: { slug: item.slug } })} />)}</div> : null}
+        {catalog.data?.items.length ? <div className="neko-list">{catalog.data.items.map((item) => <TextRow key={item.reference} title={item.title} meta={catalog.data?.server.name} trailing="›" onClick={() => void navigate({ to: '/anime/$slug', params: { slug: providerSlug(item) }, search: { provider: item.serverId, ref: item.reference } })} />)}</div> : null}
+        {catalog.isError ? <p className="neko-error">Não foi possível carregar o catálogo de {serverId ?? 'servidor'}.</p> : null}
       </Section>
       <Section title="Explorar A–Z" action={<button className="neko-link" onClick={() => void navigate({ to: '/catalogo' })}>Abrir catálogo</button>}>
         <div className="neko-letter-preview">{'ABCDEFG'.split('').map((letter) => <span key={letter}>{letter}</span>)}</div>

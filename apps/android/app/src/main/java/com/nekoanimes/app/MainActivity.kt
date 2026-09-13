@@ -299,7 +299,7 @@ private fun AppShell(manifest: AppManifest) {
 
 private data class PlayerRequest(val episodeId: String, val source: PlayerSourceOverride?)
 
-private fun isDrawerItem(item: NavigationItem): Boolean = item.route == "/lista" || item.route == "/salvos" || item.route == "/conta"
+private fun isDrawerItem(item: NavigationItem): Boolean = item.route == "/lista" || item.route == "/salvos" || item.route == "/conta" || item.route == "/servidores"
 
 @Composable
 private fun LoadingScreen(message: String? = null) {

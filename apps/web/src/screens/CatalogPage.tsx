@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { fetchCatalog } from '../lib/api';
+import { fetchProviderCatalog, fetchServers } from '../lib/api';
+import { useServerPreference } from '../lib/server-preference';
+import { providerSlug } from '../lib/provider-links';
 import { AppScreen, EmptyState, Eyebrow, ScreenHeader, Section, TextRow } from '../components/AppScreen';
 
 const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
@@ -22,17 +24,16 @@ export function CatalogPage() {
   const [filters, setFilters] = useState<CatalogFilters>(emptyFilters);
   const [draftFilters, setDraftFilters] = useState<CatalogFilters>(emptyFilters);
   const navigate = useNavigate();
-  const catalog = useQuery({ queryKey: ['catalog', letter], queryFn: () => fetchCatalog({ letter, limit: 100 }) });
-  const filterCatalog = useQuery({ queryKey: ['catalog-filter-options'], queryFn: () => fetchCatalog({ limit: 100 }) });
+  const serverId = useServerPreference((state) => state.serverId);
+  const servers = useQuery({ queryKey: ['servers'], queryFn: fetchServers, staleTime: 10 * 60 * 1000 });
+  const serverName = servers.data?.servers.find((server) => server.id === serverId)?.name;
+  const catalog = useQuery({ queryKey: ['provider-catalog', serverId, letter], queryFn: () => fetchProviderCatalog(serverId!, { letter, limit: 100 }), enabled: Boolean(serverId) });
+  const filterCatalog = useQuery({ queryKey: ['provider-catalog-filter-options', serverId], queryFn: () => fetchProviderCatalog(serverId!, { limit: 100 }), enabled: Boolean(serverId) });
   const availableItems = [...(filterCatalog.data?.items ?? []), ...(catalog.data?.items ?? [])];
-  const statuses = [...new Set(availableItems.map((item) => item.status).filter(Boolean))].sort();
-  const genres = [...new Set(availableItems.flatMap((item) => item.genres))].sort((a, b) => a.localeCompare(b));
-  const years = [...new Set(availableItems.map((item) => item.year).filter((year): year is number => year !== null))].sort((a, b) => b - a);
-  const filteredItems = useMemo(() => (catalog.data?.items ?? []).filter((item) => (
-    (!filters.status || item.status === filters.status) &&
-    (!filters.genre || item.genres.includes(filters.genre)) &&
-    (!filters.year || String(item.year) === filters.year)
-  )), [catalog.data?.items, filters]);
+  const statuses: string[] = [];
+  const genres: string[] = [];
+  const years: number[] = [];
+  const filteredItems = useMemo(() => catalog.data?.items ?? [], [catalog.data?.items]);
   const activeFilterCount = Object.values(filters).filter(Boolean).length;
 
   useEffect(() => {
@@ -59,7 +60,7 @@ export function CatalogPage() {
   return (
     <AppScreen>
       <Eyebrow>NekoAnimes</Eyebrow>
-      <ScreenHeader title="Catálogo A–Z" subtitle="Encontre rapidamente pelo nome, sem depender de capas." />
+      <ScreenHeader title="Catálogo A–Z" subtitle={serverName ? `Conteúdo de ${serverName}.` : 'Escolha um servidor para carregar o catálogo.'} />
       <div className="neko-catalog-toolbar">
         <span>{activeFilterCount ? `${activeFilterCount} filtro${activeFilterCount > 1 ? 's' : ''} ativo${activeFilterCount > 1 ? 's' : ''}` : 'Refine o catálogo'}</span>
         <button className={activeFilterCount ? 'neko-filter-button is-active' : 'neko-filter-button'} type="button" onClick={openFilters}>
@@ -74,10 +75,10 @@ export function CatalogPage() {
         {filteredItems.length ? (
           <div className="neko-list">
             {filteredItems.map((item) => (
-              <TextRow key={item.id} title={item.title} meta={[item.year, item.genres[0], item.status].filter(Boolean).join(' · ')} imageUrl={item.imageUrl} trailing="›" onClick={() => void navigate({ to: '/anime/$slug', params: { slug: item.slug } })} />
+                <TextRow key={item.reference} title={item.title} meta={serverName} trailing="›" onClick={() => void navigate({ to: '/anime/$slug', params: { slug: providerSlug(item) }, search: { provider: item.serverId, ref: item.reference } })} />
             ))}
           </div>
-        ) : catalog.data ? <EmptyState title="Nenhum título" description={activeFilterCount ? 'Nenhum título corresponde aos filtros escolhidos.' : `Ainda não há títulos na letra ${letter}.`} /> : null}
+        ) : catalog.data ? <EmptyState title="Nenhum título" description={activeFilterCount ? 'Os filtros locais não se aplicam ao catálogo do provider.' : `Ainda não há títulos na letra ${letter} neste servidor.`} /> : null}
       </Section>
 
       {filterOpen ? (
