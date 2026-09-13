@@ -90,11 +90,11 @@ export async function resolveProviderIdentity(
 
 async function fetchAniListByMalId(c: Context, malId: number): Promise<{ id: number; bannerImage: string | null } | null> {
   const query = `query($malId:Int){ Media(idMal:$malId,type:ANIME){ id bannerImage } }`;
-  const cacheKey = new Request(`${ANILIST_CACHE_ORIGIN}/mal/${malId}`);
+  const cacheKey = new Request(`${ANILIST_CACHE_ORIGIN}/v2/mal/${malId}`);
   const edgeCache = (caches as unknown as { default: Cache }).default;
   const cached = await edgeCache.match(cacheKey);
   if (cached) return await cached.json<{ id: number; bannerImage: string | null } | null>();
-  const response = await fetch(ANILIST_URL, { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ query, variables: { malId } }) });
+  const response = await fetch(ANILIST_URL, { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json', 'user-agent': 'NekoAnimes-Staging/1.0' }, body: JSON.stringify({ query, variables: { malId } }) });
   if (!response.ok) throw new Error(`AniList HTTP ${response.status}`);
   const body = await response.json<{ data?: { Media?: { id?: number; bannerImage?: string | null } | null } }>();
   const result = body.data?.Media?.id ? { id: body.data.Media.id, bannerImage: body.data.Media.bannerImage ?? null } : null;
@@ -104,11 +104,11 @@ async function fetchAniListByMalId(c: Context, malId: number): Promise<{ id: num
 
 async function fetchAniListById(c: Context, id: number): Promise<{ id: number; bannerImage: string | null } | null> {
   const query = `query($id:Int){ Media(id:$id,type:ANIME){ id bannerImage } }`;
-  const cacheKey = new Request(`${ANILIST_CACHE_ORIGIN}/id/${id}`);
+  const cacheKey = new Request(`${ANILIST_CACHE_ORIGIN}/v2/id/${id}`);
   const edgeCache = (caches as unknown as { default: Cache }).default;
   const cached = await edgeCache.match(cacheKey);
   if (cached) return await cached.json<{ id: number; bannerImage: string | null } | null>();
-  const response = await fetch(ANILIST_URL, { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ query, variables: { id } }) });
+  const response = await fetch(ANILIST_URL, { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json', 'user-agent': 'NekoAnimes-Staging/1.0' }, body: JSON.stringify({ query, variables: { id } }) });
   if (!response.ok) throw new Error(`AniList HTTP ${response.status}`);
   const body = await response.json<{ data?: { Media?: { id?: number; bannerImage?: string | null } | null } }>();
   const result = body.data?.Media?.id ? { id: body.data.Media.id, bannerImage: body.data.Media.bannerImage ?? null } : null;
