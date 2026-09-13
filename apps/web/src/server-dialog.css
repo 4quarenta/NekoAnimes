@@ -1,6 +1,0 @@
-.neko-server-dialog-backdrop{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:20px;background:rgb(0 0 0 / 68%)}
-.neko-server-dialog{width:min(100%,360px);max-height:min(80vh,520px);overflow:auto;border:1px solid var(--neko-line);border-radius:18px;background:var(--neko-bg);box-shadow:0 20px 60px rgb(0 0 0 / 45%)}
-.neko-server-dialog-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px;border-bottom:1px solid var(--neko-line)}
-.neko-server-dialog-header h2{margin:0;font-size:17px}
-.neko-server-dialog-header .neko-filter-close{padding:0;color:#d1d1d8;font-size:24px;line-height:1}
-.neko-server-dialog-body{display:grid;gap:16px;padding:18px}

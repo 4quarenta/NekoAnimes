@@ -28,6 +28,7 @@ import {
   parseMalSeasonSlug,
   parseMalSlug
 } from './mal-client';
+import { resolveProviderIdentity } from './provider-identity';
 
 type Variables = { userId: string; userEmail?: string; tokenHash?: string };
 type App = Hono<{ Bindings: Env; Variables: Variables }>;
@@ -360,8 +361,9 @@ app.get('/v1/servers/:serverId/resolve/:query', async (c) => {
       query,
       server: detail.server,
       anime: detail.anime,
-      match: match ?? { serverId, serverName: detail.server.name, title: detail.anime.title, reference: detail.anime.reference, url: detail.anime.url, confidence: 1 },
+      match: match ?? { serverId, serverName: detail.server.name, title: detail.anime.title, reference: detail.anime.reference, url: detail.anime.url, confidence: 1, postType: detail.postType },
       seasons: detail.seasons,
+      postType: detail.postType,
       fetchedAt: detail.fetchedAt
     });
   } catch (error) {
@@ -389,7 +391,8 @@ app.get('/v1/servers/:serverId/resolve/:query/:season/:episode', async (c) => {
       title: detail.anime.title,
       reference: detail.anime.reference,
       url: detail.anime.url,
-      confidence: 1
+      confidence: 1,
+      postType: detail.postType
     };
     const episode = requestedEpisodeReference
       ? detail.seasons.flatMap((season) => season.episodes).find((item) => item.reference === requestedEpisodeReference)
@@ -420,7 +423,14 @@ app.get('/v1/servers/:serverId/anime', async (c) => {
   const reference = c.req.query('ref')?.trim() ?? '';
   if (!reference || reference.length > 1000 || !reference.startsWith('/')) throw new HTTPException(400, { message: 'Referência inválida' });
   try {
-    return c.json(await getProviderAnime(c.req.param('serverId'), reference));
+    const detail = await getProviderAnime(c.req.param('serverId'), reference);
+    const identity = await resolveProviderIdentity(c, {
+      serverId: c.req.param('serverId'),
+      reference: detail.anime.reference,
+      title: detail.anime.title,
+      fallbackPostType: detail.postType
+    });
+    return c.json({ ...detail, postType: identity.postType, identity });
   } catch (error) {
     throw providerHttpException(error);
   }

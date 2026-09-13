@@ -19,6 +19,7 @@ export type ServerAnimeMatch = {
   reference: string;
   url: string;
   confidence: number;
+  postType: 'anime' | 'filme' | 'manga';
 };
 
 export type ServerEpisode = {
@@ -59,6 +60,7 @@ export type ServerAnimeDetail = {
   };
   seasons: ServerSeason[];
   fetchedAt: string;
+  postType: 'anime' | 'filme' | 'manga';
 };
 
 type HtmlAnchor = { href: string; text: string };
@@ -196,7 +198,8 @@ export async function getProviderAnime(serverId: string, reference: string): Pro
       year: parseYear(pageText(response.html))
     },
     seasons: groupEpisodes(provider, episodes),
-    fetchedAt: new Date().toISOString()
+    fetchedAt: new Date().toISOString(),
+    postType: inferPostType(title, safeReference)
   };
 }
 
@@ -338,7 +341,14 @@ function hasProviderNextPage(provider: ProviderConfig, anchors: HtmlAnchor[], cu
 }
 
 function toAnimeMatch(provider: ProviderConfig, title: string, url: string, confidence: number): ServerAnimeMatch {
-  return { serverId: provider.id, serverName: provider.name, title, reference: referenceFromUrl(provider, url), url, confidence };
+  return { serverId: provider.id, serverName: provider.name, title, reference: referenceFromUrl(provider, url), url, confidence, postType: inferPostType(title, url) };
+}
+
+function inferPostType(title: string, reference: string): 'anime' | 'filme' | 'manga' {
+  const value = `${title} ${reference}`.toLocaleLowerCase('pt-BR');
+  if (/\b(manga|mangá|mangas|mangás|manhwa|manhua)\b/.test(value)) return 'manga';
+  if (/\b(filme|filmes|movie|movies)\b/.test(value)) return 'filme';
+  return 'anime';
 }
 
 function extractEpisodeCandidates(provider: ProviderConfig, anchors: HtmlAnchor[], sourcePriority: number, forcedSeason?: number): Array<{ episode: ServerEpisode; sourcePriority: number }> {

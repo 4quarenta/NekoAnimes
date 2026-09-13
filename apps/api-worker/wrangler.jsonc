@@ -10,8 +10,8 @@
     "NODE_ENV": "production",
     "APP_MODE": "streaming",
     "WEB_APP_URL": "https://nekoanimes-staging.pages.dev",
-    "ANDROID_LATEST_VERSION_CODE": "10032",
-    "ANDROID_LATEST_VERSION_NAME": "1.0.32"
+    "ANDROID_LATEST_VERSION_CODE": "10033",
+    "ANDROID_LATEST_VERSION_NAME": "1.0.33"
   },
   "d1_databases": [
     { "binding": "DB", "database_name": "nekoanimes-staging-db", "database_id": "b075bb90-a027-40de-8a28-b74f74192f2f", "migrations_dir": "migrations" }

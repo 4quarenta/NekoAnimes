@@ -101,10 +101,12 @@ class MainActivity : ComponentActivity() {
                         NetworkAccessState.Online -> ErrorScreen(state.message) { retryKey += 1 }
                         else -> ConnectionErrorScreen(connectionErrorMessage(networkAccess)) { retryKey += 1 }
                     }
-                    is ShellState.Ready -> when (networkAccess) {
-                        NetworkAccessState.Online -> AppShell(state.manifest)
-                        else -> ConnectionErrorScreen(connectionErrorMessage(networkAccess)) { retryKey += 1 }
-                    }
+                    // Once a valid manifest has been loaded, keep the shell and
+                    // WebView alive across the short network transition caused
+                    // by screen lock/unlock. Replacing the whole tree with an
+                    // error screen destroys navigation state and made the app
+                    // appear to require endless retries.
+                    is ShellState.Ready -> AppShell(state.manifest)
                 }
             }
         }
@@ -135,6 +137,19 @@ private fun AppShell(manifest: AppManifest) {
         manifest.navigation.filter(::isDrawerItem)
     }
     val currentWebRouteState by rememberUpdatedState(currentWebRoute)
+
+    DisposableEffect(webView) {
+        val view = webView
+        if (view == null) return@DisposableEffect onDispose { }
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                view.onResume()
+                view.resumeTimers()
+            }
+        }
+        activity.lifecycle.addObserver(observer)
+        onDispose { activity.lifecycle.removeObserver(observer) }
+    }
 
     val ads = remember(manifest.configVersion) { NekoAdOrchestrator(activity, manifest.ads) }
     val bridge = remember(manifest.configVersion) {

@@ -4,12 +4,14 @@
   "description": "Mapa inicial de identidade entre providers. IDs externos só entram após validação explícita.",
   "entries": [
     {
+      "canonicalId": "title:mob-psycho-100",
       "canonicalTitle": "Mob Psycho 100",
-      "malId": null,
-      "anilistId": null,
+      "malId": 32182,
+      "anilistId": 21507,
       "tmdbId": null,
       "status": "pending-external-verification",
       "providers": [
+        { "id": "goyabu", "animeReference": "/anime/mob-psycho-100" },
         { "id": "animesonlinecc", "animeReference": "/anime/mob-psycho-100/" },
         { "id": "animesdigital", "animeReference": "/anime/a/mob-psycho-100/" }
       ]
