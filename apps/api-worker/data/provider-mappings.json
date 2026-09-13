@@ -16,6 +16,38 @@
         { "id": "animesonlinecc", "animeReference": "/anime/mob-psycho-100/" },
         { "id": "animesdigital", "animeReference": "/anime/a/mob-psycho-100/" }
       ]
+    },
+    {
+      "canonicalId": "mal:269",
+      "canonicalTitle": "Bleach",
+      "malId": 269,
+      "anilistId": 269,
+      "status": "verified-title-fallback",
+      "providers": []
+    },
+    {
+      "canonicalId": "mal:1",
+      "canonicalTitle": "Cowboy Bebop",
+      "malId": 1,
+      "anilistId": 1,
+      "status": "verified-title-fallback",
+      "providers": []
+    },
+    {
+      "canonicalId": "mal:52991",
+      "canonicalTitle": "Sousou no Frieren",
+      "malId": 52991,
+      "anilistId": 154587,
+      "status": "verified-title-fallback",
+      "providers": []
+    },
+    {
+      "canonicalId": "mal:21",
+      "canonicalTitle": "One Piece",
+      "malId": 21,
+      "anilistId": 21,
+      "status": "verified-title-fallback",
+      "providers": []
     }
   ]
 }

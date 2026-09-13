@@ -31,6 +31,23 @@ type MappingEntry = {
   backdropUrl?: string | null;
 };
 
+type AniListAnimeSummary = {
+  id: number;
+  malId: number | null;
+  title: string;
+  titleEnglish: string | null;
+  titleRomaji: string | null;
+  titleNative: string | null;
+  synopsis: string | null;
+  format: string | null;
+  status: string | null;
+  year: number | null;
+  scoreBasisPoints: number | null;
+  genres: string[];
+  imageUrl: string | null;
+  bannerImage: string | null;
+};
+
 const entries = (mappings.entries as MappingEntry[]) ?? [];
 const ANILIST_URL = 'https://graphql.anilist.co';
 const ANILIST_CACHE_ORIGIN = 'https://nekoanimes-anilist-cache.invalid';
@@ -39,7 +56,8 @@ export async function resolveProviderIdentity(
   c: Context,
   input: { serverId: string; reference: string; title: string; fallbackPostType: ProviderPostType }
 ): Promise<ProviderMetadata> {
-  const mapping = entries.find((entry) => entry.providers.some((provider) => provider.id === input.serverId && normalizeReference(provider.animeReference) === normalizeReference(input.reference)));
+  const mapping = entries.find((entry) => entry.providers.some((provider) => provider.id === input.serverId && normalizeReference(provider.animeReference) === normalizeReference(input.reference)))
+    ?? entries.find((entry) => sameTitle(entry.canonicalTitle, input.title));
   let mal: MalAnimeSummary | null = null;
   const malId = mapping?.malId ?? null;
 
@@ -54,65 +72,100 @@ export async function resolveProviderIdentity(
     // Provider detail remains usable when MAL/Jikan is unavailable.
   }
 
+  if (!mal && mapping?.malId) {
+    try { mal = await fetchMalAnime(c, mapping.malId); } catch { /* AniList fallback below */ }
+  }
+
   let anilistId = mapping?.anilistId ?? null;
   let backdropUrl: string | null = mapping?.backdropUrl ?? null;
+  let anilist: AniListAnimeSummary | null = null;
   if (mal?.malId) {
     try {
-      const anilist = await fetchAniListByMalId(c, mal.malId);
+      anilist = await fetchAniListByMalId(c, mal.malId);
       anilistId = anilist?.id ?? anilistId;
-      backdropUrl = anilist?.bannerImage ?? null;
+      backdropUrl = anilist?.bannerImage ?? backdropUrl;
     } catch {
       // AniList is enrichment only and must not block playback.
     }
   }
+  if (!mal && !anilist) {
+    try {
+      anilist = await fetchAniListByTitle(c, input.title);
+      anilistId = anilist?.id ?? anilistId;
+      backdropUrl = anilist?.bannerImage ?? backdropUrl;
+    } catch {
+      // Title metadata is enrichment only and must not block playback.
+    }
+  }
   if (!backdropUrl && anilistId) {
-    try { backdropUrl = (await fetchAniListById(c, anilistId))?.bannerImage ?? null; } catch { /* enrichment only */ }
+    try {
+      anilist = anilist ?? await fetchAniListById(c, anilistId);
+      backdropUrl = anilist?.bannerImage ?? null;
+    } catch { /* enrichment only */ }
   }
 
-  const postType = mal ? malType(mal.type) : input.fallbackPostType;
+  const postType = mal ? malType(mal.type) : anilist ? anilistType(anilist.format) : input.fallbackPostType;
+  const metadata = mal ?? anilist;
   return {
-    canonicalId: mapping?.canonicalId ?? (mal ? `mal:${mal.malId}` : `title:${normalizeTitle(input.title)}`),
-    canonicalTitle: mapping?.canonicalTitle ?? mal?.title ?? input.title,
-    malId: mal?.malId ?? mapping?.malId ?? null,
+    canonicalId: mapping?.canonicalId ?? (mal ? `mal:${mal.malId}` : anilist?.malId ? `mal:${anilist.malId}` : `anilist:${anilist?.id ?? normalizeTitle(input.title)}`),
+    canonicalTitle: mapping?.canonicalTitle ?? metadata?.title ?? input.title,
+    malId: mal?.malId ?? anilist?.malId ?? mapping?.malId ?? null,
     anilistId,
     postType,
-    synopsis: mal?.synopsis ?? null,
-    titleEnglish: mal?.titleEnglish ?? null,
-    titleRomaji: mal?.titleRomaji ?? null,
-    titleNative: mal?.titleNative ?? null,
-    year: mal?.year ?? null,
-    genres: mal?.genres ?? [],
-    scoreBasisPoints: mal?.scoreBasisPoints ?? null,
-    imageUrl: mal?.imageUrl ?? null,
+    synopsis: mal?.synopsis ?? anilist?.synopsis ?? null,
+    titleEnglish: mal?.titleEnglish ?? anilist?.titleEnglish ?? null,
+    titleRomaji: mal?.titleRomaji ?? anilist?.titleRomaji ?? null,
+    titleNative: mal?.titleNative ?? anilist?.titleNative ?? null,
+    year: mal?.year ?? anilist?.year ?? null,
+    genres: mal?.genres ?? anilist?.genres ?? [],
+    scoreBasisPoints: mal?.scoreBasisPoints ?? anilist?.scoreBasisPoints ?? null,
+    imageUrl: mal?.imageUrl ?? anilist?.imageUrl ?? null,
     backdropUrl,
-    source: mal ? (anilistId ? 'anilist' : 'myanimelist') : mapping ? 'mapping' : 'none'
+    source: mal ? (anilistId ? 'anilist' : 'myanimelist') : anilist ? 'anilist' : mapping ? 'mapping' : 'none'
   };
 }
 
-async function fetchAniListByMalId(c: Context, malId: number): Promise<{ id: number; bannerImage: string | null } | null> {
-  const query = `query($malId:Int){ Media(idMal:$malId,type:ANIME){ id bannerImage } }`;
+const ANILIST_MEDIA_FIELDS = `id idMal title { romaji english native } description format status seasonYear averageScore genres coverImage { large extraLarge } bannerImage`;
+
+async function fetchAniListByMalId(c: Context, malId: number): Promise<AniListAnimeSummary | null> {
+  const query = `query($malId:Int){ Media(idMal:$malId,type:ANIME){ ${ANILIST_MEDIA_FIELDS} } }`;
   const cacheKey = new Request(`${ANILIST_CACHE_ORIGIN}/v2/mal/${malId}`);
   const edgeCache = (caches as unknown as { default: Cache }).default;
   const cached = await edgeCache.match(cacheKey);
-  if (cached) return await cached.json<{ id: number; bannerImage: string | null } | null>();
+  if (cached) return await cached.json<AniListAnimeSummary | null>();
   const response = await fetch(ANILIST_URL, { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json', 'user-agent': 'NekoAnimes-Staging/1.0' }, body: JSON.stringify({ query, variables: { malId } }) });
   if (!response.ok) throw new Error(`AniList HTTP ${response.status}`);
-  const body = await response.json<{ data?: { Media?: { id?: number; bannerImage?: string | null } | null } }>();
-  const result = body.data?.Media?.id ? { id: body.data.Media.id, bannerImage: body.data.Media.bannerImage ?? null } : null;
+  const body = await response.json<{ data?: { Media?: Record<string, unknown> | null } }>();
+  const result = body.data?.Media ? toAniListSummary(body.data.Media) : null;
   c.executionCtx.waitUntil(edgeCache.put(cacheKey, new Response(JSON.stringify(result), { headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=86400' } })));
   return result;
 }
 
-async function fetchAniListById(c: Context, id: number): Promise<{ id: number; bannerImage: string | null } | null> {
-  const query = `query($id:Int){ Media(id:$id,type:ANIME){ id bannerImage } }`;
+async function fetchAniListByTitle(c: Context, title: string): Promise<AniListAnimeSummary | null> {
+  const query = `query($search:String){ Page(perPage:5){ media(search:$search,type:ANIME,sort:SEARCH_MATCH){ ${ANILIST_MEDIA_FIELDS} } } }`;
+  const cacheKey = new Request(`${ANILIST_CACHE_ORIGIN}/v3/title/${encodeURIComponent(normalizeTitle(title))}`);
+  const edgeCache = (caches as unknown as { default: Cache }).default;
+  const cached = await edgeCache.match(cacheKey);
+  if (cached) return await cached.json<AniListAnimeSummary | null>();
+  const response = await fetch(ANILIST_URL, { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json', 'user-agent': 'NekoAnimes-Staging/1.0' }, body: JSON.stringify({ query, variables: { search: title } }) });
+  if (!response.ok) throw new Error(`AniList HTTP ${response.status}`);
+  const body = await response.json<{ data?: { Page?: { media?: Array<Record<string, unknown>> } } }>();
+  const candidates = (body.data?.Page?.media ?? []).map(toAniListSummary);
+  const result = candidates.find((candidate) => [candidate.title, candidate.titleEnglish, candidate.titleRomaji, candidate.titleNative].filter(Boolean).some((value) => sameTitle(String(value), title))) ?? candidates[0] ?? null;
+  if (result) c.executionCtx.waitUntil(edgeCache.put(cacheKey, new Response(JSON.stringify(result), { headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=86400' } })));
+  return result;
+}
+
+async function fetchAniListById(c: Context, id: number): Promise<AniListAnimeSummary | null> {
+  const query = `query($id:Int){ Media(id:$id,type:ANIME){ ${ANILIST_MEDIA_FIELDS} } }`;
   const cacheKey = new Request(`${ANILIST_CACHE_ORIGIN}/v2/id/${id}`);
   const edgeCache = (caches as unknown as { default: Cache }).default;
   const cached = await edgeCache.match(cacheKey);
-  if (cached) return await cached.json<{ id: number; bannerImage: string | null } | null>();
+  if (cached) return await cached.json<AniListAnimeSummary | null>();
   const response = await fetch(ANILIST_URL, { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json', 'user-agent': 'NekoAnimes-Staging/1.0' }, body: JSON.stringify({ query, variables: { id } }) });
   if (!response.ok) throw new Error(`AniList HTTP ${response.status}`);
-  const body = await response.json<{ data?: { Media?: { id?: number; bannerImage?: string | null } | null } }>();
-  const result = body.data?.Media?.id ? { id: body.data.Media.id, bannerImage: body.data.Media.bannerImage ?? null } : null;
+  const body = await response.json<{ data?: { Media?: Record<string, unknown> | null } }>();
+  const result = body.data?.Media ? toAniListSummary(body.data.Media) : null;
   c.executionCtx.waitUntil(edgeCache.put(cacheKey, new Response(JSON.stringify(result), { headers: { 'content-type': 'application/json', 'cache-control': 'public, max-age=86400' } })));
   return result;
 }
@@ -131,4 +184,32 @@ function malType(value: string): ProviderPostType {
   if (value === 'movie') return 'filme';
   if (value === 'manga') return 'manga';
   return 'anime';
+}
+
+function anilistType(value: string | null): ProviderPostType {
+  if (value === 'MOVIE' || value === 'SPECIAL') return 'filme';
+  return 'anime';
+}
+
+function toAniListSummary(media: Record<string, unknown>): AniListAnimeSummary {
+  const title = media.title as Record<string, unknown> | undefined;
+  const cover = media.coverImage as Record<string, unknown> | undefined;
+  const rawDescription = typeof media.description === 'string' ? media.description : null;
+  const averageScore = typeof media.averageScore === 'number' ? media.averageScore : null;
+  return {
+    id: Number(media.id),
+    malId: typeof media.idMal === 'number' ? media.idMal : null,
+    title: String(title?.romaji ?? title?.english ?? title?.native ?? 'Anime'),
+    titleEnglish: typeof title?.english === 'string' ? title.english : null,
+    titleRomaji: typeof title?.romaji === 'string' ? title.romaji : null,
+    titleNative: typeof title?.native === 'string' ? title.native : null,
+    synopsis: rawDescription?.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim() || null,
+    format: typeof media.format === 'string' ? media.format : null,
+    status: typeof media.status === 'string' ? media.status.toLowerCase() : null,
+    year: typeof media.seasonYear === 'number' ? media.seasonYear : null,
+    scoreBasisPoints: averageScore === null ? null : Math.round(averageScore * 10),
+    genres: Array.isArray(media.genres) ? media.genres.map(String) : [],
+    imageUrl: typeof cover?.extraLarge === 'string' ? cover.extraLarge : typeof cover?.large === 'string' ? cover.large : null,
+    bannerImage: typeof media.bannerImage === 'string' ? media.bannerImage : null
+  };
 }

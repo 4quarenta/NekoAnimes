@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { RouterProvider } from '@tanstack/react-router';
 import { NekoNative } from '@neko/bridge-web';
 import { fetchManifest, fetchServers, saveEpisodeProgress } from './lib/api';
+import { recordLocalProgress } from './lib/local-progress';
 import { useServerPreference } from './lib/server-preference';
 import { router } from './router';
 
@@ -38,6 +39,11 @@ export function App() {
       if (event.type === 'player.closed') {
         const episodeId = event.payload?.episodeId;
         if (episodeId) {
+          recordLocalProgress(
+            episodeId,
+            event.payload?.positionSeconds ?? 0,
+            event.payload?.durationSeconds ?? 0
+          );
           void saveEpisodeProgress(
             episodeId,
             event.payload?.positionSeconds ?? 0,
