@@ -151,11 +151,15 @@ export async function searchProvider(serverId: string, query: string): Promise<S
 export async function browseProvider(serverId: string, options: { letter?: string; genre?: string; limit?: number } = {}): Promise<ServerAnimeMatch[]> {
   const provider = getProvider(serverId);
   const response = await getProviderHtml(provider, provider.catalogPath(options.letter, options.genre));
-  const matches = extractBrowseMatches(provider, parseAnchors(response.html));
+  let matches = extractBrowseMatches(provider, parseAnchors(response.html));
   const letter = options.letter?.toLowerCase();
-  return matches
-    .filter((match) => !letter || normalizeForMatch(match.title).startsWith(letter))
-    .slice(0, options.limit ?? 50);
+  matches = matches.filter((match) => !letter || normalizeForMatch(match.title).startsWith(letter));
+  // Animes Digital does not expose a stable all-titles/letter endpoint. Its
+  // own search is the fallback for A-Z, still filtered to the requested letter.
+  if (!matches.length && letter && provider.id === 'animesdigital') {
+    matches = (await searchProvider(serverId, `${letter}n`)).filter((match) => normalizeForMatch(match.title).startsWith(letter));
+  }
+  return matches.slice(0, options.limit ?? 50);
 }
 
 export async function getProviderAnime(serverId: string, reference: string): Promise<ServerAnimeDetail> {
