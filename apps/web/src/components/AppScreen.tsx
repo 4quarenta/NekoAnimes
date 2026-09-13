@@ -69,12 +69,18 @@ export function AnimeListRow({
   meta,
   trailing = '›',
   imageUrl,
+  postType,
+  scoreBasisPoints,
+  genres,
   onClick
 }: {
   title: string;
   meta?: string;
   trailing?: ReactNode;
   imageUrl?: string | null;
+  postType?: string | null;
+  scoreBasisPoints?: number | null;
+  genres?: string[];
   onClick?: () => void;
 }) {
   const metadata = useQuery({
@@ -86,7 +92,29 @@ export function AnimeListRow({
     retry: false
   });
 
-  return <TextRow title={title} meta={meta} trailing={trailing} imageUrl={imageUrl ?? metadata.data?.imageUrl} showImagePlaceholder onClick={onClick} />;
+  const details = metadata.data;
+  const rowMeta = [
+    meta,
+    formatPostType(postType ?? details?.postType),
+    formatScore(scoreBasisPoints ?? details?.scoreBasisPoints),
+    formatGenres(genres ?? details?.genres)
+  ].filter(Boolean).join(' · ');
+  return <TextRow title={title} meta={rowMeta || undefined} trailing={trailing} imageUrl={imageUrl ?? details?.imageUrl} showImagePlaceholder onClick={onClick} />;
+}
+
+function formatPostType(value?: string | null) {
+  if (!value) return null;
+  if (value === 'filme' || value === 'movie' || value === 'MOVIE') return 'Tipo: Filme';
+  if (value === 'manga' || value === 'MANGA') return 'Tipo: Mangá';
+  return 'Tipo: Anime';
+}
+
+function formatScore(value?: number | null) {
+  return typeof value === 'number' && value > 0 ? `★ ${(value / 100).toFixed(2)}` : null;
+}
+
+function formatGenres(value?: string[]) {
+  return value?.length ? value.join(', ') : null;
 }
 
 export function EmptyState({ title, description }: { title: string; description: string }) {
