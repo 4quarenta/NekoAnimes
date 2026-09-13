@@ -78,7 +78,7 @@ export const ANIMES_DIGITAL: ProviderConfig = {
   baseUrl: 'https://animesdigital.org',
   capabilities: { search: true, anime: true, episodes: true, playback: true },
   searchPath: (query) => `/?s=${encodeURIComponent(query)}`,
-  catalogPath: (letter, genre) => genre ? `/genero/${providerGenreSlug(genre)}/` : `/animes-legendados-online001${letter ? `?l=${letter.toLowerCase()}` : ''}`,
+  catalogPath: (letter, genre) => genre ? `/genero/${providerGenreSlug(genre)}/` : `/?s=${letter ? letter.toLowerCase() : 'an'}`,
   fallbackAnimePath: (query) => `/anime/a/${slugify(query)}`,
   isAnimeReference: (reference) => reference.startsWith('/anime/a/'),
   isEpisodeReference: (reference) => reference.startsWith('/video/a/') || /^\/\?p=\d+$/i.test(reference),
