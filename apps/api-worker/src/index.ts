@@ -532,7 +532,7 @@ app.post('/v1/catalog/provider-data', async (c) => {
         .bind(crypto.randomUUID(), animeId, external.provider, external.externalId)
         .run();
     }
-    return c.json({ ok: true, saved: true, anime: { id: animeId, slug, title: identity.canonicalTitle, imageUrl: identity.imageUrl, backdropUrl: identity.backdropUrl }, sources: { myanimelist: Boolean(identity.malId), anilist: Boolean(identity.anilistId), anidb: false }, savedAt: new Date().toISOString() });
+    return c.json({ ok: true, saved: true, anime: { id: animeId, slug, title: identity.canonicalTitle, imageUrl: identity.imageUrl, backdropUrl: identity.backdropUrl }, identity, sources: { myanimelist: Boolean(identity.malId), anilist: Boolean(identity.anilistId), anidb: false }, savedAt: new Date().toISOString() });
   } catch (error) {
     throw error instanceof HTTPException ? error : providerHttpException(error);
   }

@@ -21,22 +21,29 @@ export function AnimeDetailPage() {
   const providerMode = Boolean(providerAnime.data);
   const providerIdentity = providerAnime.data?.identity;
   const remoteMetadata = useQuery({ queryKey: ['anilist-metadata', providerAnime.data?.anime.title], queryFn: () => fetchAniListMetadata(providerAnime.data!.anime.title), enabled: Boolean(providerMode && providerAnime.data?.anime.title && (!providerIdentity?.imageUrl || !providerIdentity.synopsis)), staleTime: 24 * 60 * 60 * 1000, retry: 1 });
-  const item = useMemo(() => providerAnime.data ? normalizeProviderAnime(providerAnime.data, slug, remoteMetadata.data) : legacyAnime.data, [legacyAnime.data, providerAnime.data, remoteMetadata.data, slug]);
   const [seasonId, setSeasonId] = useState<string | null>(null);
   const [visible, setVisible] = useState(60);
   const [episodeOrder, setEpisodeOrder] = useState<EpisodeOrder>('asc');
   const [libraryState, setLibraryState] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [dataState, setDataState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
   const [dataMessage, setDataMessage] = useState<string | null>(null);
+  const [loadedMetadata, setLoadedMetadata] = useState<RemoteAnimeMetadata | null>(null);
   const [selectedEpisode, setSelectedEpisode] = useState<ServerEpisode | null>(null);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [viewedEpisodes, setViewedEpisodes] = useState<Set<string>>(new Set());
   const [continueWatching, setContinueWatching] = useState<LocalContinueWatching | null>(null);
+  const item = useMemo(() => providerAnime.data ? normalizeProviderAnime(providerAnime.data, slug, remoteMetadata.data, loadedMetadata) : legacyAnime.data, [legacyAnime.data, loadedMetadata, providerAnime.data, remoteMetadata.data, slug]);
   const selectedSeasonId = seasonId ?? item?.seasons[0]?.id ?? null;
   const selectedSeason = item?.seasons.find((season) => season.id === selectedSeasonId);
   const selectedProviderSeason = providerAnime.data?.seasons.find((season) => season.id === selectedSeasonId);
   const legacyEpisodeQuery = useQuery({ queryKey: ['episodes', selectedSeasonId, visible], queryFn: () => fetchEpisodes(selectedSeasonId!, 0, visible), enabled: Boolean(selectedSeasonId && !providerMode) });
   const providerResolution = useQuery({ queryKey: ['provider-resolution', providerId, providerAnime.data?.anime.reference, selectedEpisode?.reference], queryFn: () => fetchServerProviderResolution(providerId!, providerAnime.data!.anime.title, selectedEpisode!.seasonNumber, selectedEpisode!.number, providerAnime.data!.anime.reference, selectedEpisode!.reference), enabled: Boolean(providerMode && providerId && selectedEpisode), staleTime: 10 * 60 * 1000, retry: 1 });
+
+  useEffect(() => {
+    setLoadedMetadata(null);
+    setDataState('idle');
+    setDataMessage(null);
+  }, [providerId, providerReference]);
 
   useEffect(() => {
     if (item) setViewedEpisodes(readViewedEpisodes(item.id));
@@ -85,7 +92,7 @@ export function AnimeDetailPage() {
   const episodes = providerMode ? (selectedProviderSeason?.episodes ?? []).slice(0, visible) : (legacyEpisodeQuery.data?.items ?? []);
   const orderedEpisodes = [...episodes].sort((left, right) => (episodeNumber(left) - episodeNumber(right)) * (episodeOrder === 'asc' ? 1 : -1));
   const totalEpisodes = providerMode ? (selectedProviderSeason?.episodes.length ?? 0) : (legacyEpisodeQuery.data?.total ?? 0);
-  const backdropUrl = providerAnime.data?.identity?.backdropUrl;
+  const backdropUrl = loadedMetadata?.backdropUrl ?? remoteMetadata.data?.backdropUrl ?? providerAnime.data?.identity?.backdropUrl;
 
   function openEpisode(episode: Episode | ServerEpisode) {
     setPlaybackError(null);
@@ -126,8 +133,9 @@ export function AnimeDetailPage() {
     setDataMessage(null);
     try {
       const result = await saveProviderAnimeData(providerId, providerAnime.data.anime.reference);
+      setLoadedMetadata(result.identity);
       setDataState('loaded');
-      setDataMessage(result.sources.anidb ? 'Dados salvos: MAL, AniList e AniDB.' : 'Dados salvos: MAL e AniList.');
+      setDataMessage(result.sources.anidb ? 'Dados carregados, aplicados e salvos: MAL, AniList e AniDB.' : 'Dados carregados, aplicados e salvos: MAL e AniList.');
     } catch (loadError) {
       if (loadError instanceof Error && loadError.message === 'AUTH_REQUIRED') {
         void navigate({ to: '/conta' });
@@ -167,9 +175,9 @@ export function AnimeDetailPage() {
   );
 }
 
-function normalizeProviderAnime(detail: Awaited<ReturnType<typeof fetchServerAnime>>, slug: string, remoteMetadata?: RemoteAnimeMetadata | null): AnimeDetail {
+function normalizeProviderAnime(detail: Awaited<ReturnType<typeof fetchServerAnime>>, slug: string, remoteMetadata?: RemoteAnimeMetadata | null, loadedMetadata?: RemoteAnimeMetadata | null): AnimeDetail {
   const identity = detail.identity;
-  const metadata = { ...identity, ...remoteMetadata };
+  const metadata = { ...identity, ...remoteMetadata, ...loadedMetadata };
   const id = identity?.canonicalId ?? (metadata.malId ? `mal:${metadata.malId}` : metadata.anilistId ? `anilist:${metadata.anilistId}` : `provider:${detail.server.id}:${detail.anime.reference}`);
   return { id, slug, title: metadata.canonicalTitle ?? detail.anime.title, titleEnglish: metadata.titleEnglish ?? null, titleRomaji: metadata.titleRomaji ?? null, titleNative: metadata.titleNative ?? null, synopsis: metadata.synopsis ?? null, type: metadata.postType ?? detail.postType, status: 'disponível', year: metadata.year ?? detail.anime.year ?? null, genres: metadata.genres ?? [], scoreBasisPoints: metadata.scoreBasisPoints ?? null, imageUrl: metadata.imageUrl ?? null, externalIds: [{ provider: detail.server.id, externalId: detail.anime.reference }, ...(metadata.malId ? [{ provider: 'myanimelist', externalId: String(metadata.malId) }] : []), ...(metadata.anilistId ? [{ provider: 'anilist', externalId: String(metadata.anilistId) }] : [])], seasons: detail.seasons.map((season) => ({ id: season.id, animeId: id, number: season.number, title: season.title, episodesCount: season.episodes.length })) };
 }
