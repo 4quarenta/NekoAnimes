@@ -9,7 +9,9 @@ export const NavigationIconSchema = z.enum([
   'library',
   'news',
   'bookmark',
-  'profile'
+  'profile',
+  'category',
+  'server'
 ]);
 
 export const NavigationItemSchema = z.object({
