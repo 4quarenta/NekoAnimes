@@ -4,14 +4,14 @@ import { NekoNative } from '@neko/bridge-web';
 import { fetchManifest, saveEpisodeProgress } from './lib/api';
 import { router } from './router';
 
-const NATIVE_ROUTES = ['/', '/catalogo', '/buscar', '/lista', '/salvos', '/conta'] as const;
+const NATIVE_ROUTES = ['/', '/catalogo', '/buscar', '/categorias', '/lista', '/salvos', '/conta'] as const;
 type NativeRoute = (typeof NATIVE_ROUTES)[number];
 type NavigableRoute = NativeRoute | `/anime/${string}` | `/noticias/${string}`;
 function isNativeRoute(route: string): route is NativeRoute { return (NATIVE_ROUTES as readonly string[]).includes(route); }
 function isNavigableRoute(route: string): route is NavigableRoute {
   return isNativeRoute(route) || route.startsWith('/anime/') || route.startsWith('/noticias/');
 }
-function isStreamingOnly(route: string) { return route === '/catalogo' || route === '/lista' || route.startsWith('/anime/'); }
+function isStreamingOnly(route: string) { return route === '/catalogo' || route === '/categorias' || route === '/lista' || route.startsWith('/anime/'); }
 function isNewsOnly(route: string) { return route === '/salvos' || route.startsWith('/noticias/'); }
 
 export function App() {

@@ -58,7 +58,7 @@ export function SearchPage() {
           {catalogResults.isPending && normalized.length >= 2 ? <div className="neko-skeleton short" /> : null}
           {catalogResults.data?.items.length ? (
             <div className="neko-list neko-results">
-              {catalogResults.data.items.map((item) => <TextRow key={item.id} title={item.title} meta={[item.year, item.genres[0], item.status].filter(Boolean).join(' · ')} trailing="›" onClick={() => void navigate({ to: '/anime/$slug', params: { slug: item.slug } })} />)}
+              {catalogResults.data.items.map((item) => <TextRow key={item.id} title={item.title} meta={[item.year, item.genres[0], item.status].filter(Boolean).join(' · ')} imageUrl={item.imageUrl} trailing="›" onClick={() => void navigate({ to: '/anime/$slug', params: { slug: item.slug } })} />)}
             </div>
           ) : catalogResults.data ? <EmptyState title="Nenhum resultado" description="Tente outro nome ou título alternativo." /> : null}
         </>

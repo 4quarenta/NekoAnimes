@@ -3,6 +3,11 @@ import type { Context, Next } from 'hono';
 import { cors } from 'hono/cors';
 import { HTTPException } from 'hono/http-exception';
 import {
+  BloggerVideoResolutionError,
+  parseBloggerVideoUrl,
+  resolveBloggerVideoSource
+} from './blogger-video-resolver';
+import {
   ProviderError,
   checkProviderHealth,
   getProviderAnime,
@@ -11,6 +16,15 @@ import {
   listServerDescriptors,
   searchProvider
 } from './server-providers';
+import {
+  fetchMalAnime,
+  fetchMalCatalog,
+  fetchMalEpisodes,
+  fetchMalGenres,
+  malSeasonSlug,
+  parseMalSeasonSlug,
+  parseMalSlug
+} from './mal-client';
 
 type Variables = { userId: string; userEmail?: string; tokenHash?: string };
 type App = Hono<{ Bindings: Env; Variables: Variables }>;
@@ -90,21 +104,98 @@ app.get('/v1/media/proxy', async (c) => {
   return new Response(rewritten, { status: 200, headers });
 });
 
+app.get('/v1/media/blogger/source', async (c) => {
+  let sourceUrl: string;
+  try {
+    sourceUrl = parseBloggerVideoUrl(c.req.query('url'));
+  } catch (error) {
+    if (error instanceof BloggerVideoResolutionError && error.kind === 'invalid') {
+      throw new HTTPException(400, { message: error.message });
+    }
+    throw error;
+  }
+  if (!c.env.BROWSER) {
+    throw new HTTPException(503, { message: 'Resolver Blogger não configurado neste ambiente' });
+  }
+
+  try {
+    const source = await resolveBloggerVideoSource(c.env.BROWSER, sourceUrl);
+    return c.json(
+      {
+        provider: 'blogger',
+        requestedUrl: sourceUrl,
+        source,
+        resolvedAt: new Date().toISOString(),
+        cache: 'no-store'
+      },
+      200,
+      { 'Cache-Control': 'no-store' }
+    );
+  } catch (error) {
+    if (error instanceof BloggerVideoResolutionError) {
+      throw new HTTPException(error.kind === 'timeout' ? 504 : 503, { message: error.message });
+    }
+    throw error;
+  }
+});
+
 app.get('/v1/catalog/anime', async (c) => {
   const conditions: string[] = [];
   const bindings: unknown[] = [];
   const letter = c.req.query('letter');
   const query = c.req.query('q')?.trim();
   const limit = clampInt(c.req.query('limit'), 50, 1, 100);
-  if (letter && /^[A-Z]$/i.test(letter)) { conditions.push('title LIKE ? COLLATE NOCASE'); bindings.push(`${letter}%`); }
-  if (query) { conditions.push('(title LIKE ? COLLATE NOCASE OR title_english LIKE ? COLLATE NOCASE OR title_romaji LIKE ? COLLATE NOCASE)'); bindings.push(`%${query}%`, `%${query}%`, `%${query}%`); }
-  const rows = await all<Row>(c.env.DB, `SELECT id, slug, title, year, type, status, genres, score_basis_points FROM anime${whereClause(conditions)} ORDER BY title COLLATE NOCASE LIMIT ?`, ...bindings, limit);
-  return c.json({ items: rows.map(animeSummary), count: rows.length });
+  const genreId = parsePositiveOptionalInt(c.req.query('genreId'));
+  try {
+    const result = await fetchMalCatalog(c, { query, genreId, limit, letter: letter && /^[A-Z]$/i.test(letter) ? letter : undefined });
+    return c.json({ source: 'myanimelist', ...result }, 200, { 'Cache-Control': 'public, max-age=300' });
+  } catch (error) {
+    console.error('MAL catalog unavailable, using staging catalog fallback', error);
+    if (letter && /^[A-Z]$/i.test(letter)) { conditions.push('title LIKE ? COLLATE NOCASE'); bindings.push(`${letter}%`); }
+    if (query) { conditions.push('(title LIKE ? COLLATE NOCASE OR title_english LIKE ? COLLATE NOCASE OR title_romaji LIKE ? COLLATE NOCASE)'); bindings.push(`%${query}%`, `%${query}%`, `%${query}%`); }
+    const rows = await all<Row>(c.env.DB, `SELECT id, slug, title, year, type, status, genres, score_basis_points FROM anime${whereClause(conditions)} ORDER BY title COLLATE NOCASE LIMIT ?`, ...bindings, limit);
+    return c.json({ source: 'staging-db-fallback', items: rows.map(animeSummary), count: rows.length, degraded: true });
+  }
+});
+
+app.get('/v1/catalog/genres', async (c) => {
+  try {
+    return c.json({ source: 'myanimelist', items: await fetchMalGenres(c) }, 200, { 'Cache-Control': 'public, max-age=86400' });
+  } catch (error) {
+    console.error('MAL genres unavailable, using staging catalog fallback', error);
+    const rows = await all<Row>(c.env.DB, 'SELECT genres FROM anime');
+    const counts = new Map<string, number>();
+    rows.flatMap((row) => parseArray(row.genres)).forEach((genre) => counts.set(genre, (counts.get(genre) ?? 0) + 1));
+    return c.json({ source: 'staging-db-fallback', items: [...counts.entries()].map(([name, count], index) => ({ id: -(index + 1), name, count })) });
+  }
 });
 
 app.get('/v1/catalog/anime/:slug', async (c) => {
-  const item = await first<Row>(c.env.DB, 'SELECT * FROM anime WHERE slug = ?', c.req.param('slug'));
-  if (!item) throw new HTTPException(404, { message: 'Anime não encontrado' });
+  const slug = c.req.param('slug');
+  const item = await first<Row>(c.env.DB, 'SELECT * FROM anime WHERE slug = ?', slug);
+  if (!item) {
+    const malId = parseMalSlug(slug);
+    if (!malId) throw new HTTPException(404, { message: 'Anime não encontrado' });
+    const mal = await fetchMalAnime(c, malId);
+    const seasons = mal.episodes && mal.episodes > 0 ? [{ id: malSeasonSlug(malId), animeId: mal.slug, number: 1, title: mal.type === 'movie' ? 'Filme' : 'Temporada única', episodesCount: mal.episodes }] : [];
+    return c.json({
+      id: mal.slug,
+      slug: mal.slug,
+      title: mal.title,
+      titleEnglish: mal.titleEnglish,
+      titleRomaji: mal.titleRomaji,
+      titleNative: mal.titleNative,
+      synopsis: mal.synopsis,
+      type: mal.type,
+      status: mal.status,
+      year: mal.year,
+      scoreBasisPoints: mal.scoreBasisPoints,
+      genres: mal.genres,
+      imageUrl: mal.imageUrl,
+      externalIds: [{ provider: 'myanimelist', externalId: String(mal.malId) }],
+      seasons
+    });
+  }
   const [externalIds, seasons] = await Promise.all([
     all<Row>(c.env.DB, 'SELECT provider, external_id FROM anime_external_ids WHERE anime_id = ?', item.id),
     all<Row>(c.env.DB, 'SELECT * FROM anime_seasons WHERE anime_id = ? ORDER BY number', item.id)
@@ -116,6 +207,21 @@ app.get('/v1/catalog/seasons/:seasonId/episodes', async (c) => {
   const seasonId = c.req.param('seasonId');
   const offset = clampInt(c.req.query('offset'), 0, 0, 1_000_000);
   const limit = clampInt(c.req.query('limit'), 10, 1, 50);
+  const malId = parseMalSeasonSlug(seasonId);
+  if (malId) {
+    const page = Math.floor(offset / 100) + 1;
+    const result = await fetchMalEpisodes(c, malId, page);
+    const pageOffset = (page - 1) * 100;
+    const items = result.items.slice(Math.max(0, offset - pageOffset), Math.max(0, offset - pageOffset) + limit).map((item) => ({
+      id: `mal-${malId}-season-1-episode-${item.number}`,
+      seasonId,
+      number: item.number,
+      title: item.title,
+      durationSeconds: null,
+      airedAt: item.airedAt
+    }));
+    return c.json({ season: { id: seasonId, animeId: `mal-${malId}`, number: 1, title: 'Temporada única', episodesCount: result.total }, items, offset, limit, total: result.total });
+  }
   const seasonRow = await first<Row>(c.env.DB, 'SELECT * FROM anime_seasons WHERE id = ?', seasonId);
   if (!seasonRow) throw new HTTPException(404, { message: 'Temporada não encontrada' });
   const [rows, count] = await Promise.all([
@@ -395,7 +501,7 @@ async function first<T extends Row>(db: D1Database, query: string, ...bindings: 
 function whereClause(conditions: string[]) { return conditions.length ? ` WHERE ${conditions.join(' AND ')}` : ''; }
 function parseArray(value: unknown): string[] { try { const parsed = JSON.parse(String(value ?? '[]')); return Array.isArray(parsed) ? parsed.map(String) : []; } catch { return []; } }
 function parseObject(value: unknown): Record<string, unknown> { try { const parsed = JSON.parse(String(value ?? '{}')); return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {}; } catch { return {}; } }
-function animeSummary(row: Row) { return { id: row.id, slug: row.slug, title: row.title, year: row.year, type: row.type, status: row.status, genres: parseArray(row.genres), scoreBasisPoints: row.score_basis_points }; }
+function animeSummary(row: Row) { return { id: row.id, slug: row.slug, title: row.title, year: row.year, type: row.type, status: row.status, genres: parseArray(row.genres), scoreBasisPoints: row.score_basis_points, imageUrl: typeof row.image_url === 'string' ? row.image_url : null }; }
 function animeDetail(row: Row) { return { ...animeSummary(row), titleEnglish: row.title_english, titleRomaji: row.title_romaji, titleNative: row.title_native, synopsis: row.synopsis }; }
 function season(row: Row) { return { id: row.id, animeId: row.anime_id, number: row.number, title: row.title, episodesCount: row.episodes_count }; }
 function episode(row: Row) { return { id: row.id, seasonId: row.season_id, number: row.number, title: row.title, durationSeconds: row.duration_seconds, airedAt: row.aired_at }; }
@@ -453,6 +559,7 @@ async function digest(value: string) { const hash = await crypto.subtle.digest('
 async function hashPassword(password: string, salt: string) { const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']); const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: base64ToBytes(salt), iterations: 100_000, hash: 'SHA-256' }, key, 256); return bytesToBase64Url(new Uint8Array(bits)); }
 async function verifyPassword(password: string, salt: string, expected: string) { return (await hashPassword(password, salt)) === expected; }
 function clampInt(value: string | undefined, fallback: number, min: number, max: number) { const parsed = Number(value); return Number.isInteger(parsed) ? Math.min(Math.max(parsed, min), max) : fallback; }
+function parsePositiveOptionalInt(value: string | undefined) { const parsed = Number(value); return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined; }
 function validateProviderQuery(value: string) { if (value.length < 2 || value.length > 120) throw new HTTPException(400, { message: 'Consulta inválida' }); }
 function positiveProviderInt(value: string | undefined, message: string) { const parsed = Number(value); if (!Number.isInteger(parsed) || parsed < 1 || parsed > 100_000) throw new HTTPException(400, { message }); return parsed; }
 function assertServerId(value: string) { if (!hasProvider(value)) throw new HTTPException(404, { message: 'Servidor não encontrado' }); }
@@ -461,7 +568,7 @@ function providerErrorCode(error: unknown): 'provider_unavailable' | 'provider_t
 function providerHttpException(error: unknown): HTTPException { return new HTTPException(error instanceof ProviderError && error.kind === 'timeout' ? 504 : 503, { message: error instanceof Error ? error.message : 'Provider indisponível' }); }
 function defaultAds() { return { enabled: false, engine: 'max' as const, banner: { enabled: false }, appOpen: { enabled: false, minIntervalMinutes: 60, skipFirstOpens: 3 }, interstitial: { enabled: false, minIntervalMinutes: 30, maxPerSession: 2 } }; }
 function isAdsConfig(value: unknown): value is ReturnType<typeof defaultAds> { return Boolean(value && typeof value === 'object' && 'enabled' in value && 'banner' in value && 'appOpen' in value && 'interstitial' in value); }
-function streamingNavigation() { return [{ id: 'home', label: 'Início', icon: 'home', route: '/' }, { id: 'catalog', label: 'A–Z', icon: 'catalog', route: '/catalogo' }, { id: 'search', label: 'Buscar', icon: 'search', route: '/buscar' }, { id: 'library', label: 'Lista', icon: 'library', route: '/lista' }, { id: 'account', label: 'Conta', icon: 'profile', route: '/conta' }]; }
+function streamingNavigation() { return [{ id: 'home', label: 'Início', icon: 'home', route: '/' }, { id: 'catalog', label: 'A–Z', icon: 'catalog', route: '/catalogo' }, { id: 'search', label: 'Buscar', icon: 'search', route: '/buscar' }, { id: 'categories', label: 'Categorias', icon: 'category', route: '/categorias' }, { id: 'library', label: 'Lista', icon: 'library', route: '/lista' }, { id: 'account', label: 'Conta', icon: 'profile', route: '/conta' }]; }
 function newsNavigation() { return [{ id: 'home', label: 'Início', icon: 'home', route: '/' }, { id: 'search', label: 'Buscar', icon: 'search', route: '/buscar' }, { id: 'saved', label: 'Salvos', icon: 'bookmark', route: '/salvos' }, { id: 'account', label: 'Conta', icon: 'profile', route: '/conta' }]; }
 
 export default app;

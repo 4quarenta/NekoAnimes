@@ -58,7 +58,7 @@ export function HomePage() {
       </Section>
       <Section title="Catálogo em destaque" action={<button className="neko-link" onClick={() => void navigate({ to: '/catalogo' })}>Ver tudo</button>}>
         {catalog.isPending ? <div className="neko-skeleton short" /> : null}
-        {catalog.data?.items.length ? <div className="neko-list">{catalog.data.items.map((item) => <TextRow key={item.id} title={item.title} meta={[item.year, item.genres[0], item.status].filter(Boolean).join(' · ')} trailing="›" onClick={() => void navigate({ to: '/anime/$slug', params: { slug: item.slug } })} />)}</div> : null}
+        {catalog.data?.items.length ? <div className="neko-list">{catalog.data.items.map((item) => <TextRow key={item.id} title={item.title} meta={[item.year, item.genres[0], item.status].filter(Boolean).join(' · ')} imageUrl={item.imageUrl} trailing="›" onClick={() => void navigate({ to: '/anime/$slug', params: { slug: item.slug } })} />)}</div> : null}
       </Section>
       <Section title="Explorar A–Z" action={<button className="neko-link" onClick={() => void navigate({ to: '/catalogo' })}>Abrir catálogo</button>}>
         <div className="neko-letter-preview">{'ABCDEFG'.split('').map((letter) => <span key={letter}>{letter}</span>)}</div>

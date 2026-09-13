@@ -51,7 +51,7 @@ class AppManifestRepository(context: Context) {
         require(isTrustedWebAppUrl(webAppUrl)) { "Origem web não permitida" }
 
         val navigationJson = json.getJSONArray("navigation")
-        require(navigationJson.length() in 1..5) { "Navbar inválida" }
+        require(navigationJson.length() in 1..8) { "Navbar inválida" }
         val navigation = buildList {
             for (index in 0 until navigationJson.length()) {
                 val item = navigationJson.getJSONObject(index)

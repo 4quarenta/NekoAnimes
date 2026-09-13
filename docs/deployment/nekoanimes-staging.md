@@ -28,6 +28,7 @@ fica preservado para o runtime tradicional/produção.
 - Manifest: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/app-manifest>
 - Catálogo: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/catalog/anime>
 - Notícias: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/news>
+- Resolver source Blogger: `GET /v1/media/blogger/source?url=<URL-ENCODED>`
 - Providers: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/servers>
 - Busca de anime nos providers: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/servers/search?q=Bleach>
 - Temporadas e episódios de todos os matches: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/servers/resolve/Bleach>
@@ -139,6 +140,14 @@ não é salvo no D1, no APK nem no R2. Para hosts de mídia permitidos com
 incompatibilidade TLS no Android, `url` preserva a source original e
 `playbackUrl` aponta para `/v1/media/proxy`, que reescreve playlists HLS e seus
 segmentos através do domínio Cloudflare.
+
+O resolver Blogger usa o Browser Run da Cloudflare. Ele aceita somente URLs
+`https://www.blogger.com/video.g?token=...`, abre o player público em um
+navegador headless, dispara o play e captura a requisição temporária
+`googlevideo.com/videoplayback` com `mime=video/mp4`. O JSON devolve `source.url`,
+`source.expiresAt` e `source.expiresInSeconds`; a URL não é persistida nem
+cacheada. O binding `BROWSER` precisa estar habilitado no Worker e o endpoint
+deve ser chamado novamente quando a assinatura expirar.
 
 ## GitHub Actions
 

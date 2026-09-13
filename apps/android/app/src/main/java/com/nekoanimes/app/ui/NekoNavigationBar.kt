@@ -81,6 +81,7 @@ private fun iconFor(icon: String) = when (icon) {
     "search" -> Icons.Default.Search
     "library" -> Icons.Default.Favorite
     "bookmark" -> Icons.Default.Bookmark
+    "category" -> Icons.Default.List
     "account", "profile" -> Icons.Default.AccountCircle
     else -> Icons.Default.List
 }

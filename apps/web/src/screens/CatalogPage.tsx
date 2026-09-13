@@ -74,7 +74,7 @@ export function CatalogPage() {
         {filteredItems.length ? (
           <div className="neko-list">
             {filteredItems.map((item) => (
-              <TextRow key={item.id} title={item.title} meta={[item.year, item.genres[0], item.status].filter(Boolean).join(' · ')} trailing="›" onClick={() => void navigate({ to: '/anime/$slug', params: { slug: item.slug } })} />
+              <TextRow key={item.id} title={item.title} meta={[item.year, item.genres[0], item.status].filter(Boolean).join(' · ')} imageUrl={item.imageUrl} trailing="›" onClick={() => void navigate({ to: '/anime/$slug', params: { slug: item.slug } })} />
             ))}
           </div>
         ) : catalog.data ? <EmptyState title="Nenhum título" description={activeFilterCount ? 'Nenhum título corresponde aos filtros escolhidos.' : `Ainda não há títulos na letra ${letter}.`} /> : null}

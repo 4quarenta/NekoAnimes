@@ -33,15 +33,18 @@ export function TextRow({
   title,
   meta,
   trailing,
+  imageUrl,
   onClick
 }: {
   title: string;
   meta?: string;
   trailing?: ReactNode;
+  imageUrl?: string | null;
   onClick?: () => void;
 }) {
   const content = (
     <>
+      {imageUrl ? <img className="neko-row-image" src={imageUrl} alt="" loading="lazy" /> : null}
       <span className="neko-row-copy">
         <strong>{title}</strong>
         {meta ? <small>{meta}</small> : null}

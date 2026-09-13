@@ -3,13 +3,15 @@
   "name": "nekoanimes-api-staging",
   "main": "src/index.ts",
   "compatibility_date": "2026-09-11",
+  "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
+  "browser": { "binding": "BROWSER" },
   "vars": {
     "NODE_ENV": "production",
     "APP_MODE": "streaming",
     "WEB_APP_URL": "https://nekoanimes-staging.pages.dev",
-    "ANDROID_LATEST_VERSION_CODE": "10029",
-    "ANDROID_LATEST_VERSION_NAME": "1.0.29"
+    "ANDROID_LATEST_VERSION_CODE": "10030",
+    "ANDROID_LATEST_VERSION_NAME": "1.0.30"
   },
   "d1_databases": [
     { "binding": "DB", "database_name": "nekoanimes-staging-db", "database_id": "b075bb90-a027-40de-8a28-b74f74192f2f", "migrations_dir": "migrations" }

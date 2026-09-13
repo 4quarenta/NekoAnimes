@@ -58,6 +58,11 @@ import com.nekoanimes.app.web.HorizontalSwipeDirection
 import com.nekoanimes.app.web.WebViewHost
 import kotlinx.coroutines.launch
 import androidx.compose.material3.rememberDrawerState
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -67,13 +72,28 @@ class MainActivity : ComponentActivity() {
                 val repository = remember { AppManifestRepository(applicationContext) }
                 var shellState by remember { mutableStateOf<ShellState>(ShellState.Loading) }
                 var retryKey by remember { mutableIntStateOf(0) }
+                var resumeKey by remember { mutableIntStateOf(0) }
                 val networkAccess = rememberNetworkAccess()
+                DisposableEffect(this@MainActivity) {
+                    val observer = LifecycleEventObserver { _, event ->
+                        if (event == Lifecycle.Event.ON_RESUME) resumeKey += 1
+                    }
+                    lifecycle.addObserver(observer)
+                    onDispose { lifecycle.removeObserver(observer) }
+                }
                 LaunchedEffect(retryKey) {
                     shellState = ShellState.Loading
                     shellState = repository.load().fold(
                         onSuccess = { ShellState.Ready(it) },
-                        onFailure = { ShellState.Error(it.message ?: "Falha ao carregar configuração") }
+                        onFailure = { ShellState.Error(manifestLoadErrorMessage(it)) }
                     )
+                }
+                var lastAutomaticRetry by remember { mutableIntStateOf(-1) }
+                LaunchedEffect(resumeKey, shellState) {
+                    if (resumeKey > 0 && shellState is ShellState.Error && lastAutomaticRetry != resumeKey) {
+                        lastAutomaticRetry = resumeKey
+                        retryKey += 1
+                    }
                 }
                 when (val state = shellState) {
                     ShellState.Loading -> LoadingScreen()
@@ -317,6 +337,17 @@ private fun connectionErrorMessage(access: NetworkAccessState): String = when (a
     NetworkAccessState.Vpn -> "A conexão por VPN está bloqueada. Desative a VPN e tente novamente."
     NetworkAccessState.Offline -> "Conecte-se à internet e tente novamente."
     NetworkAccessState.Online -> "Verifique a conexão e tente novamente."
+}
+
+private fun manifestLoadErrorMessage(error: Throwable): String {
+    val root = generateSequence(error) { it.cause }.last()
+    return when (root) {
+        is UnknownHostException -> "Não foi possível localizar a API de configuração. Verifique a conexão DNS e tente novamente."
+        is SocketTimeoutException -> "A API de configuração demorou para responder. Verifique a conexão e tente novamente."
+        is ConnectException -> "Não foi possível conectar à API de configuração. Verifique a conexão e tente novamente."
+        else -> root.message?.trim()?.takeIf { it.isNotEmpty() }?.let { "Falha ao carregar a configuração: $it" }
+            ?: "Falha ao carregar a configuração remota. Verifique a conexão e tente novamente."
+    }
 }
 
 @Composable
