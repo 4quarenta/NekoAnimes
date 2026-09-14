@@ -47,8 +47,8 @@ android {
     productFlavors {
         create("direct") {
             dimension = "distribution"
-            versionCode = 10037
-            versionName = "1.0.37"
+            versionCode = 10038
+            versionName = "1.0.38"
             buildConfigField("boolean", "SELF_UPDATE_ENABLED", "true")
             buildConfigField("String", "DISTRIBUTION_CHANNEL", "\"direct\"")
         }
@@ -100,6 +100,7 @@ android {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
     val composeBom = platform("androidx.compose:compose-bom:2026.06.00")
 
     implementation(composeBom)

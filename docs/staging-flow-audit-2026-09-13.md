@@ -63,11 +63,13 @@ Prerelease: https://github.com/4quarenta/NekoAnimes/releases/tag/v1.0.37-staging
 - Nove testes de contrato passaram. Smoke visual de favoritos, ordem dos episódios, loading/erro/retry, bridge, categorias, paginação e perfil passou; sem erros JavaScript.
 - Teste público autenticado de favorito Animes Online → Animes Digital, biblioteca e progresso passou. Conta temporária removida.
 
-### Instalação nativa pendente — incompatibilidade de assinatura
+### Histórico da incompatibilidade de assinatura
 
-A versão instalada 1.0.36 tem certificado SHA-256 `b9f30b5d0a26a1b4358a86c8baaecdef33cd3848333e28be51705890f8c39c3f`; a compilação local nova tem `385f2754a209785fb9a02004294a86adaecef904032ad99b311157092ad28557`. O nome do pacote foi preservado, mas Android não permite atualização entre essas assinaturas. A keystore antiga não foi localizada nos locais de assinatura examinados. Nenhum app foi desinstalado.
+A versão anterior 1.0.36 tem certificado SHA-256 `b9f30b5d0a26a1b4358a86c8baaecdef33cd3848333e28be51705890f8c39c3f`; a compilação local nova tem `385f2754a209785fb9a02004294a86adaecef904032ad99b311157092ad28557`. O nome do pacote foi preservado, mas Android não permite atualização entre essas assinaturas. A keystore antiga não foi localizada nos locais de assinatura examinados.
 
-O APK 1.0.37 foi publicado com aviso de que não é uma atualização in-place da instalação examinada. O manifesto de auto-update continua intencionalmente em **1.0.36**. Para migrar é necessária a keystore antiga ou autorização para backup/reinstalação, com possibilidade de novo login. O spinner nativo foi compilado e passou pelo CI, mas sua execução no aparelho ainda depende dessa migração. Antes de promover a nova assinatura, também é necessário persistir sua keystore no secret de CI para evitar repetir o problema.
+O usuário posteriormente autorizou backup/reinstalação. Foi reinstalado somente `com.nekoanimes.app`, agora 1.0.37-debug/10037, e restaurados 66 arquivos com SHA-256 idênticos antes da abertura. APK anterior e dados foram preservados em backup privado. A nova keystore também foi preservada em backup e no secret de CI `NEKO_STAGING_DEBUG_KEYSTORE_BASE64`.
+
+O manifesto de auto-update continua intencionalmente em **1.0.36**: a validação física completa permanece pendente. O primeiro lançamento registrou ANR sem trace; o seguinte criou o WebView, que mostrou erro de conexão/DNS. O aparelho estava bloqueado e não foi possível confirmar visualmente login e reprodução. Ver [auditoria de lógica e UX](logic-ux-review-2026-09-13.md) para evidências, limites e novos defeitos encontrados. A migração de assinatura das demais instalações antigas também precisa ser tratada; manter o package não basta.
 
 Progressos antigos armazenados no formato local global não foram apagados nem atribuídos automaticamente a uma conta diferente. A nova fila é separada por usuário.
 

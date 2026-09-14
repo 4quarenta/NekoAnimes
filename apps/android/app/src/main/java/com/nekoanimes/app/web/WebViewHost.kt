@@ -8,13 +8,35 @@ import android.view.MotionEvent
 import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceError
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.nekoanimes.app.BuildConfig
 import com.nekoanimes.app.bridge.NekoBridge
@@ -34,14 +56,58 @@ fun WebViewHost(
     onHorizontalSwipe: (HorizontalSwipeDirection) -> Unit = {},
     onOpenDrawer: () -> Unit = {},
     gesturesEnabled: Boolean = true,
+    networkAvailable: Boolean = true,
     onWebViewReady: (WebView) -> Unit
 ) {
     val currentOnHorizontalSwipe by rememberUpdatedState(onHorizontalSwipe)
     val currentOnOpenDrawer by rememberUpdatedState(onOpenDrawer)
     val currentGesturesEnabled = rememberUpdatedState(gesturesEnabled)
+    val currentNetworkAvailable by rememberUpdatedState(networkAvailable)
+    val recovery = remember { DocumentRecovery(url) }
+    var documentError by remember { mutableStateOf<String?>(null) }
+    var hostedView by remember { mutableStateOf<WebView?>(null) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
 
+    fun recoverDocument() {
+        if (!currentNetworkAvailable || !lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return
+        val target = recovery.recoveryUrl() ?: return
+        hostedView?.let { view ->
+            recovery.started(target)
+            documentError = null
+            view.loadUrl(target)
+        }
+    }
+
+    DisposableEffect(hostedView, lifecycle) {
+        val view = hostedView
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> {
+                    if (currentNetworkAvailable) view?.onResume()
+                    recoverDocument()
+                }
+                Lifecycle.Event.ON_PAUSE -> view?.onPause()
+                else -> Unit
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(networkAvailable, hostedView) {
+        if (networkAvailable) {
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) hostedView?.onResume()
+            recoverDocument()
+        } else {
+            recovery.interrupted()
+            hostedView?.stopLoading()
+            hostedView?.onPause()
+        }
+    }
+
+    Box(modifier) {
     AndroidView(
-        modifier = modifier,
+        modifier = Modifier.fillMaxSize(),
         factory = { context ->
             NekoRefreshLayout(context).apply {
                 setColorSchemeColors(0xFF8B5CF6.toInt())
@@ -51,7 +117,7 @@ fun WebViewHost(
                     settings.domStorageEnabled = true
                     settings.allowFileAccess = false
                     settings.allowContentAccess = false
-                    settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
+                    settings.cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
                     settings.javaScriptCanOpenWindowsAutomatically = false
                     settings.setSupportMultipleWindows(false)
                     settings.userAgentString = "${settings.userAgentString} NekoAnimes/Android"
@@ -97,12 +163,45 @@ fun WebViewHost(
                     }
 
                     webViewClient = object : WebViewClient() {
+                        override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
+                            if (url != null && isAllowedWebAppUrl(Uri.parse(url))) {
+                                recovery.started(url)
+                                documentError = null
+                                if (!currentNetworkAvailable) {
+                                    recovery.interrupted()
+                                    view.stopLoading()
+                                }
+                            }
+                        }
+
+                        override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
+                            if (url != null && isAllowedWebAppUrl(Uri.parse(url))) recovery.visited(url)
+                        }
+
+                        override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+                            if (!request.isForMainFrame || !isAllowedWebAppUrl(request.url)) return
+                            recovery.failed(request.url.toString())
+                            if (recovery.failedUrl != request.url.toString()) return
+                            container.isRefreshing = false
+                            documentError = "Não foi possível carregar esta página. Verifique sua conexão e tente novamente."
+                        }
+
+                        override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, errorResponse: WebResourceResponse) {
+                            if (!request.isForMainFrame || !isAllowedWebAppUrl(request.url)) return
+                            recovery.failed(request.url.toString())
+                            if (recovery.failedUrl != request.url.toString()) return
+                            container.isRefreshing = false
+                            documentError = "O servidor não conseguiu carregar esta página (HTTP ${errorResponse.statusCode})."
+                        }
+
                         override fun onPageFinished(view: WebView, url: String?) {
+                            if (url != null) recovery.finished(url)
                             container.isRefreshing = false
                         }
 
                         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                             val target = request.url
+                            if (!currentNetworkAvailable && request.isForMainFrame) return true
                             return if (isAllowedWebAppUrl(target)) {
                                 false
                             } else {
@@ -116,19 +215,47 @@ fun WebViewHost(
                         }
                     }
 
-                    loadUrl(url)
                 }
 
                 hostedWebView = webView
                 addView(webView, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
                 setOnChildScrollUpCallback { _, _ -> webView.canScrollVertically(-1) }
-                setOnRefreshListener { webView.reload() }
+                setOnRefreshListener {
+                    if (currentNetworkAvailable) {
+                        val target = recovery.failedUrl ?: recovery.lastUrl
+                        recovery.started(target)
+                        documentError = null
+                        webView.loadUrl(target)
+                    } else isRefreshing = false
+                }
                 bridge.attach(webView)
+                hostedView = webView
                 onWebViewReady(webView)
+                // Attach the bridge before the first document can handshake.
+                if (currentNetworkAvailable) {
+                    recovery.started(url)
+                    webView.loadUrl(url)
+                }
             }
         },
-        update = { it.hostedWebView?.let(onWebViewReady) }
+        update = {
+            it.isEnabled = networkAvailable && gesturesEnabled
+            if (!networkAvailable) it.isRefreshing = false
+        },
+        onRelease = { container ->
+            container.hostedWebView?.apply { stopLoading(); destroy() }
+        }
     )
+        documentError?.let { message ->
+            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).clickable { }, contentAlignment = Alignment.Center) {
+                Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Text("Não foi possível abrir a página")
+                    Text(message)
+                    Button(onClick = ::recoverDocument, enabled = networkAvailable) { Text("Tentar novamente") }
+                }
+            }
+        }
+    }
 }
 
 private class NekoRefreshLayout(context: Context) : SwipeRefreshLayout(context) {

@@ -65,10 +65,10 @@ export function AccountPage() {
 function AccountOverview({userId}:{userId:string}) {
   const navigate=useNavigate();
   const serverId=useServerPreference(state=>state.serverId);
-  const profile=useQuery({queryKey:['me-profile',userId],queryFn:async()=>{
-    const [me,library,watching,news]=await Promise.all([fetchMe(),fetchLibrary(),fetchContinueWatching(),fetchSavedNews()]);
-    return {me,library,watching,news};
-  }});
+  const profile=useQuery({queryKey:['me-profile',userId],queryFn:fetchMe});
+  const library=useQuery({queryKey:['me-library',userId],queryFn:fetchLibrary});
+  const watching=useQuery({queryKey:['me-continue',userId],queryFn:fetchContinueWatching});
+  const news=useQuery({queryKey:['me-saved-news',userId],queryFn:fetchSavedNews});
   const servers=useQuery({queryKey:['servers'],queryFn:fetchServers});
   const [pending,setPending]=useState(()=>readLocalProgressItems().filter(item=>item.pendingSync).length);
   const [syncing,setSyncing]=useState(false);
@@ -82,16 +82,16 @@ function AccountOverview({userId}:{userId:string}) {
       {profile.isPending?<div className="neko-skeleton short"/>:null}
       {profile.isError?<p className="neko-error">Não foi possível consultar sua conta. Seus dados não foram apagados.</p>:null}
       <div className="neko-list">
-        <TextRow title="Minha lista" meta={profile.data?`${profile.data.library.length} obras salvas`:'Abrir favoritos'} trailing="›" onClick={()=>void navigate({to:'/lista'})}/>
-        <TextRow title="Continuar assistindo" meta={profile.data?`${profile.data.watching.length} obras em andamento`:'Consultar progresso'} trailing="›" onClick={()=>void navigate({to:'/lista'})}/>
-        <TextRow title="Notícias salvas" meta={profile.data?`${profile.data.news.length} notícias`:'Abrir notícias salvas'} trailing="›" onClick={()=>void navigate({to:'/salvos'})}/>
+        <TextRow title="Minha lista" meta={library.data?`${library.data.length} obras salvas`:library.isError?'Não foi possível consultar favoritos':'Abrir favoritos'} trailing="›" onClick={()=>void navigate({to:'/lista'})}/>
+        <TextRow title="Continuar assistindo" meta={watching.data?`${watching.data.length} obras em andamento`:watching.isError?'Não foi possível consultar progresso':'Consultar progresso'} trailing="›" onClick={()=>void navigate({to:'/continuar'})}/>
+        <TextRow title="Notícias salvas" meta={news.data?`${news.data.length} notícias`:news.isError?'Não foi possível consultar notícias':'Abrir notícias salvas'} trailing="›" onClick={()=>void navigate({to:'/salvos'})}/>
         <TextRow title="Servidor padrão" meta={servers.data?.servers.find(server=>server.id===serverId)?.name??'Não selecionado'} trailing="›" onClick={()=>void navigate({to:'/servidores'})}/>
       </div>
     </Section>
     <Section title="Sincronização">
       <p className={pending?'neko-error':'neko-account-copy'}>{pending?`${pending} progresso(s) aguardando envio neste dispositivo.`:profile.data?'Conta consultada com sucesso. Nenhum envio local pendente.':'Aguardando confirmação da API.'}</p>
       {profile.dataUpdatedAt?<p className="neko-account-copy">Última consulta: {new Date(profile.dataUpdatedAt).toLocaleTimeString('pt-BR')}</p>:null}
-      <button className="neko-secondary-button" disabled={syncing||profile.isFetching} onClick={()=>{setSyncing(true);void syncPendingProgress().then(()=>profile.refetch()).finally(()=>setSyncing(false));}}>{syncing?'Sincronizando…':'Sincronizar e atualizar'}</button>
+      <button className="neko-secondary-button" disabled={syncing||profile.isFetching} onClick={()=>{setSyncing(true);void syncPendingProgress().then(()=>Promise.allSettled([profile.refetch(),library.refetch(),watching.refetch(),news.refetch()])).finally(()=>setSyncing(false));}}>{syncing?'Sincronizando…':'Sincronizar e atualizar'}</button>
     </Section>
   </>;
 }

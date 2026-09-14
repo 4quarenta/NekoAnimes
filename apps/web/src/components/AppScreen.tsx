@@ -1,9 +1,12 @@
-import type { PropsWithChildren, ReactNode } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { fetchAniListMetadata } from '../lib/api';
+import { useState, type PropsWithChildren, type ReactNode } from 'react';
+import { NekoNative } from '@neko/bridge-web';
+import { useNavigate } from '@tanstack/react-router';
 
 export function AppScreen({ children }: PropsWithChildren) {
-  return <main className="neko-screen">{children}</main>;
+  const navigate=useNavigate();
+  const [open,setOpen]=useState(false);
+  return <main className="neko-screen"><button className="neko-menu-launcher" aria-label="Abrir menu lateral" aria-expanded={open} onClick={()=>{if(NekoNative.isAvailable())NekoNative.appEvent('menu_open');else setOpen(value=>!value);}}>☰</button>
+    {open?<nav className="neko-web-shortcuts" aria-label="Navegação">{([['/','Início'],['/buscar','Buscar'],['/categorias','Categorias'],['/continuar','Continuar assistindo'],['/lista','Minha lista'],['/servidores','Servidores'],['/conta','Conta']] as const).map(([to,label])=><button key={to} onClick={()=>{setOpen(false);void navigate({to});}}>{label}</button>)}</nav>:null}{children}</main>;
 }
 
 export function Eyebrow({ children }: PropsWithChildren) {
@@ -83,23 +86,13 @@ export function AnimeListRow({
   genres?: string[];
   onClick?: () => void;
 }) {
-  const metadata = useQuery({
-    queryKey: ['anime-list-poster', title],
-    queryFn: () => fetchAniListMetadata(title),
-    enabled: !imageUrl && Boolean(title.trim()),
-    staleTime: 24 * 60 * 60 * 1000,
-    gcTime: 7 * 24 * 60 * 60 * 1000,
-    retry: false
-  });
-
-  const details = metadata.data;
   const rowMeta = [
     meta,
-    formatPostType(postType ?? details?.postType),
-    formatScore(scoreBasisPoints ?? details?.scoreBasisPoints),
-    formatGenres(genres ?? details?.genres)
+    formatPostType(postType),
+    formatScore(scoreBasisPoints),
+    formatGenres(genres)
   ].filter(Boolean).join(' · ');
-  return <TextRow title={title} meta={rowMeta || undefined} trailing={trailing} imageUrl={imageUrl ?? details?.imageUrl} showImagePlaceholder onClick={onClick} />;
+  return <TextRow title={title} meta={rowMeta || undefined} trailing={trailing} imageUrl={imageUrl} showImagePlaceholder onClick={onClick} />;
 }
 
 function formatPostType(value?: string | null) {

@@ -30,7 +30,7 @@ export function ServersPage() {
                   <span className="neko-server-option-copy">
                     <strong>{server.name}</strong>
                     <small>{server.baseUrl.replace(/^https?:\/\//, '')}</small>
-                    <small>{server.capabilities.playback ? 'Catálogo e reprodução disponíveis' : 'Reprodução indisponível'}</small>
+                    <small>{server.capabilities.playback ? 'Suporta catálogo e reprodução' : 'Sem suporte a reprodução'}</small>
                   </span>
                 </button>
               );
@@ -38,7 +38,7 @@ export function ServersPage() {
           </div>
         ) : servers.data ? <EmptyState title="Nenhum servidor configurado" description="A API não retornou providers para este ambiente." /> : null}
       </Section>
-      <p className="neko-account-notice">A preferência fica salva neste dispositivo. Para trocar a fonte, volte aqui e selecione outro servidor.</p>
+      <p className="neko-account-notice">A preferência fica salva neste dispositivo. A disponibilidade de cada episódio será verificada ao abrir o vídeo.</p>
     </AppScreen>
   );
 }

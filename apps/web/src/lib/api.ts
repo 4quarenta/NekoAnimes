@@ -2,8 +2,9 @@ import { AppManifestSchema, sameAnimeTitle, type AppManifest } from '@neko/contr
 import { getAccessToken, clearSession } from './auth';
 import { API_URL } from './config';
 
-async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, { cache: 'no-store' });
+async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const timeout = AbortSignal.timeout(30000);
+  const response = await fetch(`${API_URL}${path}`, { cache: 'no-store', signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
   if (!response.ok) throw await responseError(response);
   return response.json() as Promise<T>;
 }
@@ -14,13 +15,14 @@ async function authJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
     cache: 'no-store',
+    signal: init.signal ?? AbortSignal.timeout(30000),
     headers: {
       'content-type': 'application/json',
       authorization: `Bearer ${token}`,
       ...(init.headers ?? {})
     }
   });
-  if (response.status === 401) { clearSession(); throw new Error('AUTH_REQUIRED'); }
+  if (response.status === 401) { if (getAccessToken() === token) clearSession(); throw new Error('AUTH_REQUIRED'); }
   if (!response.ok) throw await responseError(response);
   return response.json() as Promise<T>;
 }
@@ -42,7 +44,7 @@ export type CatalogGenre = { id: number; name: string; count: number };
 export type ServerCapabilities = { search: boolean; anime: boolean; episodes: boolean; playback: boolean };
 export type ServerDescriptor = { id: string; name: string; baseUrl: string; capabilities: ServerCapabilities };
 export type ProviderPostType = 'anime' | 'filme' | 'manga';
-export type ServerAnimeMatch = { serverId: string; serverName: string; title: string; reference: string; url: string; confidence: number; postType: ProviderPostType };
+export type ServerAnimeMatch = { serverId: string; serverName: string; title: string; reference: string; url: string; confidence: number; postType: ProviderPostType; workSlug?: string; imageUrl?: string | null; scoreBasisPoints?: number | null; genres?: string[] };
 export type ServerSearchProviderResult = { server: ServerDescriptor; status: 'ok' | 'unavailable' | 'timeout' | 'error'; matches: ServerAnimeMatch[]; error?: 'provider_unavailable' | 'provider_timeout' };
 export type ServerSearchResponse = { query: string; servers: ServerSearchProviderResult[]; fetchedAt: string };
 export type ServerPlaybackSource = { id: string; url: string; playbackUrl?: string; mimeType?: string; label: string; headers: Record<string, string>; isDefault: boolean; kind: 'direct' | 'embed' };
@@ -62,7 +64,7 @@ export function fetchEpisodes(seasonId: string, offset = 0, limit = 10) { return
 export function fetchNews(params: { query?: string; category?: string; limit?: number } = {}) { const search = new URLSearchParams(); if (params.query) search.set('q', params.query); if (params.category) search.set('category', params.category); if (params.limit) search.set('limit', String(params.limit)); const suffix = search.size ? `?${search}` : ''; return getJson<{ items: NewsArticle[]; count: number }>(`/v1/news${suffix}`); }
 export function fetchNewsArticle(slug: string) { return getJson<NewsArticle>(`/v1/news/${encodeURIComponent(slug)}`); }
 export function fetchServers() { return getJson<{ servers: ServerDescriptor[] }>('/v1/servers'); }
-export function fetchProviderCatalog(serverId: string, params: { letter?: string; query?: string; genre?: string; page?: number; limit?: number } = {}) { const search = new URLSearchParams(); if (params.letter) search.set('letter', params.letter); if (params.query) search.set('q', params.query); if (params.genre) search.set('genre', params.genre); if (params.page) search.set('page', String(params.page)); if (params.limit) search.set('limit', String(params.limit)); const suffix = search.size ? `?${search}` : ''; return getJson<ProviderCatalogResponse>(`/v1/servers/${encodeURIComponent(serverId)}/catalog${suffix}`); }
+export function fetchProviderCatalog(serverId: string, params: { letter?: string; query?: string; genre?: string; page?: number; limit?: number } = {}, signal?: AbortSignal) { const search = new URLSearchParams(); if (params.letter) search.set('letter', params.letter); if (params.query) search.set('q', params.query); if (params.genre) search.set('genre', params.genre); if (params.page) search.set('page', String(params.page)); if (params.limit) search.set('limit', String(params.limit)); const suffix = search.size ? `?${search}` : ''; return getJson<ProviderCatalogResponse>(`/v1/servers/${encodeURIComponent(serverId)}/catalog${suffix}`,signal); }
 export function fetchServerSearch(query: string) { return getJson<ServerSearchResponse>(`/v1/servers/search?q=${encodeURIComponent(query)}`); }
 export function fetchServerAnime(serverId: string, reference: string) { const search = new URLSearchParams({ ref: reference }); return getJson<ServerAnimeDetail>(`/v1/servers/${encodeURIComponent(serverId)}/anime?${search}`); }
 export async function fetchAniListMetadata(title: string): Promise<RemoteAnimeMetadata | null> {

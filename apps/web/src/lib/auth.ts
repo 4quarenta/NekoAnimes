@@ -19,8 +19,8 @@ export const auth = {
   async signUp(credentials: { email: string; password: string }) { return authenticate('/v1/auth/register', credentials); },
   async signOut() {
     const session = readSession();
-    if (session) await fetch(`${API_URL}/v1/auth/logout`, { method: 'POST', headers: { authorization: `Bearer ${session.access_token}` } }).catch(() => undefined);
     writeSession(null);
+    if (session) void fetch(`${API_URL}/v1/auth/logout`, { method: 'POST', headers: { authorization: `Bearer ${session.access_token}` }, signal: AbortSignal.timeout(8000) }).catch(() => undefined);
     return { error: null };
   }
 };
@@ -31,7 +31,7 @@ export function clearSession() { writeSession(null); }
 
 async function authenticate(path: string, credentials: { email: string; password: string }) {
   try {
-    const response = await fetch(`${API_URL}${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(credentials) });
+    const response = await fetch(`${API_URL}${path}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(credentials), signal: AbortSignal.timeout(15000) });
     const payload = await response.json() as AuthResponse | { message?: string };
     if (!response.ok || !('session' in payload)) return { data: { session: null }, error: new Error(('message' in payload && payload.message) || 'Não foi possível autenticar') };
     writeSession(payload.session);

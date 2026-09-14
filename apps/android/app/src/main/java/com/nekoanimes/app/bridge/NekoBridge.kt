@@ -8,12 +8,14 @@ import androidx.webkit.WebMessageCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.nekoanimes.app.BuildConfig
+import com.nekoanimes.app.player.parseStartPositionSeconds
+import com.nekoanimes.app.player.MAX_PLAYBACK_SECONDS
 import org.json.JSONArray
 import org.json.JSONObject
 
 class NekoBridge(
     private val onRouteChanged: (String) -> Unit,
-    private val onOpenPlayer: (String, PlayerSourceOverride?) -> Unit,
+    private val onOpenPlayer: (String, PlayerSourceOverride?, Int) -> Unit,
     private val onAppEvent: (String, String?) -> Unit
 ) {
     companion object {
@@ -49,12 +51,21 @@ class NekoBridge(
         sendEvent(webView, "navigation.navigate", JSONObject().put("route", route))
     }
 
-    fun sendPlayerClosed(webView: WebView, episodeId: String? = null, positionSeconds: Int = 0, durationSeconds: Int = 0) {
+    fun sendPlayerClosed(webView: WebView, episodeId: String? = null, positionSeconds: Int = 0, durationSeconds: Int = 0, playbackReady: Boolean = false) {
         val payload = JSONObject()
         if (!episodeId.isNullOrBlank()) payload.put("episodeId", episodeId)
         payload.put("positionSeconds", positionSeconds.coerceAtLeast(0))
         payload.put("durationSeconds", durationSeconds.coerceAtLeast(0))
+        payload.put("playbackReady", playbackReady)
         sendEvent(webView, "player.closed", payload)
+    }
+
+    fun sendPlayerProgress(webView: WebView, episodeId: String, positionSeconds: Int, durationSeconds: Int) {
+        if (!isSafeId(episodeId) || durationSeconds !in 1..MAX_PLAYBACK_SECONDS || positionSeconds !in 0..durationSeconds) return
+        sendEvent(webView, "player.progress", JSONObject()
+            .put("episodeId", episodeId)
+            .put("positionSeconds", positionSeconds)
+            .put("durationSeconds", durationSeconds))
     }
 
     private fun sendReady(webView: WebView) {
@@ -90,8 +101,14 @@ class NekoBridge(
                     if (!isSafeId(episodeId)) {
                         replyError(replyProxy, id, "INVALID_EPISODE", "episodeId inválido")
                     } else {
+                        val startPosition = runCatching {
+                            parseStartPositionSeconds(payload.opt("startPositionSeconds"), payload.has("startPositionSeconds"))
+                        }.getOrElse {
+                            replyError(replyProxy, id, "INVALID_POSITION", "startPositionSeconds deve ser um inteiro entre 0 e 604800")
+                            return@runCatching
+                        }
                         runCatching { parseSource(payload) }
-                            .onSuccess { source -> onOpenPlayer(episodeId, source); replyOk(replyProxy, id) }
+                            .onSuccess { source -> onOpenPlayer(episodeId, source, startPosition); replyOk(replyProxy, id) }
                             .onFailure { replyError(replyProxy, id, "INVALID_SOURCE", "Fonte de reprodução inválida") }
                     }
                 }

@@ -20,6 +20,10 @@ export type ServerAnimeMatch = {
   url: string;
   confidence: number;
   postType: 'anime' | 'filme' | 'manga';
+  workSlug?: string;
+  imageUrl?: string | null;
+  scoreBasisPoints?: number | null;
+  genres?: string[];
 };
 
 export type ServerEpisode = {

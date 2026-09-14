@@ -9,15 +9,14 @@ import { recordLocalProgress } from './lib/local-progress';
 import { useServerPreference } from './lib/server-preference';
 import { router } from './router';
 
-const NATIVE_ROUTES = ['/', '/buscar', '/categorias', '/lista', '/salvos', '/conta', '/servidores'] as const;
+const NATIVE_ROUTES = ['/', '/buscar', '/categorias', '/lista', '/continuar', '/salvos', '/conta', '/servidores'] as const;
 type NativeRoute = (typeof NATIVE_ROUTES)[number];
 type NavigableRoute = NativeRoute | `/anime/${string}` | `/noticias/${string}` | `/categorias/${string}`;
 function isNativeRoute(route: string): route is NativeRoute { return (NATIVE_ROUTES as readonly string[]).includes(route); }
 function isNavigableRoute(route: string): route is NavigableRoute {
   return isNativeRoute(route) || route.startsWith('/anime/') || route.startsWith('/noticias/') || route.startsWith('/categorias/');
 }
-function isStreamingOnly(route: string) { return route === '/categorias' || route.startsWith('/categorias/') || route === '/lista' || route === '/servidores' || route.startsWith('/anime/'); }
-function isNewsOnly(route: string) { return route === '/salvos' || route.startsWith('/noticias/'); }
+function isStreamingOnly(route: string) { return route === '/categorias' || route.startsWith('/categorias/') || route === '/lista' || route === '/continuar' || route === '/servidores' || route.startsWith('/anime/'); }
 
 export function App() {
   const queryClient = useQueryClient();
@@ -47,17 +46,17 @@ export function App() {
     void fetchManifest().then((manifest) => {
       const route = window.location.pathname;
       if (manifest.mode === 'news' && isStreamingOnly(route)) void router.navigate({ to: '/' });
-      if (manifest.mode === 'streaming' && isNewsOnly(route)) void router.navigate({ to: '/' });
     }).catch(() => undefined);
 
     const unsubscribe = NekoNative.subscribe((event) => {
-      if (event.type === 'player.closed') {
+      if (event.type === 'player.closed' || event.type === 'player.progress') {
         const episodeId = event.payload?.episodeId;
         if (episodeId) {
           recordLocalProgress(
             episodeId,
             event.payload?.positionSeconds ?? 0,
-            event.payload?.durationSeconds ?? 0
+            event.payload?.durationSeconds ?? 0,
+            event.payload?.playbackReady !== false
           );
           void syncPendingProgress();
         }
@@ -66,6 +65,8 @@ export function App() {
 
       if (event.type !== 'navigation.navigate') return;
       const route = event.payload.route;
+      // Closing a player should not add another copy of the same detail route.
+      if (route === `${window.location.pathname}${window.location.search}`) return;
       const parsed = parseAppRoute(route);
       if (!parsed || !isNavigableRoute(parsed.pathname)) return;
       if (parsed.pathname.startsWith('/anime/')) {
@@ -73,7 +74,9 @@ export function App() {
       } else if (parsed.pathname.startsWith('/noticias/')) {
         void router.navigate({ to: '/noticias/$slug', params: { slug: parsed.pathname.slice('/noticias/'.length) } });
       } else if (parsed.pathname.startsWith('/categorias/')) {
-        void router.navigate({ to: '/categorias/$genreId', params: { genreId: parsed.pathname.slice('/categorias/'.length) } });
+        void router.navigate({ to: '/categorias/$genreId', params: { genreId: parsed.pathname.slice('/categorias/'.length) }, search:{page:Number(parsed.search.get('page'))||undefined,server:parsed.search.get('server')??undefined} });
+      } else if (parsed.pathname === '/buscar') {
+        void router.navigate({to:'/buscar',search:{q:parsed.search.get('q')??undefined}});
       } else if (parsed.pathname === '/servidores') {
         void router.navigate({ to: '/servidores' });
       } else if (isNativeRoute(parsed.pathname)) {
@@ -83,10 +86,7 @@ export function App() {
 
     const onResolved = () => {
       const route = `${window.location.pathname}${window.location.search}`;
-      if (route.startsWith('/anime/')) NekoNative.routeChanged(route);
-      else if (route.startsWith('/noticias/')) NekoNative.routeChanged('/');
-      else if (route.startsWith('/categorias/')) NekoNative.routeChanged('/categorias');
-      else if (isNativeRoute(route)) NekoNative.routeChanged(route);
+      if (isNavigableRoute(window.location.pathname)) NekoNative.routeChanged(route);
     };
     const off = router.subscribe('onResolved', onResolved);
     onResolved();

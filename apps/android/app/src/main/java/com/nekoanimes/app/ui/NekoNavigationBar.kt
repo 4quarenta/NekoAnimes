@@ -7,6 +7,7 @@ import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.DrawerState
@@ -77,6 +78,7 @@ private fun isSelected(current: String, target: String): Boolean {
 
 private fun iconFor(icon: String) = when (icon) {
     "home" -> Icons.Default.Home
+    "history" -> Icons.Default.History
     "catalog" -> Icons.Default.List
     "search" -> Icons.Default.Search
     "library" -> Icons.Default.Favorite

@@ -61,8 +61,8 @@ export const NekoNative = {
   },
 
   player: {
-    open(episodeId: string, source?: NekoPlayerSource): boolean {
-      return post('player.open', { episodeId, ...(source ? { source } : {}) });
+    open(episodeId: string, source?: NekoPlayerSource, startPositionSeconds = 0): boolean {
+      return post('player.open', { episodeId, ...(source ? { source } : {}), startPositionSeconds: Math.min(604800, Math.max(0, Math.floor(startPositionSeconds))) });
     }
   },
 

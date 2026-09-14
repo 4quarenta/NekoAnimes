@@ -41,6 +41,7 @@ export function AnimeDetailPage() {
   const [dataMessage, setDataMessage] = useState<string | null>(null);
   const [loadedMetadata, setLoadedMetadata] = useState<RemoteAnimeMetadata | null>(null);
   const [playAttempt, setPlayAttempt] = useState(0);
+  const [startPosition, setStartPosition] = useState(0);
   const [savedWorkSlug, setSavedWorkSlug] = useState<string | undefined>();
   const [savedAnimeId, setSavedAnimeId] = useState<string | undefined>();
   const [libraryError, setLibraryError] = useState<string | null>(null);
@@ -99,7 +100,7 @@ export function AnimeDetailPage() {
       animeReference: providerAnime.data?.anime.reference,
       episodeReference: resolution.episode.reference
     });
-    const opened = NekoNative.player.open(resolution.episode.id, { ...source, url: source.playbackUrl ?? source.url });
+    const opened = NekoNative.player.open(resolution.episode.id, { ...source, url: source.playbackUrl ?? source.url }, startPosition);
     if (opened) {
       markEpisodeViewed(resolution.episode);
       setSelectedEpisode(null);
@@ -122,7 +123,7 @@ export function AnimeDetailPage() {
   const loading = providerId ? providerAnime.isPending : legacyAnime.isPending;
   const error = providerId ? providerAnime.isError : legacyAnime.isError;
   if (loading) return <AppScreen><div className="neko-skeleton" /></AppScreen>;
-  if (error || !item) return <AppScreen><p className="neko-error">{providerAnime.error?.message ?? 'Não foi possível carregar este anime no servidor selecionado.'}</p><button className="neko-secondary-button" onClick={() => void providerAnime.refetch()}>Tentar novamente</button><button className="neko-link" onClick={() => void navigate({to:'/buscar'})}>Pesquisar neste servidor</button><button className="neko-link" onClick={() => void navigate({to:'/servidores'})}>Trocar servidor</button></AppScreen>;
+  if (error || !item) return <AppScreen><p className="neko-error">{providerAnime.error?.message ?? 'Não foi possível carregar este anime no servidor selecionado.'}</p><button className="neko-secondary-button" onClick={() => void providerAnime.refetch()}>Tentar novamente</button><button className="neko-link" onClick={() => void navigate({to:'/buscar',search:{q:undefined}})}>Pesquisar neste servidor</button><button className="neko-link" onClick={() => void navigate({to:'/servidores'})}>Trocar servidor</button></AppScreen>;
   const currentItem = item;
   const savedLibraryItem = library.data?.find(value => value.animeId === (savedAnimeId ?? currentItem.id));
   const inLibrary = Boolean(savedLibraryItem) || libraryState === 'saved';
@@ -131,7 +132,8 @@ export function AnimeDetailPage() {
   const totalEpisodes = providerMode ? (selectedProviderSeason?.episodes.length ?? 0) : (legacyEpisodeQuery.data?.total ?? 0);
   const backdropUrl = loadedMetadata?.backdropUrl ?? remoteMetadata.data?.backdropUrl ?? providerAnime.data?.identity?.backdropUrl;
 
-  function openEpisode(episode: Episode | ServerEpisode) {
+  function openEpisode(episode: Episode | ServerEpisode, positionSeconds = 0) {
+    setStartPosition(positionSeconds);
     setPlaybackError(null);
     if ('reference' in episode) { setPlayAttempt(value => value + 1); setSelectedEpisode(episode); return; }
     setPlaybackError('Este episódio pertence ao catálogo legado e ainda não possui uma fonte provider vinculada.');
@@ -146,7 +148,7 @@ export function AnimeDetailPage() {
       return;
     }
     setSeasonId(targetSeason.id);
-    openEpisode(targetEpisode);
+    openEpisode(targetEpisode,continueWatching.positionSeconds);
   }
 
   function markEpisodeViewed(episode: ServerEpisode) {
@@ -192,6 +194,7 @@ export function AnimeDetailPage() {
       setSavedAnimeId(result.anime.id);
       void queryClient.invalidateQueries({queryKey:['provider-anime']});
       void queryClient.invalidateQueries({queryKey:['me-library']});
+      void queryClient.invalidateQueries({predicate:query=>String(query.queryKey[0]).startsWith('provider-catalog')});
       setDataState('loaded');
       setDataMessage('Metadados disponíveis aplicados e salvos. Campos ausentes continuam pendentes nas fontes.');
     } catch (loadError) {

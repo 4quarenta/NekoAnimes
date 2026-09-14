@@ -3,6 +3,7 @@ export type LocalContinueWatching = {
   userId?: string;
   workSlug?: string;
   pendingSync?: boolean;
+  revision?: string;
   animeId: string;
   slug: string;
   title: string;
@@ -32,24 +33,28 @@ export function rememberActivePlayback(item: Omit<LocalContinueWatching, 'positi
   }
 }
 
-export function recordLocalProgress(episodeId: string, positionSeconds: number, durationSeconds: number) {
+export function recordLocalProgress(episodeId: string, positionSeconds: number, durationSeconds: number, playbackReady = true) {
   if (typeof window === 'undefined') return;
+  if (!playbackReady || !Number.isFinite(positionSeconds) || !Number.isFinite(durationSeconds) || durationSeconds <= 0 || positionSeconds <= 0) return;
   try {
     const raw = window.localStorage.getItem(ACTIVE_KEY);
     const active = raw ? JSON.parse(raw) as Omit<LocalContinueWatching, 'positionSeconds' | 'durationSeconds' | 'completed' | 'updatedAt'> : null;
     if (!active || active.episodeId !== episodeId || active.userId !== currentUserId()) return;
-    const position = Math.max(0, Math.floor(positionSeconds));
+    const position = Math.min(Math.floor(durationSeconds), Math.max(0, Math.floor(positionSeconds)));
     const duration = Math.max(0, Math.floor(durationSeconds));
     const item: LocalContinueWatching = {
       ...active,
       pendingSync: true,
+      revision: crypto.randomUUID(),
       positionSeconds: position,
       durationSeconds: duration,
       completed: duration > 0 && position / duration >= 0.9,
       updatedAt: new Date().toISOString()
     };
-    const items = readLocalProgressItems().filter(value => value.animeId !== item.animeId);
-    writeLocalProgressItems([item, ...items].slice(0, 50));
+    // Retain pending episodes when viewing another episode offline.
+    const items = readLocalProgressItems().filter(value => !(value.animeId === item.animeId && value.seasonNumber === item.seasonNumber && value.episodeNumber === item.episodeNumber));
+    const next = [item, ...items];
+    writeLocalProgressItems([...next.filter(value => value.pendingSync), ...next.filter(value => !value.pendingSync).slice(0,50)].sort((a,b) => b.updatedAt.localeCompare(a.updatedAt)));
     window.dispatchEvent(new Event('neko-progress-updated'));
     return item;
   } catch {
@@ -76,5 +81,5 @@ export function readLocalProgressItems(): LocalContinueWatching[] {
 function writeLocalProgressItems(items: LocalContinueWatching[]) { localStorage.setItem(`${CONTINUE_KEY}:${currentUserId()}`,JSON.stringify(items)); }
 export function markProgressSynced(item: LocalContinueWatching, saved: {animeId:string;slug:string}) {
   if (item.userId !== currentUserId()) return;
-  writeLocalProgressItems(readLocalProgressItems().map(value => value.animeId === item.animeId && value.updatedAt === item.updatedAt ? {...value, animeId:saved.animeId, slug:saved.slug, workSlug:saved.slug, pendingSync:false} : value));
+  writeLocalProgressItems(readLocalProgressItems().map(value => value.animeId === item.animeId ? {...value, animeId:saved.animeId, slug:saved.slug, workSlug:saved.slug, pendingSync: value.episodeId === item.episodeId && (item.revision ? value.revision === item.revision : value.updatedAt === item.updatedAt) ? false : value.pendingSync} : value));
 }

@@ -1,8 +1,47 @@
 import type { ProviderMetadata } from './provider-identity';
 import { HTTPException } from 'hono/http-exception';
+import type { ServerAnimeMatch } from './server-providers';
 
 type Row = Record<string, unknown>;
 export const canonicalReference = (ref: string) => ref.replace(/\/$/, '');
+
+// Stay below D1's 100 bound-parameter limit, including the provider parameter.
+export const CATALOG_METADATA_BATCH_SIZE = 80;
+
+export async function enrichProviderCatalog(db: D1Database, serverId: string, items: ServerAnimeMatch[]): Promise<ServerAnimeMatch[]> {
+  const references = [...new Set(items.filter(item => item.serverId === serverId).map(item => canonicalReference(item.reference)))];
+  const stored = new Map<string, Row>();
+  const ambiguous = new Set<string>();
+  for (let start = 0; start < references.length; start += CATALOG_METADATA_BATCH_SIZE) {
+    const batch = references.slice(start, start + CATALOG_METADATA_BATCH_SIZE);
+    const rows = (await db.prepare(`SELECT a.id,a.slug,a.image_url,a.score_basis_points,a.genres,a.type,
+      RTRIM(x.external_id,'/') AS reference FROM anime_external_ids x JOIN anime a ON a.id=x.anime_id
+      WHERE x.provider=? AND RTRIM(x.external_id,'/') IN (${batch.map(() => '?').join(',')})`)
+      .bind(serverId, ...batch).all<Row>()).results;
+    for (const row of rows) {
+      const reference = String(row.reference);
+      if (stored.has(reference) && stored.get(reference)!.id !== row.id) ambiguous.add(reference);
+      stored.set(reference, row);
+    }
+  }
+  return items.map(item => {
+    const reference = canonicalReference(item.reference);
+    const row = item.serverId === serverId && !ambiguous.has(reference) ? stored.get(reference) : undefined;
+    if (!row) return item;
+    let genres: unknown;
+    try { genres = JSON.parse(String(row.genres)); } catch { /* Ignore malformed legacy metadata. */ }
+    const postType = row.type === 'movie' || row.type === 'filme' ? 'filme' : row.type === 'manga' ? 'manga'
+      : ['tv', 'anime', 'ova', 'ona', 'special', 'music'].includes(String(row.type)) ? 'anime' : undefined;
+    return {
+      ...item,
+      workSlug: String(row.slug),
+      ...(typeof row.image_url === 'string' && row.image_url ? { imageUrl: row.image_url } : {}),
+      ...(typeof row.score_basis_points === 'number' ? { scoreBasisPoints: row.score_basis_points } : {}),
+      ...(Array.isArray(genres) && genres.every(value => typeof value === 'string') ? { genres } : {}),
+      ...(postType ? { postType } : {})
+    };
+  });
+}
 
 export async function readStoredIdentity(db: D1Database, serverId: string, reference: string) {
   const row = await db.prepare(`SELECT a.* FROM anime a JOIN anime_external_ids x ON x.anime_id=a.id

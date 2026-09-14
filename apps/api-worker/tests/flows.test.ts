@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import app from '../src/index';
-import { persistIdentity, readStoredIdentity, fillMetadata } from '../src/catalog-store';
+import { persistIdentity, readStoredIdentity, fillMetadata, enrichProviderCatalog, CATALOG_METADATA_BATCH_SIZE } from '../src/catalog-store';
+import type { ServerAnimeMatch } from '../src/server-providers';
 import { extractProviderCategories, providerEpisodeId, browseProvider } from '../src/server-providers';
 import { ProviderProgressSchema, sameAnimeTitle } from '@neko/contracts';
 import type { ProviderMetadata } from '../src/provider-identity';
@@ -11,6 +12,7 @@ import type { ProviderMetadata } from '../src/provider-identity';
 let sqlite: DatabaseSync;
 let db: D1Database;
 let upstream: string[];
+let metadataQueries: number[];
 const metadata: ProviderMetadata = {canonicalId:'test:work',canonicalTitle:'Contract Anime',malId:912345,anilistId:null,postType:'anime',status:'finished',synopsis:'Saved synopsis',titleEnglish:null,titleRomaji:'Contract Anime',titleNative:null,year:2025,genres:['Action'],scoreBasisPoints:850,imageUrl:'https://example.com/poster.jpg',backdropUrl:null,source:'mapping'};
 beforeEach(()=>{
   sqlite?.close();
@@ -20,12 +22,13 @@ beforeEach(()=>{
   const prepare=(sql:string,values:unknown[]=[])=>({
     bind:(...args:unknown[])=>prepare(sql,args),
     first:async()=>sqlite.prepare(sql).get(...values as never[])??null,
-    all:async()=>({results:sqlite.prepare(sql).all(...values as never[]),success:true}),
+    all:async()=>{if(sql.includes('AS reference FROM anime_external_ids'))metadataQueries.push(values.length);return {results:sqlite.prepare(sql).all(...values as never[]),success:true};},
     run:async()=>sqlite.prepare(sql).run(...values as never[])
   });
   db={prepare,batch:async(statements:Array<{run:()=>Promise<unknown>}>)=>{sqlite.exec('BEGIN');try{const rows=[];for(const statement of statements)rows.push(await statement.run());sqlite.exec('COMMIT');return rows;}catch(error){sqlite.exec('ROLLBACK');throw error;}}} as unknown as D1Database;
   Object.assign(globalThis,{caches:{default:{match:async()=>undefined,put:async()=>undefined}}});
   upstream=[];
+  metadataQueries=[];
   globalThis.fetch=async (input)=>{
     const url=new URL(String(input));upstream.push(url.toString());
     if(url.hostname==='api.jikan.moe')return Response.json({data:[],pagination:{has_next_page:false}});
@@ -115,4 +118,80 @@ test('authenticated writes reject anonymous requests and unknown provider contra
   assert.equal((await request('/v1/me/provider-library',undefined,{serverId:'goyabu',reference:'/anime/a'})).status,401);
   const token=await user();
   assert.equal((await request('/v1/me/provider-library',token,{serverId:'other',reference:'//outside.test'})).status,400);
+});
+
+test('catalog enrichment uses only persisted provider/reference links, preserves the upstream page and makes no metadata requests',async()=>{
+  const first=await persistIdentity(db,{...metadata,postType:'filme',scoreBasisPoints:0},'animesonlinecc','/anime/item-0/');
+  await persistIdentity(db,{...metadata,canonicalId:'other-provider',malId:null,imageUrl:'https://example.com/other.jpg'},'goyabu','/anime/item-1');
+  const second=await persistIdentity(db,{...metadata,canonicalId:'selected-provider',malId:null,imageUrl:'https://example.com/selected.jpg'},'animesonlinecc','/anime/item-1');
+  // Same title on another reference must never establish a catalog link.
+  await persistIdentity(db,{...metadata,canonicalId:'title-only',canonicalTitle:'Item 2',malId:null},'animesonlinecc','/anime/unlisted');
+  const result=await request('/v1/servers/animesonlinecc/catalog?genre=acao&limit=24');
+  assert.equal(result.status,200);
+  assert.equal(result.body.items.length,30);
+  assert.equal(result.body.pageSize,30);
+  assert.equal(result.body.hasNextPage,true);
+  assert.equal(result.body.source,'provider');
+  assert.equal(result.body.items[0].title,'Item 0');
+  assert.equal(result.body.items[0].workSlug,first.slug);
+  assert.equal(result.body.items[0].scoreBasisPoints,0);
+  assert.equal(result.body.items[0].postType,'filme');
+  assert.deepEqual(result.body.items[0].genres,['Action']);
+  assert.equal(result.body.items[1].imageUrl,'https://example.com/selected.jpg');
+  assert.equal(result.body.items[1].workSlug,second.slug);
+  assert.equal(result.body.items[2].workSlug,undefined);
+  assert.deepEqual(metadataQueries,[31]);
+  assert.ok(upstream.every(url=>new URL(url).hostname==='animesonlinecc.to'));
+});
+
+test('search catalog enriches persisted matches without crossing provider identities',async()=>{
+  const saved=await persistIdentity(db,metadata,'animesonlinecc','/anime/contract-anime');
+  await persistIdentity(db,{...metadata,canonicalId:'sequel',malId:null},'goyabu','/anime/contract-anime-ii');
+  const result=await request('/v1/servers/animesonlinecc/catalog?q=Contract%20Anime');
+  assert.equal(result.status,200);
+  assert.equal(result.body.items[0].workSlug,saved.slug);
+  assert.equal(result.body.items[1].workSlug,undefined);
+  assert.deepEqual(metadataQueries,[3]);
+  assert.equal(upstream.length,1);
+});
+
+test('metadata batches deduplicate references, bound parameters and leave unknown or foreign items intact',async()=>{
+  const items:ServerAnimeMatch[]=Array.from({length:CATALOG_METADATA_BATCH_SIZE*2+1},(_,i)=>({serverId:'goyabu',serverName:'Goyabu',title:`Item ${i}`,reference:`/anime/item-${i}`,url:`https://goyabu.io/anime/item-${i}`,confidence:1,postType:'anime'}));
+  items.push({...items[0]!,reference:items[0]!.reference+'/'});
+  items.push({...items[0]!,serverId:'animesonlinecc'});
+  await persistIdentity(db,metadata,'goyabu',items[0]!.reference);
+  const result=await enrichProviderCatalog(db,'goyabu',items);
+  assert.equal(result.length,items.length);
+  assert.equal(result[0]!.workSlug,result[result.length-2]!.workSlug);
+  assert.equal(result[1],items[1]);
+  assert.equal(result[result.length-1],items[items.length-1]);
+  assert.deepEqual(metadataQueries,[81,81,2]);
+  assert.equal(upstream.length,0);
+  metadataQueries=[];
+  assert.deepEqual(await enrichProviderCatalog(db,'goyabu',[]),[]);
+  assert.deepEqual(metadataQueries,[]);
+});
+
+test('ambiguous canonical references and malformed stored genres do not misidentify catalog items',async()=>{
+  await persistIdentity(db,metadata,'goyabu','/anime/ambiguous');
+  await persistIdentity(db,{...metadata,canonicalId:'conflicting',malId:null},'goyabu','/anime/other');
+  sqlite.prepare('INSERT INTO anime_external_ids(id,anime_id,provider,external_id) VALUES(?,?,?,?)').run('legacy','conflicting','goyabu','/anime/ambiguous/');
+  sqlite.prepare('UPDATE anime SET genres=? WHERE id=?').run('{invalid','conflicting');
+  const items:ServerAnimeMatch[]=['ambiguous','other'].map(name=>({serverId:'goyabu',serverName:'Goyabu',title:name,reference:`/anime/${name}`,url:`https://goyabu.io/anime/${name}`,confidence:1,postType:'anime'}));
+  const result=await enrichProviderCatalog(db,'goyabu',items);
+  assert.equal(result[0],items[0]);
+  assert.equal(result[1]!.workSlug,'work-conflicting');
+  assert.equal(result[1]!.genres,undefined);
+});
+
+test('generated manifest includes secondary continue route and Minha lista, independent of saved navigation payload',async()=>{
+  sqlite.prepare('INSERT INTO app_config(id,version,mode,payload) VALUES(1,2,?,?)').run('streaming',JSON.stringify({navigation:[{route:'/wrong'}]}));
+  const result=await request('/v1/app-manifest');
+  assert.equal(result.status,200);
+  assert.deepEqual(result.body.navigation.slice(0,3).map((item:{route:string})=>item.route),['/','/buscar','/categorias']);
+  assert.equal(result.body.navigation.find((item:{route:string})=>item.route==='/lista').label,'Minha lista');
+  assert.equal(result.body.navigation.filter((item:{route:string})=>item.route==='/continuar').length,1);
+  assert.equal(result.body.navigation.length,7);
+  sqlite.prepare('UPDATE app_config SET mode=? WHERE id=1').run('news');
+  assert.equal((await request('/v1/app-manifest')).body.navigation.some((item:{route:string})=>item.route==='/continuar'),false);
 });

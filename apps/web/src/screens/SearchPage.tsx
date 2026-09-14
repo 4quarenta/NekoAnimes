@@ -1,22 +1,26 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { useNavigate, useSearch } from '@tanstack/react-router';
 import { fetchManifest, fetchNews, fetchProviderCatalog } from '../lib/api';
 import { useServerPreference } from '../lib/server-preference';
 import { providerSlug } from '../lib/provider-links';
 import { AnimeListRow, AppScreen, Eyebrow, EmptyState, ScreenHeader, TextRow } from '../components/AppScreen';
 
 export function SearchPage() {
-  const [query, setQuery] = useState('');
+  const search=useSearch({from:'/buscar'});
+  const [query, setQuery] = useState(search.q??'');
+  const [debounced,setDebounced]=useState(query);
+  useEffect(()=>setQuery(search.q??''),[search.q]);
+  useEffect(()=>{const timer=setTimeout(()=>setDebounced(query),350);return()=>clearTimeout(timer);},[query]);
   const navigate = useNavigate();
   const serverId = useServerPreference((state) => state.serverId);
-  const normalized = query.trim();
+  const normalized = debounced.trim();
   const manifest = useQuery({ queryKey: ['app-manifest'], queryFn: fetchManifest });
   const newsMode = manifest.data?.mode === 'news';
 
   const catalogResults = useQuery({
     queryKey: ['provider-catalog-search', serverId, normalized],
-    queryFn: () => fetchProviderCatalog(serverId!, { query: normalized, limit: 50 }),
+    queryFn: ({signal}) => fetchProviderCatalog(serverId!, { query: normalized, limit: 50 },signal),
     enabled: !newsMode && normalized.length >= 2 && Boolean(serverId)
   });
   const newsResults = useQuery({
@@ -26,6 +30,7 @@ export function SearchPage() {
   });
 
   if (manifest.isPending) return <AppScreen><div className="neko-skeleton" /></AppScreen>;
+  if (manifest.isError) return <AppScreen><p role="alert" className="neko-error">Não foi possível carregar a configuração da busca.</p><button className="neko-secondary-button" onClick={()=>void manifest.refetch()}>Tentar novamente</button></AppScreen>;
 
   return (
     <AppScreen>
@@ -38,12 +43,13 @@ export function SearchPage() {
         <span>⌕</span>
         <input
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => {const q=event.target.value;setQuery(q);void navigate({to:'/buscar',search:{q:q||undefined},replace:true,resetScroll:false});}}
           placeholder={newsMode ? 'Buscar notícia...' : 'Buscar anime...'}
           autoComplete="off"
           inputMode="search"
-        />
+      />
       </label>
+      {(newsMode?newsResults:catalogResults).isError?<div role="alert"><p className="neko-error">Não foi possível consultar este servidor. Tente novamente ou troque a fonte.</p><button className="neko-secondary-button" onClick={()=>void (newsMode?newsResults:catalogResults).refetch()}>Tentar novamente</button>{!newsMode?<button className="neko-link" onClick={()=>void navigate({to:'/servidores'})}>Trocar servidor</button>:null}</div>:null}
       {normalized.length < 2 ? <EmptyState title="Digite para pesquisar" description="A busca começa a partir de 2 caracteres." /> : null}
       {newsMode ? (
         <>
@@ -61,7 +67,7 @@ export function SearchPage() {
           {catalogResults.isPending && normalized.length >= 2 ? <div className="neko-skeleton short" /> : null}
           {catalogResults.data?.items.length ? (
             <div className="neko-list neko-results">
-              {catalogResults.data.items.map((item) => <AnimeListRow key={item.reference} title={item.title} meta={catalogResults.data.server.name} onClick={() => void navigate({ to: '/anime/$slug', params: { slug: providerSlug(item) }, search: { provider: item.serverId, ref: item.reference } })} />)}
+              {catalogResults.data.items.map((item) => <AnimeListRow key={item.reference} title={item.title} imageUrl={item.imageUrl} scoreBasisPoints={item.scoreBasisPoints} genres={item.genres} postType={item.postType} meta={catalogResults.data.server.name} onClick={() => void navigate({ to: '/anime/$slug', params: { slug: item.workSlug??providerSlug(item) }, search: { provider: item.serverId, ref: item.reference } })} />)}
             </div>
           ) : catalogResults.data ? <EmptyState title="Nenhum resultado" description="Tente outro nome ou título alternativo." /> : null}
         </>

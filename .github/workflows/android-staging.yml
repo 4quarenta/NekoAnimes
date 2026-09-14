@@ -16,14 +16,29 @@ jobs:
     defaults:
       run:
         working-directory: apps/android
+        shell: bash
     env:
       NEKO_WEB_APP_URL: https://nekoanimes-staging.pages.dev
       NEKO_WEB_APP_ORIGIN: https://nekoanimes-staging.pages.dev
       NEKO_API_BASE_URL: ${{ vars.NEKO_API_BASE_URL || 'https://nekoanimes-api-staging.john-alleff01.workers.dev' }}
+      # Explicit release intent, checked against Gradle's built variant metadata.
+      RELEASE_VERSION: '1.0.38'
+      RELEASE_VERSION_CODE: '10038'
+      GH_TOKEN: ${{ github.token }}
       STAGING_SIGNING_CONFIGURED: ${{ secrets.NEKO_STAGING_DEBUG_KEYSTORE_BASE64 != '' }}
-      CLOUDFLARE_CONFIGURED: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate signing, tag and unused R2 version namespace
+        run: |
+          set -euo pipefail
+          test -n "$NEKO_API_BASE_URL"
+          test "$STAGING_SIGNING_CONFIGURED" = true
+          node ../api-worker/scripts/android-release-guard.mjs preflight
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -34,65 +49,70 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.4.1'
-      - name: Validate staging configuration
-        shell: bash
-        run: test -n "$NEKO_API_BASE_URL"
-      - name: Restore stable staging debug signing (when configured)
-        if: ${{ env.STAGING_SIGNING_CONFIGURED == 'true' }}
+      - name: Restore required stable staging debug signing
         env:
           STAGING_KEYSTORE: ${{ secrets.NEKO_STAGING_DEBUG_KEYSTORE_BASE64 }}
-        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p "$HOME/.android"
           printf '%s' "$STAGING_KEYSTORE" | base64 --decode > "$HOME/.android/debug.keystore"
           chmod 600 "$HOME/.android/debug.keystore"
+          test -s "$HOME/.android/debug.keystore"
+          keytool -list -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey > /dev/null
       - name: Build direct debug against staging
         run: |
           gradle --no-daemon :app:assembleDirectDebug \
             -PnekoWebAppUrl="$NEKO_WEB_APP_URL" \
             -PnekoWebAppOrigin="$NEKO_WEB_APP_ORIGIN" \
             -PnekoApiBaseUrl="$NEKO_API_BASE_URL"
-      - name: Prepare release files
-        id: files
-        shell: bash
+      - name: Verify built version and prepare release files
         run: |
           set -euo pipefail
+          node ../api-worker/scripts/android-release-guard.mjs metadata app/build/outputs/apk/direct/debug/output-metadata.json
           mkdir -p "$RUNNER_TEMP/neko-staging"
-          cp app/build/outputs/apk/direct/debug/app-direct-debug.apk "$RUNNER_TEMP/neko-staging/NekoAnimes-v1.0.37.apk"
-          cp app/build/outputs/apk/direct/debug/app-direct-debug.apk "$RUNNER_TEMP/neko-staging/NekoAnimes-v1.0.37-staging.apk"
+          cp app/build/outputs/apk/direct/debug/app-direct-debug.apk "$RUNNER_TEMP/neko-staging/NekoAnimes-v${RELEASE_VERSION}.apk"
+          cp app/build/outputs/apk/direct/debug/app-direct-debug.apk "$RUNNER_TEMP/neko-staging/NekoAnimes-v${RELEASE_VERSION}-staging.apk"
           cd "$RUNNER_TEMP/neko-staging"
-          sha256sum NekoAnimes-v1.0.37.apk > NekoAnimes-v1.0.37.apk.sha256
-          sha256sum NekoAnimes-v1.0.37-staging.apk > NekoAnimes-v1.0.37-staging.apk.sha256
-          echo "sha256=$(cut -d' ' -f1 NekoAnimes-v1.0.37.apk.sha256)" >> "$GITHUB_OUTPUT"
-      - name: Upload GitHub artifact
+          sha256sum "NekoAnimes-v${RELEASE_VERSION}.apk" > "NekoAnimes-v${RELEASE_VERSION}.apk.sha256"
+          sha256sum "NekoAnimes-v${RELEASE_VERSION}-staging.apk" > "NekoAnimes-v${RELEASE_VERSION}-staging.apk.sha256"
+          sha256sum --check ./*.sha256
+          chmod 444 ./*
+      - name: Upload immutable GitHub artifact
         uses: actions/upload-artifact@v4
         with:
-          name: nekoanimes-v1.0.37-ci-validation
+          name: nekoanimes-v${{ env.RELEASE_VERSION }}-ci-validation-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/neko-staging/*
           if-no-files-found: error
-      - name: Publish APK to R2
-        if: ${{ env.CLOUDFLARE_CONFIGURED == 'true' && env.STAGING_SIGNING_CONFIGURED == 'true' }}
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: r2 object put nekoanimes-releases-staging/android/v1.0.37/NekoAnimes-v1.0.37.apk --file ${{ runner.temp }}/neko-staging/NekoAnimes-v1.0.37.apk --content-type application/vnd.android.package-archive --remote
-      - name: Publish APK checksum to R2
-        if: ${{ env.CLOUDFLARE_CONFIGURED == 'true' && env.STAGING_SIGNING_CONFIGURED == 'true' }}
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: r2 object put nekoanimes-releases-staging/android/v1.0.37/NekoAnimes-v1.0.37.apk.sha256 --file ${{ runner.temp }}/neko-staging/NekoAnimes-v1.0.37.apk.sha256 --content-type text/plain --remote
-      - name: Create GitHub staging prerelease
-        if: ${{ env.STAGING_SIGNING_CONFIGURED == 'true' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-        working-directory: ${{ github.workspace }}
+          overwrite: false
+      - name: Reserve new tag and publish complete GitHub prerelease
         run: |
-          gh release create v1.0.37-staging \
-            "${{ runner.temp }}/neko-staging/NekoAnimes-v1.0.37-staging.apk" \
-            "${{ runner.temp }}/neko-staging/NekoAnimes-v1.0.37-staging.apk.sha256" \
-            --prerelease --title "NekoAnimes v1.0.37 staging" \
-            --notes "Staging direct APK for physical Android smoke tests." \
-            --repo "${{ github.repository }}"
+          set -euo pipefail
+          node ../api-worker/scripts/android-release-guard.mjs preflight
+          tag="v${RELEASE_VERSION}-staging"
+          # Atomic create, never update/delete a tag. A partial failure consumes this version.
+          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f ref="refs/tags/$tag" -f sha="$GITHUB_SHA" > /dev/null
+          gh release create "$tag" "$RUNNER_TEMP/neko-staging/"* \
+            --draft --prerelease --verify-tag --title "NekoAnimes v${RELEASE_VERSION} staging" \
+            --notes "Staging direct APK awaiting physical Android runtime validation. Auto-update remains at 1.0.36 (10036)." \
+            --repo "$GITHUB_REPOSITORY"
+          gh release edit "$tag" --draft=false --latest=false --repo "$GITHUB_REPOSITORY"
+      - name: Require immutable release, matching assets and unused R2 namespace
+        # Requires repository release immutability. Missing/false/unknown blocks all R2 writes.
+        run: node ../api-worker/scripts/android-release-guard.mjs before-r2 "$RUNNER_TEMP/neko-staging"
+      - name: Publish verified APK to R2
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: r2 object put nekoanimes-releases-staging/android/v${{ env.RELEASE_VERSION }}/NekoAnimes-v${{ env.RELEASE_VERSION }}.apk --file ${{ runner.temp }}/neko-staging/NekoAnimes-v${{ env.RELEASE_VERSION }}.apk --content-type application/vnd.android.package-archive --remote
+      - name: Publish verified APK checksum to R2
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: r2 object put nekoanimes-releases-staging/android/v${{ env.RELEASE_VERSION }}/NekoAnimes-v${{ env.RELEASE_VERSION }}.apk.sha256 --file ${{ runner.temp }}/neko-staging/NekoAnimes-v${{ env.RELEASE_VERSION }}.apk.sha256 --content-type text/plain --remote
+      - name: Verify R2 readback checksums
+        run: node ../api-worker/scripts/android-release-guard.mjs verify-r2 "$RUNNER_TEMP/neko-staging"
+      # No API deployment or ANDROID_* update variable changes here.
+      # Runtime validation and signature migration must precede promotion beyond 10036.

@@ -9,8 +9,13 @@ import com.nekoanimes.app.BuildConfig
 import com.nekoanimes.app.bridge.PlayerSourceOverride
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -19,12 +24,17 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -39,19 +49,82 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 @Composable
 internal fun NekoPlayerScreen(
     episodeId: String,
     sourceOverride: PlayerSourceOverride? = null,
-    onClose: (positionSeconds: Int, durationSeconds: Int) -> Unit
+    startPositionSeconds: Int = 0,
+    playbackBlocked: Boolean = false,
+    onProgress: (positionSeconds: Int, durationSeconds: Int) -> Unit,
+    onClose: (positionSeconds: Int, durationSeconds: Int, playbackReady: Boolean) -> Unit
 ) {
     val context = LocalContext.current
     val activity = context as Activity
     var state by remember(episodeId, sourceOverride?.url) { mutableStateOf<PlayerState>(PlayerState.Loading) }
     var playbackError by remember(episodeId, sourceOverride?.url) { mutableStateOf<String?>(null) }
     var activePlayer by remember(episodeId, sourceOverride?.url) { mutableStateOf<ExoPlayer?>(null) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    var foreground by remember { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
+    var needsPlayIntent by remember(episodeId) { mutableStateOf(false) }
+    var attempt by remember(episodeId) { mutableStateOf(0) }
+    var resumePosition by remember(episodeId) { mutableStateOf(startPositionSeconds.coerceIn(0, MAX_PLAYBACK_SECONDS)) }
+    val progress = remember(episodeId, sourceOverride?.url, attempt) { PlaybackProgress() }
+    var lastPublished by remember(progress) { mutableStateOf<PlaybackCheckpoint?>(null) }
+    val currentOnProgress by rememberUpdatedState(onProgress)
+    val currentBlocked by rememberUpdatedState(playbackBlocked)
+    val currentForeground by rememberUpdatedState(foreground)
+
+    fun checkpoint(): PlaybackCheckpoint? {
+        val player = activePlayer ?: return null
+        if (player.playerError != null) return null
+        return progress.capture(player.currentPosition, player.duration)
+    }
+
+    fun publishCheckpoint() {
+        checkpoint()?.let {
+            resumePosition = it.positionSeconds
+            if (it != lastPublished) {
+                lastPublished = it
+                currentOnProgress(it.positionSeconds, it.durationSeconds)
+            }
+        }
+    }
+
+    DisposableEffect(lifecycle, activePlayer, progress) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> foreground = true
+                Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> {
+                    publishCheckpoint()
+                    foreground = false
+                    needsPlayIntent = true
+                    activePlayer?.pause()
+                }
+                else -> Unit
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(playbackBlocked, activePlayer) {
+        if (playbackBlocked) {
+            publishCheckpoint()
+            needsPlayIntent = true
+            activePlayer?.pause()
+        }
+    }
+
+    LaunchedEffect(activePlayer, progress) {
+        while (true) {
+            delay(15_000)
+            if (activePlayer?.isPlaying == true) publishCheckpoint()
+        }
+    }
 
     DisposableEffect(activity, episodeId, sourceOverride?.url) {
         val window = activity.window
@@ -79,31 +152,42 @@ internal fun NekoPlayerScreen(
     }
 
     fun closeWithProgress() {
-        val player = activePlayer
-        val position = ((player?.currentPosition ?: 0L) / 1000L).coerceAtLeast(0L).toInt()
-        val durationMs = player?.duration ?: 0L
-        val duration = if (durationMs > 0) (durationMs / 1000L).toInt() else 0
-        onClose(position, duration)
+        val saved = checkpoint()
+        activePlayer?.pause()
+        onClose(saved?.positionSeconds ?: 0, saved?.durationSeconds ?: 0, saved != null)
+    }
+
+    fun retry() {
+        resumePosition = progress.lastCheckpoint?.positionSeconds ?: resumePosition
+        activePlayer?.pause()
+        playbackError = null
+        state = PlayerState.Loading
+        needsPlayIntent = false
+        attempt += 1
     }
 
     BackHandler { closeWithProgress() }
 
-    LaunchedEffect(episodeId, sourceOverride?.url) {
+    LaunchedEffect(episodeId, sourceOverride?.url, attempt, playbackBlocked) {
+        if (playbackBlocked || state !is PlayerState.Loading) return@LaunchedEffect
         playbackError = null
         state = runCatching {
             withContext(Dispatchers.IO) { PlaybackRepository().load(activity, episodeId, sourceOverride) }
         }.fold(
             onSuccess = { PlayerState.Ready(it) },
-            onFailure = { PlayerState.Error(it.message ?: "Falha ao carregar episódio") }
+            onFailure = {
+                if (it is CancellationException) throw it
+                PlayerState.Error(it.message ?: "Falha ao carregar episódio")
+            }
         )
     }
 
     when (val current = state) {
         PlayerState.Loading -> Box(modifier = Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        is PlayerState.Error -> Box(modifier = Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) { Text(current.message, color = Color.White) }
+        is PlayerState.Error -> PlayerMessage(current.message, "Tentar novamente", !playbackBlocked && foreground, ::retry, ::closeWithProgress)
         is PlayerState.Ready -> {
             val descriptor = current.descriptor
-            val player = remember(descriptor.episodeId, descriptor.source.url) {
+            val player = remember(descriptor.episodeId, descriptor.source.url, attempt) {
                 val bloggerMedia = isGoogleVideoSource(descriptor.source.url)
                 val httpFactory = DefaultHttpDataSource.Factory()
                     .setUserAgent(
@@ -132,8 +216,6 @@ internal fun NekoPlayerScreen(
                         } else {
                             setMediaSource(DefaultMediaSourceFactory(httpFactory).createMediaSource(mediaItem))
                         }
-                        prepare()
-                        playWhenReady = true
                     }
             }
             activePlayer = player
@@ -142,9 +224,20 @@ internal fun NekoPlayerScreen(
             DisposableEffect(player) {
                 val listener = object : Player.Listener {
                     override fun onPlaybackStateChanged(playbackState: Int) {
+                        if (playbackState == Player.STATE_READY) progress.onReady()
+                        if (playbackState == Player.STATE_ENDED) publishCheckpoint()
                         buffering = playbackState == Player.STATE_BUFFERING || (playbackState == Player.STATE_IDLE && player.playerError == null)
                     }
+                    override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                        if (playWhenReady && (currentBlocked || !currentForeground)) {
+                            needsPlayIntent = true
+                            player.pause()
+                        } else if (!playWhenReady) {
+                            publishCheckpoint()
+                        }
+                    }
                     override fun onPlayerError(error: PlaybackException) {
+                        progress.onError()
                         buffering = false
                         val detail = error.message?.takeIf { it.isNotBlank() } ?: error.errorCodeName
                         playbackError = detail
@@ -152,10 +245,11 @@ internal fun NekoPlayerScreen(
                     }
                 }
                 player.addListener(listener)
-                // prepare() precedes this listener; also inspect the initial state.
-                buffering = player.playbackState == Player.STATE_BUFFERING || player.playbackState == Player.STATE_IDLE
-                player.playerError?.let { playbackError = it.errorCodeName; buffering = false }
+                player.seekTo(resumePosition * 1000L)
+                player.prepare()
+                player.playWhenReady = !currentBlocked && currentForeground && !needsPlayIntent
                 onDispose {
+                    publishCheckpoint()
                     player.removeListener(listener)
                     if (activePlayer === player) activePlayer = null
                     player.release()
@@ -165,18 +259,33 @@ internal fun NekoPlayerScreen(
             Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
-                    factory = { viewContext -> PlayerView(viewContext).apply { this.player = player; useController = true; keepScreenOn = true } },
-                    update = { it.player = player }
+                    factory = { viewContext -> PlayerView(viewContext).apply { this.player = player; useController = true } },
+                    update = { it.player = player; it.keepScreenOn = !playbackBlocked && foreground && !needsPlayIntent && playbackError == null }
                 )
                 if (buffering && playbackError == null) {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = Color(0xFFA78BFA))
                 }
                 playbackError?.let { error ->
-                    Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.82f)), contentAlignment = Alignment.Center) {
-                        Text("Não foi possível reproduzir este vídeo.\n$error", color = Color.White)
-                    }
+                    PlayerMessage("Não foi possível reproduzir este vídeo.\n$error", "Tentar novamente", !playbackBlocked && foreground, ::retry, ::closeWithProgress)
+                }
+                if (needsPlayIntent && !playbackBlocked && playbackError == null) {
+                    PlayerMessage("Reprodução pausada", "Continuar reprodução", foreground, {
+                        needsPlayIntent = false
+                        player.play()
+                    }, ::closeWithProgress)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun PlayerMessage(message: String, action: String, enabled: Boolean, onAction: () -> Unit, onBack: () -> Unit) {
+    Box(Modifier.fillMaxSize().background(Color.Black).clickable { }, contentAlignment = Alignment.Center) {
+        Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(message, color = Color.White)
+            Button(onClick = onAction, enabled = enabled) { Text(action) }
+            Button(onClick = onBack) { Text("Voltar") }
         }
     }
 }

@@ -14,6 +14,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -106,7 +108,7 @@ class MainActivity : ComponentActivity() {
                     // by screen lock/unlock. Replacing the whole tree with an
                     // error screen destroys navigation state and made the app
                     // appear to require endless retries.
-                    is ShellState.Ready -> AppShell(state.manifest)
+                    is ShellState.Ready -> AppShell(state.manifest, networkAccess)
                 }
             }
         }
@@ -114,7 +116,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun AppShell(manifest: AppManifest) {
+private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
     val activity = LocalContext.current as ComponentActivity
     NekoUpdatePrompt(activity)
 
@@ -134,32 +136,31 @@ private fun AppShell(manifest: AppManifest) {
         manifest.navigation.filterNot(::isDrawerItem)
     }
     val drawerItems = remember(manifest.configVersion) {
-        manifest.navigation.filter(::isDrawerItem)
+        manifest.navigation.filter(::isDrawerItem).let { items ->
+            if (manifest.mode == "streaming" && items.none { it.route == "/continuar" }) {
+                items + NavigationItem("continue", "Continuar assistindo", "history", "/continuar")
+            } else items
+        }
     }
     val currentWebRouteState by rememberUpdatedState(currentWebRoute)
-
-    DisposableEffect(webView) {
-        val view = webView
-        if (view == null) return@DisposableEffect onDispose { }
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                view.onResume()
-                view.resumeTimers()
-            }
-        }
-        activity.lifecycle.addObserver(observer)
-        onDispose { activity.lifecycle.removeObserver(observer) }
-    }
+    val currentNetworkAccess by rememberUpdatedState(networkAccess)
 
     val ads = remember(manifest.configVersion) { NekoAdOrchestrator(activity, manifest.ads) }
     val bridge = remember(manifest.configVersion) {
-        NekoBridge(
+        lateinit var instance: NekoBridge
+        instance = NekoBridge(
             onRouteChanged = { route ->
                 currentWebRoute = route
                 selectedRoute = route
             },
-            onOpenPlayer = { episodeId, source ->
-                if (playerRequest == null && !playerOpening) {
+            onOpenPlayer = { episodeId, source, startPositionSeconds ->
+                if (currentNetworkAccess != NetworkAccessState.Online) {
+                    webView?.let { bridgeView ->
+                        // Complete the web request without claiming a valid playback checkpoint.
+                        // The network overlay explains why playback was blocked.
+                        instance.sendPlayerClosed(bridgeView, episodeId, playbackReady = false)
+                    }
+                } else if (playerRequest == null && !playerOpening) {
                     playerOpening = true
                     // The SPA route is authoritative because WebView.url can
                     // still point at the shell after a history.pushState.
@@ -168,13 +169,20 @@ private fun AppShell(manifest: AppManifest) {
                         ?: currentWebRouteState
                     drawerScope.launch {
                         drawerState.close()
-                        playerRequest = PlayerRequest(episodeId, source)
+                        playerRequest = PlayerRequest(episodeId, source, startPositionSeconds)
                         playerOpening = false
                     }
                 }
             },
-            onAppEvent = { name, placement -> ads.onAppEvent(name, placement) }
+            onAppEvent = { name, placement ->
+                if (name == "menu_open") {
+                    if (playerRequest == null && !playerOpening && currentNetworkAccess == NetworkAccessState.Online) {
+                        drawerScope.launch { drawerState.open() }
+                    }
+                } else ads.onAppEvent(name, placement)
+            }
         )
+        instance
     }
 
     LaunchedEffect(manifest.configVersion) {
@@ -194,6 +202,7 @@ private fun AppShell(manifest: AppManifest) {
     }
 
     fun navigateTo(item: NavigationItem) {
+        if (currentNetworkAccess != NetworkAccessState.Online) return
         selectedRoute = item.route
         ads.onAppEvent("content_opened", item.id)
         webView?.let { bridge.sendNavigation(it, item.route) }
@@ -278,6 +287,7 @@ private fun AppShell(manifest: AppManifest) {
                 WebViewHost(
                     url = manifest.webAppUrl,
                     bridge = bridge,
+                    networkAvailable = networkAccess == NetworkAccessState.Online,
                     modifier = Modifier.fillMaxSize().padding(padding),
                     onHorizontalSwipe = ::navigateBySwipe,
                     gesturesEnabled = navigationVisible,
@@ -295,7 +305,12 @@ private fun AppShell(manifest: AppManifest) {
             NekoPlayerScreen(
                 episodeId = playing.episodeId,
                 sourceOverride = playing.source,
-                onClose = { positionSeconds, durationSeconds ->
+                startPositionSeconds = playing.startPositionSeconds,
+                playbackBlocked = networkAccess != NetworkAccessState.Online,
+                onProgress = { positionSeconds, durationSeconds ->
+                    webView?.let { bridge.sendPlayerProgress(it, playing.episodeId, positionSeconds, durationSeconds) }
+                },
+                onClose = { positionSeconds, durationSeconds, playbackReady ->
                     if (!playerOpening) {
                         playerOpening = true
                         val returnRoute = playerReturnRoute
@@ -305,7 +320,7 @@ private fun AppShell(manifest: AppManifest) {
                             playerReturnRoute = null
                             ads.onAppEvent("episode_closed", "player")
                             webView?.let {
-                                bridge.sendPlayerClosed(it, playing.episodeId, positionSeconds, durationSeconds)
+                                bridge.sendPlayerClosed(it, playing.episodeId, positionSeconds, durationSeconds, playbackReady)
                                 if (!returnRoute.isNullOrBlank()) bridge.sendNavigation(it, returnRoute)
                             }
                             playerOpening = false
@@ -316,12 +331,21 @@ private fun AppShell(manifest: AppManifest) {
         } else if (!navigationVisible) {
             Box(modifier = Modifier.fillMaxSize().background(androidx.compose.ui.graphics.Color.Black))
         }
+        if (networkAccess != NetworkAccessState.Online) {
+            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).clickable { }, contentAlignment = Alignment.Center) {
+                Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Text(if (networkAccess == NetworkAccessState.Vpn) "VPN detectada" else "Sem conexão com a internet")
+                    Text(connectionErrorMessage(networkAccess))
+                    Text("A tela será recuperada quando a conexão estiver disponível.")
+                }
+            }
+        }
     }
 }
 
-private data class PlayerRequest(val episodeId: String, val source: PlayerSourceOverride?)
+private data class PlayerRequest(val episodeId: String, val source: PlayerSourceOverride?, val startPositionSeconds: Int)
 
-private fun isDrawerItem(item: NavigationItem): Boolean = item.route == "/lista" || item.route == "/salvos" || item.route == "/conta" || item.route == "/servidores"
+private fun isDrawerItem(item: NavigationItem): Boolean = item.route == "/lista" || item.route == "/salvos" || item.route == "/conta" || item.route == "/servidores" || item.route == "/continuar"
 
 @Composable
 private fun LoadingScreen(message: String? = null) {

@@ -65,6 +65,13 @@ try {
   await page.goto(`${base}/conta`);
   await expect(page.getByText('1 obras salvas',{exact:true})).toBeVisible();
   await expect(page.getByRole('button',{name:'Sincronizar e atualizar'})).toBeVisible();
+  await page.goto(`${base}/continuar`);
+  await expect(page.getByRole('heading',{name:'Continuar assistindo',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:/Abrir minha lista/})).toBeVisible();
+  await page.getByRole('button',{name:/Abrir minha lista/}).click();
+  await expect(page).toHaveURL(/\/lista$/);
+  await expect(page.locator('h1',{hasText:'Minha lista'})).toBeVisible();
+  console.log('PASS separate Continue watching and My list routes');
   await page.screenshot({path:'test-results/profile.png'});
   expect(pageErrors).toEqual([]);
   console.log('PASS provider categories + pagination; real profile counters/actions; zero browser errors');

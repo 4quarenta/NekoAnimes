@@ -31,7 +31,7 @@ import {
 } from './mal-client';
 import { resolveProviderIdentity } from './provider-identity';
 import { ProviderSelectionSchema, ProviderProgressSchema } from '@neko/contracts';
-import { persistIdentity, canonicalReference } from './catalog-store';
+import { persistIdentity, canonicalReference, enrichProviderCatalog } from './catalog-store';
 import { resolveLibraryWork, saveProviderWork } from './provider-library';
 
 type Variables = { userId: string; userEmail?: string; tokenHash?: string };
@@ -289,7 +289,7 @@ app.get('/v1/servers/:serverId/catalog', async (c) => {
   try {
     const browse = query ? { items: await searchProvider(serverId, query), hasNextPage: false } : await browseProvider(serverId, { letter: letter?.toUpperCase(), genre, page, limit });
     const server = listServerDescriptors().find((item) => item.id === serverId)!;
-    const items = genre ? browse.items : browse.items.slice(0, limit);
+    const items = await enrichProviderCatalog(c.env.DB, serverId, genre ? browse.items : browse.items.slice(0, limit));
     return c.json({ server, items, count: items.length, page, pageSize: items.length, hasNextPage: browse.hasNextPage, source: 'provider', fetchedAt: new Date().toISOString() }, 200, { 'Cache-Control': 'public, max-age=120' });
   } catch (error) {
     throw providerHttpException(error);
@@ -682,7 +682,8 @@ function providerErrorCode(error: unknown): 'provider_unavailable' | 'provider_t
 function providerHttpException(error: unknown): HTTPException { return new HTTPException(error instanceof ProviderError && error.kind === 'timeout' ? 504 : 503, { message: error instanceof Error ? error.message : 'Provider indisponível' }); }
 function defaultAds() { return { enabled: false, engine: 'max' as const, banner: { enabled: false }, appOpen: { enabled: false, minIntervalMinutes: 60, skipFirstOpens: 3 }, interstitial: { enabled: false, minIntervalMinutes: 30, maxPerSession: 2 } }; }
 function isAdsConfig(value: unknown): value is ReturnType<typeof defaultAds> { return Boolean(value && typeof value === 'object' && 'enabled' in value && 'banner' in value && 'appOpen' in value && 'interstitial' in value); }
-function streamingNavigation() { return [{ id: 'home', label: 'Início', icon: 'home', route: '/' }, { id: 'search', label: 'Buscar', icon: 'search', route: '/buscar' }, { id: 'categories', label: 'Categorias', icon: 'category', route: '/categorias' }, { id: 'library', label: 'Lista', icon: 'library', route: '/lista' }, { id: 'account', label: 'Conta', icon: 'profile', route: '/conta' }, { id: 'servers', label: 'Servidores', icon: 'server', route: '/servidores' }]; }
+// Android classifies drawer items by route; /continuar belongs to that secondary group.
+function streamingNavigation() { return [{ id: 'home', label: 'Início', icon: 'home', route: '/' }, { id: 'search', label: 'Buscar', icon: 'search', route: '/buscar' }, { id: 'categories', label: 'Categorias', icon: 'category', route: '/categorias' }, { id: 'library', label: 'Minha lista', icon: 'library', route: '/lista' }, { id: 'continue', label: 'Continuar assistindo', icon: 'library', route: '/continuar' }, { id: 'account', label: 'Conta', icon: 'profile', route: '/conta' }, { id: 'servers', label: 'Servidores', icon: 'server', route: '/servidores' }]; }
 function newsNavigation() { return [{ id: 'home', label: 'Início', icon: 'home', route: '/' }, { id: 'search', label: 'Buscar', icon: 'search', route: '/buscar' }, { id: 'saved', label: 'Salvos', icon: 'bookmark', route: '/salvos' }, { id: 'account', label: 'Conta', icon: 'profile', route: '/conta' }]; }
 
 export default app;

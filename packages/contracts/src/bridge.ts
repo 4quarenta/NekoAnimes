@@ -13,7 +13,7 @@ const PlayerSourceSchema = z.object({
 export const BridgeRequestSchema = z.discriminatedUnion('type', [
   z.object({ version: z.literal(NEKO_BRIDGE_VERSION), id: IdSchema, type: z.literal('bridge.handshake'), payload: z.object({ webVersion: z.string().min(1).max(64) }) }),
   z.object({ version: z.literal(NEKO_BRIDGE_VERSION), id: IdSchema, type: z.literal('navigation.routeChanged'), payload: z.object({ route: RouteSchema }) }),
-  z.object({ version: z.literal(NEKO_BRIDGE_VERSION), id: IdSchema, type: z.literal('player.open'), payload: z.object({ episodeId: IdSchema, source: PlayerSourceSchema.optional() }) }),
+  z.object({ version: z.literal(NEKO_BRIDGE_VERSION), id: IdSchema, type: z.literal('player.open'), payload: z.object({ episodeId: IdSchema, source: PlayerSourceSchema.optional(), startPositionSeconds: z.number().int().min(0).max(604800).optional() }) }),
   z.object({ version: z.literal(NEKO_BRIDGE_VERSION), id: IdSchema, type: z.literal('app.event'), payload: z.object({ name: z.string().min(1).max(64), placement: z.string().min(1).max(128).optional() }) })
 ]);
 
@@ -22,13 +22,15 @@ export const BridgeResponseSchema = z.object({ version: z.literal(NEKO_BRIDGE_VE
 export const BridgeNativeEventSchema = z.discriminatedUnion('type', [
   z.object({ version: z.literal(NEKO_BRIDGE_VERSION), type: z.literal('bridge.ready'), payload: z.object({ platform: z.enum(['android', 'ios']), bridgeVersion: z.literal(NEKO_BRIDGE_VERSION), capabilities: z.array(z.string()) }) }),
   z.object({ version: z.literal(NEKO_BRIDGE_VERSION), type: z.literal('navigation.navigate'), payload: z.object({ route: RouteSchema }) }),
+  z.object({ version: z.literal(NEKO_BRIDGE_VERSION), type: z.literal('player.progress'), payload: z.object({ episodeId: IdSchema, positionSeconds: z.number().int().min(0), durationSeconds: z.number().int().min(0), playbackReady: z.boolean().optional() }) }),
   z.object({
     version: z.literal(NEKO_BRIDGE_VERSION),
     type: z.literal('player.closed'),
     payload: z.object({
       episodeId: IdSchema.optional(),
       positionSeconds: z.number().int().min(0).optional(),
-      durationSeconds: z.number().int().min(0).optional()
+      durationSeconds: z.number().int().min(0).optional(),
+      playbackReady: z.boolean().optional()
     }).optional()
   })
 ]);

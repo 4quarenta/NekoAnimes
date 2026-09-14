@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { fetchContinueWatching, fetchLibrary } from '../lib/api';
+import { fetchLibrary } from '../lib/api';
 import { auth, type AuthSession } from '../lib/auth';
 import { AnimeListRow, AppScreen, EmptyState, Eyebrow, ScreenHeader, Section } from '../components/AppScreen';
 
@@ -16,7 +16,6 @@ export function LibraryPage() {
   }, []);
 
   const library = useQuery({ queryKey: ['me-library', session?.user.id], queryFn: fetchLibrary, enabled: Boolean(session) });
-  const watching = useQuery({ queryKey: ['me-continue', session?.user.id], queryFn: fetchContinueWatching, enabled: Boolean(session) });
 
   if (!session) {
     return (
@@ -31,21 +30,10 @@ export function LibraryPage() {
   return (
     <AppScreen>
       <Eyebrow>NekoAnimes</Eyebrow>
-      <ScreenHeader title="Minha lista" subtitle="Continue de onde parou e organize o que quer assistir." />
-      <Section title="Continuar assistindo">
-        {watching.isError ? <p className="neko-error">{watching.error.message}</p> : null}
-        {watching.isPending ? <div className="neko-skeleton short" /> : null}
-        {watching.data?.length ? (
-          <div className="neko-list">
-            {watching.data.map((item) => {
-              const pct = item.durationSeconds > 0 ? Math.min(100, Math.round(item.positionSeconds / item.durationSeconds * 100)) : 0;
-              return <AnimeListRow key={item.episodeId} title={item.title} meta={`T${item.seasonNumber} · Episódio ${item.episodeNumber}`} imageUrl={item.imageUrl} postType={item.type} scoreBasisPoints={item.scoreBasisPoints} genres={item.genres} trailing={`${pct}%`} onClick={() => void navigate({ to: '/anime/$slug', params: { slug: item.slug }, search: { provider: undefined, ref: undefined } })} />;
-            })}
-          </div>
-        ) : watching.data ? <EmptyState title="Nada em andamento" description="Seu progresso aparecerá aqui depois que começar a assistir." /> : null}
-      </Section>
+      <ScreenHeader title="Minha lista" subtitle="As obras que você salvou nos favoritos." />
+      <button className="neko-link" onClick={()=>void navigate({to:'/continuar'})}>Abrir continuar assistindo ›</button>
       <Section title="Minha lista">
-        {library.isError ? <p className="neko-error">{library.error.message}</p> : null}
+        {library.isError ? <div role="alert"><p className="neko-error">{library.error.message}</p><button className="neko-secondary-button" onClick={()=>void library.refetch()}>Tentar novamente</button></div> : null}
         {library.isPending ? <div className="neko-skeleton short" /> : null}
         {library.data?.length ? (
           <div className="neko-list">
