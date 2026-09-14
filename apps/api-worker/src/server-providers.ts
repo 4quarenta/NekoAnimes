@@ -236,6 +236,7 @@ export async function getProviderAnime(serverId: string, reference: string): Pro
   if (cached) return { ...await cached.json<ServerAnimeDetail>(), server: provider };
   const response = await getProviderHtml(provider, safeReference);
   const title = provider.cleanTitle(parseH1(response.html) ?? lastPathPart(safeReference) ?? 'Anime');
+  const imageUrl = extractProviderPageImage(provider, response.html);
   const anchors = parseAnchors(response.html);
   const episodes = [...extractEpisodeCandidates(provider, anchors, 2), ...extractScriptEpisodeCandidates(provider, response.html, 2)];
 
@@ -259,7 +260,8 @@ export async function getProviderAnime(serverId: string, reference: string): Pro
       title,
       reference: referenceFromUrl(provider, response.url),
       url: response.url,
-      year: parseYear(pageText(response.html))
+      year: parseYear(pageText(response.html)),
+      ...(imageUrl ? { imageUrl } : {})
     },
     seasons: groupEpisodes(provider, episodes),
     fetchedAt: new Date().toISOString(),
@@ -429,6 +431,14 @@ function safeProviderImageUrl(provider: ProviderConfig, value?: string | null): 
   } catch {
     return null;
   }
+}
+
+function extractProviderPageImage(provider: ProviderConfig, html: string): string | null {
+  const openGraph = /<meta\b[^>]*\bproperty\s*=\s*["']og:image["'][^>]*\bcontent\s*=\s*["']([^"']+)["']/i.exec(html)?.[1]
+    ?? /<meta\b[^>]*\bcontent\s*=\s*["']([^"']+)["'][^>]*\bproperty\s*=\s*["']og:image["']/i.exec(html)?.[1];
+  if (openGraph) return safeProviderImageUrl(provider, openGraph);
+  const image = /<img\b[^>]*?(?:data-lazy-src|data-src|src)\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/i.exec(html);
+  return safeProviderImageUrl(provider, image?.[1] ?? image?.[2] ?? image?.[3]);
 }
 
 function parseProviderRating(value: unknown): number | null {
