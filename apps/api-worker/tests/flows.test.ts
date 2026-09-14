@@ -38,7 +38,7 @@ beforeEach(()=>{
     if(url.pathname==='/')return new Response('<a href="/generos/">Gêneros</a>');
     if(url.pathname==='/wp-json/cronos/v1/animes/filter')return Response.json({success:true,total_pages:3,animes:[{title:`Page ${url.searchParams.get('page')}`,url:'https://goyabu.io/anime/page-two'}]});
     if(url.pathname==='/generos/')return new Response('<a href="/genero/acao" title="Ação"></a>');
-    if(url.pathname.startsWith('/genero/acao'))return new Response(Array.from({length:30},(_,i)=>`<a href="/anime/item-${i}/">Item ${i}</a>`).join('')+'<a href="/genero/acao/page/2/">Próxima</a>');
+    if(url.pathname.startsWith('/genero/acao'))return new Response(Array.from({length:30},(_,i)=>(i===0||i===2)?`<a href="/anime/item-${i}/"><figure><img class="cover" src="https://animesonlinecc.to/wp-content/uploads/item-${i}.jpg"><span class="title">Item ${i}</span></figure></a>`:`<a href="/anime/item-${i}/">Item ${i}</a>`).join('')+'<a href="/genero/acao/page/2/">Próxima</a>');
     return new Response('',{status:404});
   };
 });
@@ -136,6 +136,7 @@ test('catalog enrichment uses only persisted provider/reference links, preserves
   assert.equal(result.body.items[0].workSlug,first.slug);
   assert.equal(result.body.items[0].scoreBasisPoints,0);
   assert.equal(result.body.items[0].postType,'filme');
+  assert.equal(result.body.items.find((item:{title:string})=>item.title==='Item 2')?.imageUrl,'https://animesonlinecc.to/wp-content/uploads/item-2.jpg');
   assert.deepEqual(result.body.items[0].genres,['Action']);
   assert.equal(result.body.items[1].imageUrl,'https://example.com/selected.jpg');
   assert.equal(result.body.items[1].workSlug,second.slug);

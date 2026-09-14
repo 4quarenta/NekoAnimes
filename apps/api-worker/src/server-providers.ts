@@ -67,7 +67,7 @@ export type ServerAnimeDetail = {
   postType: 'anime' | 'filme' | 'manga';
 };
 
-type HtmlAnchor = { href: string; text: string };
+type HtmlAnchor = { href: string; text: string; imageUrl?: string | null };
 type ProviderResponse = { html: string; url: string };
 type ProviderConfig = ServerDescriptor & {
   searchPath: (query: string) => string;
@@ -167,12 +167,12 @@ export async function browseProvider(serverId: string, options: { letter?: strin
     // The provider renders subsequent pages via this same public JSON endpoint.
     const params = new URLSearchParams({page:String(page),per_page:'30',genero:options.genre ?? '',letra:options.letter ?? ''});
     const response = await getProviderHtml(provider, `/wp-json/cronos/v1/animes/filter?${params}`);
-    let body: {success?:boolean;animes?:Array<{url?:string;title?:string}>;total_pages?:number};
+    let body: {success?:boolean;animes?:Array<{url?:string;title?:string;image?:string;rating?:string|number}>;total_pages?:number};
     try { body = JSON.parse(response.html); } catch { throw new ProviderError('Paginação inválida retornada pelo servidor','unavailable'); }
     if (!body.success || !Array.isArray(body.animes)) throw new ProviderError('Catálogo indisponível no servidor','unavailable');
     const items = body.animes.flatMap(item => {
       const reference = typeof item.url === 'string' ? referenceFromHref(provider,item.url) : null;
-      return reference && provider.isAnimeReference(reference) && typeof item.title === 'string' ? [toAnimeMatch(provider,provider.cleanTitle(decodeHtml(item.title)),new URL(reference,provider.baseUrl).toString(),1)] : [];
+      return reference && provider.isAnimeReference(reference) && typeof item.title === 'string' ? [toAnimeMatch(provider,provider.cleanTitle(decodeHtml(item.title)),new URL(reference,provider.baseUrl).toString(),1,typeof item.image === 'string' ? safeProviderImageUrl(provider, item.image) : null,parseProviderRating(item.rating))] : [];
     });
     return {items,hasNextPage:Number(body.total_pages)>page};
   }
@@ -377,7 +377,7 @@ function extractAnimeMatches(provider: ProviderConfig, query: string, anchors: H
     if (!title || title.length < 2) continue;
     const confidence = scoreTitleMatch(query, title);
     if (confidence < 0.45) continue;
-    const match = toAnimeMatch(provider, title, new URL(reference, provider.baseUrl).toString(), confidence);
+    const match = toAnimeMatch(provider, title, new URL(reference, provider.baseUrl).toString(), confidence, safeProviderImageUrl(provider, anchor.imageUrl));
     const existing = deduped.get(reference);
     if (!existing || match.confidence > existing.confidence) deduped.set(reference, match);
   }
@@ -391,7 +391,7 @@ function extractBrowseMatches(provider: ProviderConfig, anchors: HtmlAnchor[]): 
     if (!reference || !provider.isAnimeReference(reference)) continue;
     const title = provider.cleanTitle(anchor.text);
     if (!title || title.length < 2) continue;
-    const match = toAnimeMatch(provider, title, new URL(reference, provider.baseUrl).toString(), 1);
+    const match = toAnimeMatch(provider, title, new URL(reference, provider.baseUrl).toString(), 1, safeProviderImageUrl(provider, anchor.imageUrl));
     if (!deduped.has(reference)) deduped.set(reference, match);
   }
   return [...deduped.values()].sort((a, b) => a.title.localeCompare(b.title));
@@ -406,8 +406,34 @@ function hasProviderNextPage(provider: ProviderConfig, anchors: HtmlAnchor[], cu
   });
 }
 
-function toAnimeMatch(provider: ProviderConfig, title: string, url: string, confidence: number): ServerAnimeMatch {
-  return { serverId: provider.id, serverName: provider.name, title, reference: referenceFromUrl(provider, url), url, confidence, postType: inferPostType(title, url) };
+function toAnimeMatch(provider: ProviderConfig, title: string, url: string, confidence: number, imageUrl?: string | null, scoreBasisPoints?: number | null): ServerAnimeMatch {
+  return {
+    serverId: provider.id,
+    serverName: provider.name,
+    title,
+    reference: referenceFromUrl(provider, url),
+    url,
+    confidence,
+    postType: inferPostType(title, url),
+    ...(imageUrl ? { imageUrl } : {}),
+    ...(typeof scoreBasisPoints === 'number' ? { scoreBasisPoints } : {})
+  };
+}
+
+function safeProviderImageUrl(provider: ProviderConfig, value?: string | null): string | null {
+  if (!value) return null;
+  try {
+    const image = new URL(decodeHtml(value), provider.baseUrl);
+    const base = new URL(provider.baseUrl);
+    return image.protocol === 'https:' && image.hostname === base.hostname ? image.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function parseProviderRating(value: unknown): number | null {
+  const rating = typeof value === 'number' ? value : typeof value === 'string' ? Number.parseFloat(value) : NaN;
+  return Number.isFinite(rating) && rating > 0 ? Math.round(rating * 100) : null;
 }
 
 function inferPostType(title: string, reference: string): 'anime' | 'filme' | 'manga' {
@@ -659,7 +685,9 @@ function parseAnchors(html: string): HtmlAnchor[] {
     const href = match[1] ?? match[2] ?? match[3] ?? '';
     const title = /<(?:div|span)\b[^>]*class=["'][^"']*\btitle\b[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|span)>/i.exec(match[4] ?? '')?.[1];
     const text = (title ? stripTags(title) : stripTags(match[4] ?? '')) || decodeHtml(/\b(?:title|alt)=["']([^"']+)["']/i.exec(match[0])?.[1] ?? '');
-    if (href) anchors.push({ href: decodeHtml(href), text });
+    const inner = match[4] ?? '';
+    const image = /<img\b[^>]*?(?:data-lazy-src|data-src|src)\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/i.exec(inner);
+    anchors.push({ href: decodeHtml(href), text, imageUrl: decodeHtml(image?.[1] ?? image?.[2] ?? image?.[3] ?? '') || null });
   }
   return anchors;
 }
