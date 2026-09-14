@@ -153,7 +153,7 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
                 currentWebRoute = route
                 selectedRoute = route
             },
-            onOpenPlayer = { episodeId, source, startPositionSeconds ->
+            onOpenPlayer = { episodeId, source, startPositionSeconds, animeTitle, episodeNumber, hasPreviousEpisode, hasNextEpisode ->
                 if (currentNetworkAccess != NetworkAccessState.Online) {
                     webView?.let { bridgeView ->
                         // Complete the web request without claiming a valid playback checkpoint.
@@ -169,7 +169,7 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
                         ?: currentWebRouteState
                     drawerScope.launch {
                         drawerState.close()
-                        playerRequest = PlayerRequest(episodeId, source, startPositionSeconds)
+                        playerRequest = PlayerRequest(episodeId, source, startPositionSeconds, animeTitle, episodeNumber, hasPreviousEpisode, hasNextEpisode)
                         playerOpening = false
                     }
                 }
@@ -306,6 +306,10 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
                 episodeId = playing.episodeId,
                 sourceOverride = playing.source,
                 startPositionSeconds = playing.startPositionSeconds,
+                animeTitle = playing.animeTitle,
+                episodeNumber = playing.episodeNumber,
+                hasPreviousEpisode = playing.hasPreviousEpisode,
+                hasNextEpisode = playing.hasNextEpisode,
                 playbackBlocked = networkAccess != NetworkAccessState.Online,
                 onProgress = { positionSeconds, durationSeconds ->
                     webView?.let { bridge.sendPlayerProgress(it, playing.episodeId, positionSeconds, durationSeconds) }
@@ -322,6 +326,22 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
                             webView?.let {
                                 bridge.sendPlayerClosed(it, playing.episodeId, positionSeconds, durationSeconds, playbackReady)
                                 if (!returnRoute.isNullOrBlank()) bridge.sendNavigation(it, returnRoute)
+                            }
+                            playerOpening = false
+                        }
+                    }
+                },
+                onNavigate = { direction, positionSeconds, durationSeconds, playbackReady ->
+                    if (!playerOpening) {
+                        playerOpening = true
+                        drawerScope.launch {
+                            drawerState.close()
+                            playerRequest = null
+                            playerReturnRoute = null
+                            ads.onAppEvent("episode_navigate", direction)
+                            webView?.let {
+                                bridge.sendPlayerClosed(it, playing.episodeId, positionSeconds, durationSeconds, playbackReady)
+                                bridge.sendPlayerNavigate(it, direction)
                             }
                             playerOpening = false
                         }
@@ -343,7 +363,15 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
     }
 }
 
-private data class PlayerRequest(val episodeId: String, val source: PlayerSourceOverride?, val startPositionSeconds: Int)
+private data class PlayerRequest(
+    val episodeId: String,
+    val source: PlayerSourceOverride?,
+    val startPositionSeconds: Int,
+    val animeTitle: String?,
+    val episodeNumber: Int,
+    val hasPreviousEpisode: Boolean,
+    val hasNextEpisode: Boolean
+)
 
 private fun isDrawerItem(item: NavigationItem): Boolean = item.route == "/lista" || item.route == "/salvos" || item.route == "/conta" || item.route == "/servidores" || item.route == "/continuar"
 

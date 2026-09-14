@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -32,6 +33,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -58,9 +60,14 @@ internal fun NekoPlayerScreen(
     episodeId: String,
     sourceOverride: PlayerSourceOverride? = null,
     startPositionSeconds: Int = 0,
+    animeTitle: String? = null,
+    episodeNumber: Int = 0,
+    hasPreviousEpisode: Boolean = false,
+    hasNextEpisode: Boolean = false,
     playbackBlocked: Boolean = false,
     onProgress: (positionSeconds: Int, durationSeconds: Int) -> Unit,
-    onClose: (positionSeconds: Int, durationSeconds: Int, playbackReady: Boolean) -> Unit
+    onClose: (positionSeconds: Int, durationSeconds: Int, playbackReady: Boolean) -> Unit,
+    onNavigate: (direction: String, positionSeconds: Int, durationSeconds: Int, playbackReady: Boolean) -> Unit = { _, _, _, _ -> }
 ) {
     val context = LocalContext.current
     val activity = context as Activity
@@ -71,6 +78,7 @@ internal fun NekoPlayerScreen(
     var foreground by remember { mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
     var needsPlayIntent by remember(episodeId) { mutableStateOf(false) }
     var attempt by remember(episodeId) { mutableStateOf(0) }
+    var navigationRequested by remember(episodeId, sourceOverride?.url) { mutableStateOf(false) }
     var resumePosition by remember(episodeId) { mutableStateOf(startPositionSeconds.coerceIn(0, MAX_PLAYBACK_SECONDS)) }
     val progress = remember(episodeId, sourceOverride?.url, attempt) { PlaybackProgress() }
     var lastPublished by remember(progress) { mutableStateOf<PlaybackCheckpoint?>(null) }
@@ -155,6 +163,13 @@ internal fun NekoPlayerScreen(
         val saved = checkpoint()
         activePlayer?.pause()
         onClose(saved?.positionSeconds ?: 0, saved?.durationSeconds ?: 0, saved != null)
+    }
+
+    fun navigateToEpisode(direction: String) {
+        if (navigationRequested) return
+        val saved = checkpoint()
+        navigationRequested = true
+        onNavigate(direction, saved?.positionSeconds ?: 0, saved?.durationSeconds ?: 0, saved != null)
     }
 
     fun retry() {
@@ -273,6 +288,37 @@ internal fun NekoPlayerScreen(
                         needsPlayIntent = false
                         player.play()
                     }, ::closeWithProgress)
+                }
+                if (!animeTitle.isNullOrBlank() || episodeNumber > 0) {
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(20.dp)
+                            .background(Color.Black.copy(alpha = .68f), RoundedCornerShape(12.dp))
+                            .padding(horizontal = 14.dp, vertical = 10.dp)
+                    ) {
+                        if (!animeTitle.isNullOrBlank()) Text(animeTitle, color = Color.White, maxLines = 1)
+                        if (episodeNumber > 0) Text("Episódio ${episodeNumber.toString().padStart(2, '0')}", color = Color(0xFFD8CCFF))
+                    }
+                }
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 28.dp)
+                        .background(Color.Black.copy(alpha = .68f), RoundedCornerShape(14.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = { navigateToEpisode("previous") },
+                        enabled = hasPreviousEpisode && !navigationRequested && !playbackBlocked,
+                        shape = RoundedCornerShape(10.dp)
+                    ) { Text("‹ Anterior") }
+                    Button(
+                        onClick = { navigateToEpisode("next") },
+                        enabled = hasNextEpisode && !navigationRequested && !playbackBlocked,
+                        shape = RoundedCornerShape(10.dp)
+                    ) { Text("Próximo ›") }
                 }
             }
         }

@@ -1,6 +1,8 @@
 import { useState, type PropsWithChildren, type ReactNode } from 'react';
 import { NekoNative } from '@neko/bridge-web';
 import { useNavigate } from '@tanstack/react-router';
+import { useEffect } from 'react';
+import { providerImageProxyUrl } from '../lib/api';
 
 export function AppScreen({ children }: PropsWithChildren) {
   const navigate=useNavigate();
@@ -51,7 +53,7 @@ export function TextRow({
 }) {
   const content = (
     <>
-      {imageUrl ? <img className="neko-row-image" src={imageUrl} alt="" loading="lazy" /> : showImagePlaceholder ? <span className="neko-row-image neko-row-image-placeholder" aria-hidden="true">✦</span> : null}
+      {imageUrl ? <PosterImage className="neko-row-image" src={imageUrl} alt={`Capa de ${title}`} /> : showImagePlaceholder ? <span className="neko-row-image neko-row-image-placeholder" aria-hidden="true">✦</span> : null}
       <span className="neko-row-copy">
         <strong>{title}</strong>
         {meta ? <small>{meta}</small> : null}
@@ -65,6 +67,18 @@ export function TextRow({
   ) : (
     <div className="neko-row">{content}</div>
   );
+}
+
+export function PosterImage({ src, alt, className }: { src: string; alt: string; className: string }) {
+  const [attempt, setAttempt] = useState(0);
+  const proxyUrl = providerImageProxyUrl(src);
+
+  useEffect(() => setAttempt(0), [src]);
+
+  const imageUrl = attempt === 0 ? src : proxyUrl;
+  if (!imageUrl) return <span className={`${className} neko-row-image-placeholder`} aria-label={alt}>✦</span>;
+
+  return <img className={className} src={imageUrl} alt={alt} loading="eager" referrerPolicy="no-referrer" onError={() => setAttempt(value => value + 1)} />;
 }
 
 export function AnimeListRow({

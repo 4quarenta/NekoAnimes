@@ -37,7 +37,7 @@ import { resolveLibraryWork, saveProviderWork } from './provider-library';
 type Variables = { userId: string; userEmail?: string; tokenHash?: string };
 type App = Hono<{ Bindings: Env; Variables: Variables }>;
 type Row = Record<string, unknown>;
-const MEDIA_PROXY_HOSTS = new Set(['cdn.imagesskill.com']);
+const MEDIA_PROXY_HOSTS = new Set(['cdn.imagesskill.com', 'goyabu.io', 'animesonlinecc.to', 'animesdigital.org']);
 
 const app: App = new Hono();
 
@@ -94,7 +94,7 @@ app.get('/v1/media/proxy', async (c) => {
   const target = parseMediaProxyTarget(c.req.query('url'));
   const response = await fetch(target, {
     redirect: 'follow',
-    headers: { accept: 'application/vnd.apple.mpegurl,application/x-mpegURL,video/*,*/*' }
+    headers: { accept: 'image/avif,image/webp,image/apng,image/svg+xml,image/*,application/vnd.apple.mpegurl,application/x-mpegURL,video/*,*/*' }
   });
   if (!response.ok || !response.body) throw new HTTPException(502, { message: `Media upstream respondeu HTTP ${response.status}` });
 

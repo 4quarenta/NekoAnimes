@@ -22,6 +22,12 @@ export type NekoPlayerSource = {
   label?: string;
   headers?: Record<string, string>;
 };
+export type NekoPlayerOpenOptions = {
+  animeTitle?: string;
+  episodeNumber?: number;
+  hasPreviousEpisode?: boolean;
+  hasNextEpisode?: boolean;
+};
 
 const listeners = new Set<Listener>();
 
@@ -61,8 +67,8 @@ export const NekoNative = {
   },
 
   player: {
-    open(episodeId: string, source?: NekoPlayerSource, startPositionSeconds = 0): boolean {
-      return post('player.open', { episodeId, ...(source ? { source } : {}), startPositionSeconds: Math.min(604800, Math.max(0, Math.floor(startPositionSeconds))) });
+    open(episodeId: string, source?: NekoPlayerSource, startPositionSeconds = 0, options: NekoPlayerOpenOptions = {}): boolean {
+      return post('player.open', { episodeId, ...(source ? { source } : {}), startPositionSeconds: Math.min(604800, Math.max(0, Math.floor(startPositionSeconds))), ...options });
     }
   },
 

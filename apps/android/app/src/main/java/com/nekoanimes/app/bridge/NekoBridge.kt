@@ -15,7 +15,7 @@ import org.json.JSONObject
 
 class NekoBridge(
     private val onRouteChanged: (String) -> Unit,
-    private val onOpenPlayer: (String, PlayerSourceOverride?, Int) -> Unit,
+    private val onOpenPlayer: (String, PlayerSourceOverride?, Int, String?, Int, Boolean, Boolean) -> Unit,
     private val onAppEvent: (String, String?) -> Unit
 ) {
     companion object {
@@ -23,7 +23,7 @@ class NekoBridge(
         private const val BRIDGE_NAME = "NekoNativeBridge"
         private const val VERSION = 1
         private const val MAX_MESSAGE_BYTES = 32 * 1024
-        private val CAPABILITIES = listOf("navigation", "player.open", "player.progress", "app.event")
+        private val CAPABILITIES = listOf("navigation", "player.open", "player.progress", "player.navigate", "app.event")
     }
 
     fun attach(webView: WebView) {
@@ -107,8 +107,12 @@ class NekoBridge(
                             replyError(replyProxy, id, "INVALID_POSITION", "startPositionSeconds deve ser um inteiro entre 0 e 604800")
                             return@runCatching
                         }
+                        val animeTitle = payload.optString("animeTitle").trim().takeIf { it.isNotBlank() }?.take(256)
+                        val episodeNumber = payload.optInt("episodeNumber", 0).coerceAtLeast(0)
+                        val hasPreviousEpisode = payload.optBoolean("hasPreviousEpisode", false)
+                        val hasNextEpisode = payload.optBoolean("hasNextEpisode", false)
                         runCatching { parseSource(payload) }
-                            .onSuccess { source -> onOpenPlayer(episodeId, source, startPosition); replyOk(replyProxy, id) }
+                            .onSuccess { source -> onOpenPlayer(episodeId, source, startPosition, animeTitle, episodeNumber, hasPreviousEpisode, hasNextEpisode); replyOk(replyProxy, id) }
                             .onFailure { replyError(replyProxy, id, "INVALID_SOURCE", "Fonte de reprodução inválida") }
                     }
                 }
@@ -160,5 +164,10 @@ class NekoBridge(
             label = source.optString("label").ifBlank { null }?.take(256),
             headers = headers
         )
+    }
+
+    fun sendPlayerNavigate(webView: WebView, direction: String) {
+        if (direction != "previous" && direction != "next") return
+        sendEvent(webView, "player.navigate", JSONObject().put("direction", direction))
     }
 }

@@ -2,6 +2,19 @@ import { AppManifestSchema, sameAnimeTitle, type AppManifest } from '@neko/contr
 import { getAccessToken, clearSession } from './auth';
 import { API_URL } from './config';
 
+const PROVIDER_IMAGE_HOSTS = new Set(['goyabu.io', 'animesonlinecc.to', 'animesdigital.org']);
+
+export function providerImageProxyUrl(value: string | null | undefined): string | null {
+  if (!value) return null;
+  try {
+    const image = new URL(value);
+    if (image.protocol !== 'https:' || !PROVIDER_IMAGE_HOSTS.has(image.hostname)) return null;
+    return `${API_URL}/v1/media/proxy?url=${encodeURIComponent(image.toString())}`;
+  } catch {
+    return null;
+  }
+}
+
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   const timeout = AbortSignal.timeout(30000);
   const response = await fetch(`${API_URL}${path}`, { cache: 'no-store', signal: signal ? AbortSignal.any([signal, timeout]) : timeout });

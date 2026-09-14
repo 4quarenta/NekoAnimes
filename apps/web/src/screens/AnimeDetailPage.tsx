@@ -5,7 +5,7 @@ import { NekoNative } from '@neko/bridge-web';
 import { fetchAnime, fetchLibrary, fetchContinueWatching, removeLibraryItem, fetchSavedServerAnime, saveProviderLibrary, fetchAniListMetadata, fetchEpisodes, fetchServerAnime, fetchServerProviderResolution, saveProviderAnimeData, setLibraryItem, type AnimeDetail, type Episode, type RemoteAnimeMetadata, type ServerEpisode } from '../lib/api';
 import { readLocalContinueWatching, rememberActivePlayback, type LocalContinueWatching } from '../lib/local-progress';
 import { useServerPreference } from '../lib/server-preference';
-import { AppScreen, Eyebrow, ScreenHeader, Section } from '../components/AppScreen';
+import { AppScreen, Eyebrow, PosterImage, ScreenHeader, Section } from '../components/AppScreen';
 
 import { auth, currentUserId, type AuthSession } from '../lib/auth';
 import { PlaybackFeedback } from '../components/PlaybackFeedback';
@@ -46,6 +46,7 @@ export function AnimeDetailPage() {
   const [savedAnimeId, setSavedAnimeId] = useState<string | undefined>();
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [selectedEpisode, setSelectedEpisode] = useState<ServerEpisode | null>(null);
+  const [activeEpisode, setActiveEpisode] = useState<ServerEpisode | null>(null);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [viewedEpisodes, setViewedEpisodes] = useState<Set<string>>(new Set());
   const [continueWatching, setContinueWatching] = useState<LocalContinueWatching | null>(null);
@@ -100,13 +101,34 @@ export function AnimeDetailPage() {
       animeReference: providerAnime.data?.anime.reference,
       episodeReference: resolution.episode.reference
     });
-    const opened = NekoNative.player.open(resolution.episode.id, { ...source, url: source.playbackUrl ?? source.url }, startPosition);
+    const episodeList = providerAnime.data?.seasons.find((season) => season.number === resolution.season)?.episodes ?? [];
+    const episodeIndex = episodeList.findIndex((episode) => episode.id === resolution.episode.id || episode.number === resolution.episode.number);
+    const opened = NekoNative.player.open(
+      resolution.episode.id,
+      { ...source, url: source.playbackUrl ?? source.url },
+      startPosition,
+      {
+        animeTitle: item.title,
+        episodeNumber: resolution.episode.number,
+        hasPreviousEpisode: episodeIndex > 0,
+        hasNextEpisode: episodeIndex >= 0 && episodeIndex < episodeList.length - 1
+      }
+    );
     if (opened) {
       markEpisodeViewed(resolution.episode);
       setSelectedEpisode(null);
       setPlaybackError(null);
     } else setPlaybackError('A reprodução desta fonte está disponível no aplicativo Android.');
   }, [providerResolution.data, selectedEpisode]);
+
+  useEffect(() => NekoNative.subscribe(event => {
+    if (event.type !== 'player.navigate' || !activeEpisode || !item || !providerMode) return;
+    const season = providerAnime.data?.seasons.find(value => value.number === activeEpisode.seasonNumber);
+    const episodes = [...(season?.episodes ?? [])].sort((left, right) => episodeNumber(left) - episodeNumber(right));
+    const index = episodes.findIndex(episode => episode.id === activeEpisode.id || episodeNumber(episode) === activeEpisode.number);
+    const target = episodes[index + (event.payload.direction === 'next' ? 1 : -1)];
+    if (target && 'reference' in target) openEpisode(target);
+  }), [activeEpisode, item, providerAnime.data, providerMode]);
 
   useEffect(() => {
     if (!item) return;
@@ -135,7 +157,7 @@ export function AnimeDetailPage() {
   function openEpisode(episode: Episode | ServerEpisode, positionSeconds = 0) {
     setStartPosition(positionSeconds);
     setPlaybackError(null);
-    if ('reference' in episode) { setPlayAttempt(value => value + 1); setSelectedEpisode(episode); return; }
+    if ('reference' in episode) { setActiveEpisode(episode); setPlayAttempt(value => value + 1); setSelectedEpisode(episode); return; }
     setPlaybackError('Este episódio pertence ao catálogo legado e ainda não possui uma fonte provider vinculada.');
   }
 
@@ -219,7 +241,7 @@ export function AnimeDetailPage() {
       <div className="neko-anime-detail-content">
         <Eyebrow>{contentTypeLabel(currentItem.type)} · {currentItem.year ?? providerAnime.data?.identity?.year ?? '—'}{providerMode ? ` · ${providerAnime.data!.server.name}` : ''}</Eyebrow>
         <ScreenHeader title={currentItem.title} subtitle={currentItem.titleEnglish ?? currentItem.titleRomaji ?? undefined} />
-        {currentItem.imageUrl ? <img className="neko-anime-poster" src={currentItem.imageUrl} alt={`Capa de ${currentItem.title}`} /> : null}
+        {currentItem.imageUrl ? <PosterImage className="neko-anime-poster" src={currentItem.imageUrl} alt={`Capa de ${currentItem.title}`} /> : null}
         {providerAnime.data?.identity ? <div className="neko-external-meta"><span>MAL {providerAnime.data.identity.malId ?? '—'}</span><span>AniList {providerAnime.data.identity.anilistId ?? '—'}</span></div> : null}
         <div className="neko-chips"><span>{currentItem.status}</span>{currentItem.genres.slice(0, 4).map((genre) => <span key={genre}>{genre}</span>)}{currentItem.scoreBasisPoints ? <span>★ {(currentItem.scoreBasisPoints / 100).toFixed(2)}</span> : null}</div>
         <div className="neko-anime-actions">
@@ -263,7 +285,7 @@ function persistViewedEpisodes(animeId: string, values: Set<string>) { try { loc
 function ContinueWatchingCard({ item, onClick }: { item: LocalContinueWatching; onClick: () => void }) {
   const progress = item.durationSeconds > 0 ? Math.min(100, Math.round(item.positionSeconds / item.durationSeconds * 100)) : 0;
   return <button className="neko-continue-card" type="button" onClick={onClick} aria-label={`Continuar episódio ${item.episodeNumber}, ${progress}% assistido`}>
-    {item.imageUrl ? <img src={item.imageUrl} alt="" loading="lazy" /> : <span className="neko-continue-placeholder" aria-hidden="true">▶</span>}
+    {item.imageUrl ? <PosterImage className="neko-continue-card-image" src={item.imageUrl} alt={`Capa de ${item.title}`} /> : <span className="neko-continue-placeholder" aria-hidden="true">▶</span>}
     <span className="neko-continue-copy"><small>Continuar assistindo</small><strong>{item.title}</strong><span>T{item.seasonNumber} · Episódio {String(item.episodeNumber).padStart(2, '0')}{item.episodeTitle ? ` · ${item.episodeTitle}` : ''}</span><span className="neko-progress-track" aria-hidden="true"><span style={{ width: `${progress}%` }} /></span><small>{progress}% assistido</small></span>
     <span className="neko-continue-play" aria-hidden="true">▶</span>
   </button>;
