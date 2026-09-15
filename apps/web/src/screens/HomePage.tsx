@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { fetchProviderCategories, fetchManifest, fetchNews, fetchProviderCatalog } from '../lib/api';
 import { useServerPreference } from '../lib/server-preference';
 import { useContinueWatching } from '../lib/use-continue-watching';
@@ -74,8 +74,8 @@ export function HomePage() {
         {catalog.data?.items.length ? <div className="neko-list">{catalog.data.items.map((item) => <AnimeListRow key={item.reference} title={item.title} imageUrl={item.imageUrl} postType={item.postType} scoreBasisPoints={item.scoreBasisPoints} genres={item.genres} releaseLabel={item.releaseLabel} meta={catalog.data?.server.name} onClick={() => void navigate({ to: '/anime/$slug', params: { slug: item.workSlug??providerSlug(item) }, search: { provider: item.serverId, ref: item.reference } })} />)}</div> : null}
         {catalog.isError ? <div role="alert"><p className="neko-error">Não foi possível carregar o catálogo de {serverId ?? 'servidor'}.</p><button className="neko-secondary-button" onClick={()=>void catalog.refetch()}>Tentar novamente</button></div> : null}
       </Section>
-      <Section title="Explorar categorias" action={<button className="neko-link" onClick={() => void navigate({ to: '/categorias' })}>Abrir categorias</button>}>
-        <div className="neko-category-strip" aria-label="Categorias">{categories.data?.items.slice(0,5).map(item=><button className="neko-link" key={item.id} onClick={()=>void navigate({to:'/categorias/$genreId',params:{genreId:item.id},search:{page:undefined,server:serverId??undefined}})}>{item.name}</button>)}</div>
+      <Section title="Explorar categorias" action={<Link className="neko-link" to="/categorias">Abrir categorias</Link>}>
+        <div className="neko-category-strip" aria-label="Categorias">{categories.data?.items.slice(0,5).map(item=><Link className="neko-category-link" key={item.id} to="/categorias/$genreId" params={{genreId:String(item.id)}} search={{page:undefined,server:serverId??undefined}}>{item.name}</Link>)}</div>
       </Section>
     </AppScreen>
   );
