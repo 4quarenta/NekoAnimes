@@ -71,7 +71,7 @@ export function HomePage() {
       </Section>
       <Section title="Catálogo em destaque" action={<button className="neko-link" onClick={() => void navigate({ to: '/categorias' })}>Ver categorias</button>}>
         {catalog.isPending ? <div className="neko-skeleton short" /> : null}
-        {catalog.data?.items.length ? <div className="neko-list">{catalog.data.items.map((item) => <AnimeListRow key={item.reference} title={item.title} imageUrl={item.imageUrl} postType={item.postType} scoreBasisPoints={item.scoreBasisPoints} genres={item.genres} meta={catalog.data?.server.name} onClick={() => void navigate({ to: '/anime/$slug', params: { slug: item.workSlug??providerSlug(item) }, search: { provider: item.serverId, ref: item.reference } })} />)}</div> : null}
+        {catalog.data?.items.length ? <div className="neko-list">{catalog.data.items.map((item) => <AnimeListRow key={item.reference} title={item.title} imageUrl={item.imageUrl} postType={item.postType} scoreBasisPoints={item.scoreBasisPoints} genres={item.genres} releaseLabel={item.releaseLabel} meta={catalog.data?.server.name} onClick={() => void navigate({ to: '/anime/$slug', params: { slug: item.workSlug??providerSlug(item) }, search: { provider: item.serverId, ref: item.reference } })} />)}</div> : null}
         {catalog.isError ? <div role="alert"><p className="neko-error">Não foi possível carregar o catálogo de {serverId ?? 'servidor'}.</p><button className="neko-secondary-button" onClick={()=>void catalog.refetch()}>Tentar novamente</button></div> : null}
       </Section>
       <Section title="Explorar categorias" action={<button className="neko-link" onClick={() => void navigate({ to: '/categorias' })}>Abrir categorias</button>}>
