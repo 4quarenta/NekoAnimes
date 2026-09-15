@@ -3,6 +3,7 @@ import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { AnimeListRow, AppScreen, EmptyState, Eyebrow, ScreenHeader, Section } from '../components/AppScreen';
 import { fetchProviderCategories, fetchProviderCatalog, fetchServers } from '../lib/api';
 import { useServerPreference } from '../lib/server-preference';
+import { serverLabel } from '../lib/server-label';
 import { providerSlug } from '../lib/provider-links';
 
 export function CategoriesPage() {
@@ -11,7 +12,7 @@ export function CategoriesPage() {
   const genres = useQuery({queryKey:['provider-categories',serverId],queryFn:()=>fetchProviderCategories(serverId!),enabled:Boolean(serverId),staleTime:15*60*1000});
   const servers = useQuery({queryKey:['servers'],queryFn:fetchServers});
   return <AppScreen>
-    <Eyebrow>{servers.data?.servers.find(server => server.id === serverId)?.name ?? 'Servidor selecionado'}</Eyebrow>
+    <Eyebrow>{serverLabel(serverId)}</Eyebrow>
     <ScreenHeader title="Categorias" subtitle="Categorias publicadas pelo servidor atual." />
     <Section title="Todas as categorias">
       {genres.isPending ? <div className="neko-skeleton short" /> : null}
@@ -35,13 +36,13 @@ function CategoryItems({serverId,genreId}:{serverId:string|null;genreId:string})
   const changePage=(value:number)=>{void navigate({to:'/categorias/$genreId',params:{genreId},search:{page:value,server:serverId??undefined}});};
   return <AppScreen>
     <button className="neko-link neko-category-back" onClick={()=>void navigate({to:'/categorias'})}>‹ Todas as categorias</button>
-    <Eyebrow>{anime.data?.server.name ?? 'Servidor selecionado'}</Eyebrow>
+    <Eyebrow>{serverLabel(anime.data?.server.id)}</Eyebrow>
     <ScreenHeader title={genre?.name ?? 'Categoria'} subtitle="Títulos disponíveis nesta categoria do servidor." />
     {genres.isError ? <p className="neko-error">{genres.error.message}</p> : null}
     {genres.data && !genre ? <EmptyState title="Categoria indisponível" description="Esta categoria não existe no servidor atual. Escolha outra categoria." /> : null}
     {(genres.isPending || (genre && anime.isPending)) ? <div className="neko-skeleton short" /> : null}
     {anime.isError ? <><p className="neko-error">{anime.error.message}</p><button className="neko-secondary-button" onClick={()=>void anime.refetch()}>Tentar novamente</button></> : null}
-    <div className="neko-list">{anime.data?.items.map(item=><AnimeListRow key={item.reference} title={item.title} imageUrl={item.imageUrl} scoreBasisPoints={item.scoreBasisPoints} genres={item.genres} postType={item.postType} releaseLabel={item.releaseLabel} meta={item.serverName} onClick={()=>void navigate({to:'/anime/$slug',params:{slug:item.workSlug??providerSlug(item)},search:{provider:item.serverId,ref:item.reference}})} />)}</div>
+    <div className="neko-list">{anime.data?.items.map(item=><AnimeListRow key={item.reference} title={item.title} imageUrl={item.imageUrl} scoreBasisPoints={item.scoreBasisPoints} genres={item.genres} postType={item.postType} releaseLabel={item.releaseLabel} meta={serverLabel(item.serverId)} onClick={()=>void navigate({to:'/anime/$slug',params:{slug:item.workSlug??providerSlug(item)},search:{provider:item.serverId,ref:item.reference}})} />)}</div>
     {anime.data && !anime.data.items.length ? <EmptyState title="Nenhum título nesta página" description="O servidor não retornou itens. Volte à página anterior ou tente novamente." /> : null}
     {genre ? <div className="neko-pagination" aria-label="Paginação"><button disabled={page===1||anime.isFetching} onClick={()=>changePage(page-1)}>‹ Anterior</button><span>Página {page}</span><button disabled={!anime.data?.hasNextPage||anime.isFetching} onClick={()=>changePage(page+1)}>Próxima ›</button></div> : null}
   </AppScreen>;

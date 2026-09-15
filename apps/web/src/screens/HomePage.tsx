@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { fetchProviderCategories, fetchManifest, fetchNews, fetchProviderCatalog } from '../lib/api';
 import { useServerPreference } from '../lib/server-preference';
+import { serverLabel } from '../lib/server-label';
 import { useContinueWatching } from '../lib/use-continue-watching';
 import { WatchingList } from '../components/WatchingList';
 import { providerSlug } from '../lib/provider-links';
@@ -71,7 +72,7 @@ export function HomePage() {
       </Section>
       <Section title="Catálogo em destaque" action={<button type="button" className="neko-link" onClick={() => void navigate({ to: '/categorias' })}>Ver mais</button>}>
         {catalog.isPending ? <div className="neko-skeleton short" /> : null}
-        {catalog.data?.items.length ? <div className="neko-list">{catalog.data.items.map((item) => <AnimeListRow key={item.reference} title={item.title} imageUrl={item.imageUrl} postType={item.postType} scoreBasisPoints={item.scoreBasisPoints} genres={item.genres} releaseLabel={item.releaseLabel} meta={catalog.data?.server.name} onClick={() => void navigate({ to: '/anime/$slug', params: { slug: item.workSlug??providerSlug(item) }, search: { provider: item.serverId, ref: item.reference } })} />)}</div> : null}
+        {catalog.data?.items.length ? <div className="neko-list">{catalog.data.items.map((item) => <AnimeListRow key={item.reference} title={item.title} imageUrl={item.imageUrl} postType={item.postType} scoreBasisPoints={item.scoreBasisPoints} genres={item.genres} releaseLabel={item.releaseLabel} meta={serverLabel(catalog.data?.server.id)} onClick={() => void navigate({ to: '/anime/$slug', params: { slug: item.workSlug??providerSlug(item) }, search: { provider: item.serverId, ref: item.reference } })} />)}</div> : null}
         {catalog.isError ? <div role="alert"><p className="neko-error">Não foi possível carregar o catálogo de {serverId ?? 'servidor'}.</p><button className="neko-secondary-button" onClick={()=>void catalog.refetch()}>Tentar novamente</button></div> : null}
       </Section>
       <Section title="Explorar categorias" action={<Link className="neko-link" to="/categorias">Abrir categorias</Link>}>

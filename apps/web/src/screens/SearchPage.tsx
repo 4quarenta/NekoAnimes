@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { fetchManifest, fetchNews, fetchProviderCatalog } from '../lib/api';
 import { useServerPreference } from '../lib/server-preference';
+import { serverLabel } from '../lib/server-label';
 import { providerSlug } from '../lib/provider-links';
 import { AnimeListRow, AppScreen, Eyebrow, EmptyState, ScreenHeader, TextRow } from '../components/AppScreen';
 
@@ -67,7 +68,7 @@ export function SearchPage() {
           {catalogResults.isPending && normalized.length >= 2 ? <div className="neko-skeleton short" /> : null}
           {catalogResults.data?.items.length ? (
             <div className="neko-list neko-results">
-              {catalogResults.data.items.map((item) => <AnimeListRow key={item.reference} title={item.title} imageUrl={item.imageUrl} scoreBasisPoints={item.scoreBasisPoints} genres={item.genres} postType={item.postType} releaseLabel={item.releaseLabel} meta={catalogResults.data.server.name} onClick={() => void navigate({ to: '/anime/$slug', params: { slug: item.workSlug??providerSlug(item) }, search: { provider: item.serverId, ref: item.reference } })} />)}
+              {catalogResults.data.items.map((item) => <AnimeListRow key={item.reference} title={item.title} imageUrl={item.imageUrl} scoreBasisPoints={item.scoreBasisPoints} genres={item.genres} postType={item.postType} releaseLabel={item.releaseLabel} meta={serverLabel(catalogResults.data.server.id)} onClick={() => void navigate({ to: '/anime/$slug', params: { slug: item.workSlug??providerSlug(item) }, search: { provider: item.serverId, ref: item.reference } })} />)}
             </div>
           ) : catalogResults.data ? <EmptyState title="Nenhum resultado" description="Tente outro nome ou título alternativo." /> : null}
         </>

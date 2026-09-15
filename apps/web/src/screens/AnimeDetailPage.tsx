@@ -5,6 +5,7 @@ import { NekoNative } from '@neko/bridge-web';
 import { fetchAnime, fetchLibrary, fetchContinueWatching, removeLibraryItem, fetchSavedServerAnime, saveProviderLibrary, fetchAniListMetadata, fetchEpisodes, fetchServerAnime, fetchServerProviderResolution, saveProviderAnimeData, setLibraryItem, type AnimeDetail, type Episode, type ProviderCatalogResponse, type RemoteAnimeMetadata, type ServerEpisode } from '../lib/api';
 import { readLocalContinueWatching, rememberActivePlayback, type LocalContinueWatching } from '../lib/local-progress';
 import { useServerPreference } from '../lib/server-preference';
+import { serverLabel } from '../lib/server-label';
 import { AppScreen, Eyebrow, LoadingState, PosterImage, ScreenHeader, Section } from '../components/AppScreen';
 
 import { auth, currentUserId, type AuthSession } from '../lib/auth';
@@ -269,7 +270,7 @@ export function AnimeDetailPage() {
         onRetry={selectedEpisode ? () => {setPlaybackError(null);setPlayAttempt(value => value + 1);} : undefined}
       /> : null}
       <div className="neko-anime-detail-content">
-        <Eyebrow>{contentTypeLabel(currentItem.type)} · {currentItem.year ?? providerAnime.data?.identity?.year ?? '—'}{providerMode ? ` · ${providerAnime.data!.server.name}` : ''}</Eyebrow>
+        <Eyebrow>{contentTypeLabel(currentItem.type)} · {currentItem.year ?? providerAnime.data?.identity?.year ?? '—'}{providerMode ? ` · ${serverLabel(providerAnime.data!.server.id)}` : ''}</Eyebrow>
         <ScreenHeader title={currentItem.title} subtitle={currentItem.titleEnglish ?? currentItem.titleRomaji ?? undefined} />
         {currentItem.imageUrl ? <PosterImage className="neko-anime-poster" src={currentItem.imageUrl} alt={`Capa de ${currentItem.title}`} /> : null}
         {providerAnime.data?.identity ? <div className="neko-external-meta"><span>MAL {providerAnime.data.identity.malId ?? '—'}</span><span>AniList {providerAnime.data.identity.anilistId ?? '—'}</span></div> : null}

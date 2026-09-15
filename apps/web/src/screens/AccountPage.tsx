@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { fetchMe, fetchLibrary, fetchContinueWatching, fetchSavedNews, fetchServers } from '../lib/api';
 import { useServerPreference } from '../lib/server-preference';
+import { serverLabel } from '../lib/server-label';
 import { readLocalProgressItems } from '../lib/local-progress';
 import { syncPendingProgress } from '../lib/progress-sync';
 
@@ -85,7 +86,7 @@ function AccountOverview({userId}:{userId:string}) {
         <TextRow title="Minha lista" meta={library.data?`${library.data.length} obras salvas`:library.isError?'Não foi possível consultar favoritos':'Abrir favoritos'} trailing="›" onClick={()=>void navigate({to:'/lista'})}/>
         <TextRow title="Continuar assistindo" meta={watching.data?`${watching.data.length} obras em andamento`:watching.isError?'Não foi possível consultar progresso':'Consultar progresso'} trailing="›" onClick={()=>void navigate({to:'/continuar'})}/>
         <TextRow title="Notícias salvas" meta={news.data?`${news.data.length} notícias`:news.isError?'Não foi possível consultar notícias':'Abrir notícias salvas'} trailing="›" onClick={()=>void navigate({to:'/salvos'})}/>
-        <TextRow title="Servidor padrão" meta={servers.data?.servers.find(server=>server.id===serverId)?.name??'Não selecionado'} trailing="›" onClick={()=>void navigate({to:'/servidores'})}/>
+        <TextRow title="Servidor padrão" meta={serverId ? serverLabel(serverId) : 'Não selecionado'} trailing="›" onClick={()=>void navigate({to:'/servidores'})}/>
       </div>
     </Section>
     <Section title="Sincronização">

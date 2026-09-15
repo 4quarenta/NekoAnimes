@@ -5,6 +5,7 @@ import { useNavigate } from '@tanstack/react-router';
 import type { ProviderRecovery as Recovery, ProviderWorkOption } from '@neko/contracts';
 import { confirmProviderMatch, fetchProviderRecovery, fetchServerAnime } from '../lib/api';
 import { useServerPreference } from '../lib/server-preference';
+import { serverLabel } from '../lib/server-label';
 import { Eyebrow, PosterImage, ScreenHeader, Section, TextRow } from './AppScreen';
 
 export function ProviderRecovery({ serverId, slug, onRetry }: { serverId: string; slug: string; onRetry: () => void }) {
@@ -36,18 +37,18 @@ export function ProviderRecovery({ serverId, slug, onRetry }: { serverId: string
     {data ? <>
       <div className="neko-recovery-summary">
         <Cover src={data.work.imageUrl} title={data.work.title} />
-        <div><strong>{data.work.title}</strong><p>Não foi possível abrir esta obra em <b>{data.server.name}</b>.</p><small>Seus favoritos e progresso continuam preservados.</small></div>
+        <div><strong>{data.work.title}</strong><p>Não foi possível abrir esta obra em <b>{serverLabel(data.server.id)}</b>.</p><small>Seus favoritos e progresso continuam preservados.</small></div>
       </div>
       <Section title="Disponível em outro servidor">
         {data.available.map(option => <button type="button" key={option.serverId} className="neko-recovery-switch" disabled={switching !== null} onClick={() => void switchToAvailable(option)}>
-          <span><strong>{option.serverName}</strong><small>Obra vinculada · página disponível</small></span><span>{switching === option.serverId ? 'Abrindo…' : 'Trocar servidor →'}</span>
+          <span><strong>{serverLabel(option.serverId)}</strong><small>Obra vinculada · página disponível</small></span><span>{switching === option.serverId ? 'Abrindo…' : 'Trocar servidor →'}</span>
         </button>)}
         {!data.available.length ? <p className="neko-recovery-hint">{data.availabilityFailed ? 'Não conseguimos verificar os servidores vinculados agora.' : 'Ainda não há outro servidor vinculado disponível.'}</p> : null}
         {switchError ? <p className="neko-error" role="alert">{switchError}</p> : null}
       </Section>
-      <Section title={`Possíveis correspondências em ${data.server.name}`}>
+      <Section title={`Possíveis correspondências em ${serverLabel(data.server.id)}`}>
         <p className="neko-recovery-hint">Buscamos automaticamente pelo título e seus nomes alternativos. Toque em um resultado para conferir se é a mesma obra.</p>
-        <div className="neko-recovery-results">{data.matches.map(match => <TextRow key={match.reference} title={match.title} imageUrl={match.imageUrl} showImagePlaceholder releaseLabel={match.releaseLabel} meta={`${typeLabel(match.postType)} · ${match.serverName}`} trailing="Conferir ›" onClick={() => setCandidate(match)} />)}</div>
+        <div className="neko-recovery-results">{data.matches.map(match => <TextRow key={match.reference} title={match.title} imageUrl={match.imageUrl} showImagePlaceholder releaseLabel={match.releaseLabel} meta={`${typeLabel(match.postType)} · ${serverLabel(match.serverId)}`} trailing="Conferir ›" onClick={() => setCandidate(match)} />)}</div>
         {!data.matches.length ? <p className="neko-recovery-empty">{data.searchFailed ? 'O servidor não respondeu à busca. Isso não significa que a obra não existe nele.' : 'Nenhuma correspondência encontrada neste servidor.'}</p> : null}
         {data.searchFailed && data.matches.length ? <p className="neko-recovery-hint">A busca ficou incompleta; algumas consultas não responderam.</p> : null}
         <button type="button" className="neko-secondary-button" disabled={recovery.isFetching} onClick={() => void recovery.refetch()}>{recovery.isFetching ? 'Atualizando…' : 'Atualizar opções'}</button>
@@ -95,7 +96,7 @@ function ConfirmMatch({ work, candidate, onClose }: { work: Recovery['work']; ca
     <p>Confira o título, o tipo e a temporada antes de vincular.</p>
     <div className="neko-match-comparison">
       <article><small>Obra da sua lista</small><Cover src={work.imageUrl} title={work.title} /><strong>{work.title}</strong><span>{[typeLabel(work.postType), work.year].filter(Boolean).join(' · ')}</span>{work.malId ? <span>MAL #{work.malId}</span> : null}</article>
-      <article><small>{candidate.serverName}</small><Cover src={preview?.anime.imageUrl ?? candidate.imageUrl} title={preview?.anime.title ?? candidate.title} /><strong>{preview?.anime.title ?? candidate.title}</strong><span>{[typeLabel(preview?.postType ?? candidate.postType), preview?.anime.year].filter(Boolean).join(' · ')}</span>{preview ? <span>{preview.seasons.length} temporada(s) · {preview.seasons.reduce((sum, season) => sum + season.episodes.length, 0)} episódios</span> : null}</article>
+      <article><small>{serverLabel(candidate.serverId)}</small><Cover src={preview?.anime.imageUrl ?? candidate.imageUrl} title={preview?.anime.title ?? candidate.title} /><strong>{preview?.anime.title ?? candidate.title}</strong><span>{[typeLabel(preview?.postType ?? candidate.postType), preview?.anime.year].filter(Boolean).join(' · ')}</span>{preview ? <span>{preview.seasons.length} temporada(s) · {preview.seasons.reduce((sum, season) => sum + season.episodes.length, 0)} episódios</span> : null}</article>
     </div>
     {detail.isPending ? <p role="status">Carregando os dados do resultado…</p> : null}
     {detail.isError ? <div role="alert"><p>Não foi possível conferir este resultado.</p><button className="neko-secondary-button" onClick={() => void detail.refetch()}>Tentar novamente</button></div> : null}
