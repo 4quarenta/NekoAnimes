@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.util.Log
+import android.view.View
 import android.webkit.WebSettings
 import com.nekoanimes.app.BuildConfig
 import com.nekoanimes.app.bridge.PlayerSourceOverride
@@ -14,8 +15,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
@@ -33,7 +34,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -50,6 +50,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.ui.PlayerView
+import androidx.media3.ui.PlayerControlView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -235,6 +236,7 @@ internal fun NekoPlayerScreen(
             }
             activePlayer = player
             var buffering by remember(player) { mutableStateOf(player.playbackState == Player.STATE_BUFFERING || player.playbackState == Player.STATE_IDLE) }
+            var controlsVisible by remember(player) { mutableStateOf(true) }
 
             DisposableEffect(player) {
                 val listener = object : Player.Listener {
@@ -274,7 +276,23 @@ internal fun NekoPlayerScreen(
             Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
                 AndroidView(
                     modifier = Modifier.fillMaxSize(),
-                    factory = { viewContext -> PlayerView(viewContext).apply { this.player = player; useController = true } },
+                    factory = { viewContext ->
+                        PlayerView(viewContext).apply {
+                            this.player = player
+                            useController = true
+                            setControllerVisibilityListener(object : PlayerView.ControllerVisibilityListener {
+                                override fun onVisibilityChanged(visibility: Int) {
+                                    controlsVisible = visibility == View.VISIBLE
+                                }
+                            })
+                            findViewById<PlayerControlView>(androidx.media3.ui.R.id.exo_controller)?.apply {
+                                setShowPreviousButton(hasPreviousEpisode)
+                                setShowNextButton(hasNextEpisode)
+                            }
+                            findViewById<View>(androidx.media3.ui.R.id.exo_prev)?.setOnClickListener { navigateToEpisode("previous") }
+                            findViewById<View>(androidx.media3.ui.R.id.exo_next)?.setOnClickListener { navigateToEpisode("next") }
+                        }
+                    },
                     update = { it.player = player; it.keepScreenOn = !playbackBlocked && foreground && !needsPlayIntent && playbackError == null }
                 )
                 if (buffering && playbackError == null) {
@@ -289,7 +307,7 @@ internal fun NekoPlayerScreen(
                         player.play()
                     }, ::closeWithProgress)
                 }
-                if (!animeTitle.isNullOrBlank() || episodeNumber > 0) {
+                if (controlsVisible && (!animeTitle.isNullOrBlank() || episodeNumber > 0)) {
                     Column(
                         modifier = Modifier
                             .align(Alignment.TopStart)
@@ -300,25 +318,6 @@ internal fun NekoPlayerScreen(
                         if (!animeTitle.isNullOrBlank()) Text(animeTitle, color = Color.White, maxLines = 1)
                         if (episodeNumber > 0) Text("Episódio ${episodeNumber.toString().padStart(2, '0')}", color = Color(0xFFD8CCFF))
                     }
-                }
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 28.dp)
-                        .background(Color.Black.copy(alpha = .68f), RoundedCornerShape(14.dp))
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = { navigateToEpisode("previous") },
-                        enabled = hasPreviousEpisode && !navigationRequested && !playbackBlocked,
-                        shape = RoundedCornerShape(10.dp)
-                    ) { Text("‹ Anterior") }
-                    Button(
-                        onClick = { navigateToEpisode("next") },
-                        enabled = hasNextEpisode && !navigationRequested && !playbackBlocked,
-                        shape = RoundedCornerShape(10.dp)
-                    ) { Text("Próximo ›") }
                 }
             }
         }
