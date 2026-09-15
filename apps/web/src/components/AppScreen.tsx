@@ -37,6 +37,10 @@ export function Section({ title, action, children }: PropsWithChildren<{ title: 
   );
 }
 
+export function LoadingState({ label = 'Carregando…', description = 'Buscando as informações mais recentes.' }: { label?: string; description?: string }) {
+  return <div className="neko-loading-state" role="status" aria-live="polite"><span className="neko-spinner" aria-hidden="true" /><strong>{label}</strong><small>{description}</small></div>;
+}
+
 export function TextRow({
   title,
   meta,

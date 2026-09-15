@@ -5,7 +5,7 @@ import { NekoNative } from '@neko/bridge-web';
 import { fetchAnime, fetchLibrary, fetchContinueWatching, removeLibraryItem, fetchSavedServerAnime, saveProviderLibrary, fetchAniListMetadata, fetchEpisodes, fetchServerAnime, fetchServerProviderResolution, saveProviderAnimeData, setLibraryItem, type AnimeDetail, type Episode, type ProviderCatalogResponse, type RemoteAnimeMetadata, type ServerEpisode } from '../lib/api';
 import { readLocalContinueWatching, rememberActivePlayback, type LocalContinueWatching } from '../lib/local-progress';
 import { useServerPreference } from '../lib/server-preference';
-import { AppScreen, Eyebrow, PosterImage, ScreenHeader, Section } from '../components/AppScreen';
+import { AppScreen, Eyebrow, LoadingState, PosterImage, ScreenHeader, Section } from '../components/AppScreen';
 
 import { auth, currentUserId, type AuthSession } from '../lib/auth';
 import { PlaybackFeedback } from '../components/PlaybackFeedback';
@@ -150,7 +150,7 @@ export function AnimeDetailPage() {
 
   const loading = providerId ? providerAnime.isPending : legacyAnime.isPending;
   const error = providerId ? providerAnime.isError : legacyAnime.isError;
-  if (loading) return <AppScreen><div className="neko-skeleton" /></AppScreen>;
+  if (loading) return <AppScreen><LoadingState label="Carregando obra…" description="Buscando capa, informações e episódios." /></AppScreen>;
   if (error || !item) return <AppScreen>{providerId && !providerReference
     ? <ProviderRecovery key={`${providerId}:${slug}`} serverId={providerId} slug={slug} onRetry={() => void providerAnime.refetch()} />
     : <><ScreenHeader title="Não foi possível abrir esta obra" subtitle="O servidor pode estar indisponível temporariamente." /><p className="neko-error">{providerAnime.error?.message ?? legacyAnime.error?.message}</p><button className="neko-secondary-button" onClick={() => void (providerId ? providerAnime.refetch() : legacyAnime.refetch())}>Tentar novamente</button></>}</AppScreen>;

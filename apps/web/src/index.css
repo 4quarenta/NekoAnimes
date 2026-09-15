@@ -63,5 +63,10 @@
 .neko-row-title-line { display:flex; align-items:center; gap:7px; min-width:0; }
 .neko-row-title-line strong { min-width:0; }
 .neko-release-badge { display:inline-flex; flex:none; align-items:center; padding:4px 7px; border:1px solid #7755c6; border-radius:999px; background:#2c1d50; color:#d9ccff; font-size:10px; font-weight:800; line-height:1; text-transform:uppercase; letter-spacing:.04em; }
+.neko-loading-state { display:grid; place-items:center; gap:10px; min-height:46vh; padding:36px 20px; text-align:center; color:var(--neko-text); }
+.neko-loading-state strong { font-size:15px; }
+.neko-loading-state small { max-width:260px; color:var(--neko-muted); font-size:12px; line-height:1.5; }
+.neko-spinner { width:34px; height:34px; border:3px solid #33284a; border-top-color:var(--neko-accent); border-radius:50%; animation:neko-spin .8s linear infinite; }
+@keyframes neko-spin { to { transform:rotate(360deg); } }
 .neko-category-link { flex:none; padding:7px 10px; border:1px solid var(--neko-line); border-radius:999px; background:#101014; color:#b9b9c4; font-size:11px; font-weight:700; text-decoration:none; cursor:pointer; }
 .neko-category-link:hover,.neko-category-link:focus-visible { border-color:var(--neko-accent); background:#211a33; color:#d9ccff; outline:0; }
