@@ -1,4 +1,4 @@
-import { AppManifestSchema, sameAnimeTitle, type AppManifest, type ProviderRecovery } from '@neko/contracts';
+import { AppManifestSchema, normalizeAnimeTitle, sameAnimeTitle, type AppManifest, type ProviderRecovery } from '@neko/contracts';
 import { getAccessToken, clearSession } from './auth';
 import { API_URL } from './config';
 
@@ -82,7 +82,9 @@ export function fetchServerSearch(query: string) { return getJson<ServerSearchRe
 export function fetchServerAnime(serverId: string, reference: string) { const search = new URLSearchParams({ ref: reference }); return getJson<ServerAnimeDetail>(`/v1/servers/${encodeURIComponent(serverId)}/anime?${search}`); }
 export async function fetchAniListMetadata(title: string): Promise<RemoteAnimeMetadata | null> {
   const query = `query($search:String){ Page(perPage:5){ media(search:$search,type:ANIME,sort:SEARCH_MATCH){ id idMal title { romaji english native } description format status seasonYear averageScore genres coverImage { large extraLarge } bannerImage } } }`;
-  const searchTitles = [title];
+  // Provider labels ("Dublado", "Legendado", etc.) are release variants and
+  // must not narrow the external database search.
+  const searchTitles = [normalizeAnimeTitle(title)];
   let media: Record<string, unknown> | undefined;
   for (const searchTitle of searchTitles) {
     const response = await fetch('https://graphql.anilist.co', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ query, variables: { search: searchTitle } }), cache: 'force-cache' });
