@@ -1,11 +1,12 @@
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { fetchServers } from '../lib/api';
+import { fetchServerHealth, fetchServers } from '../lib/api';
 import { AppScreen, EmptyState, Eyebrow, ScreenHeader, Section } from '../components/AppScreen';
 import { useServerPreference } from '../lib/server-preference';
 
 export function ServersPage() {
   const servers = useQuery({ queryKey: ['servers'], queryFn: fetchServers, staleTime: 10 * 60 * 1000 });
+  const health = useQuery({ queryKey: ['servers-health'], queryFn: fetchServerHealth, staleTime: 60 * 1000, refetchInterval: 60 * 1000 });
   const selectedServerId = useServerPreference((state) => state.serverId);
   const setServerId = useServerPreference((state) => state.setServerId);
 
@@ -24,13 +25,14 @@ export function ServersPage() {
           <div className="neko-server-options">
             {servers.data.servers.map((server) => {
               const selected = server.id === selectedServerId;
+              const status = health.data?.servers.find(item => item.server.id === server.id)?.status;
               return (
-                <button key={server.id} type="button" className={selected ? 'neko-server-option is-selected' : 'neko-server-option'} onClick={() => setServerId(server.id)}>
+                <button key={server.id} type="button" className={selected ? 'neko-server-option is-selected' : 'neko-server-option'} onClick={() => setServerId(server.id)} aria-label={`${serverAlias(server.id)}${server.id === 'goyabu' ? ', recomendado' : ''}, ${status === 'ok' ? 'online' : status === 'unavailable' ? 'offline' : 'status não verificado'}`}>
                   <span className="neko-server-option-mark" aria-hidden="true">{selected ? '✓' : '○'}</span>
                   <span className="neko-server-option-copy">
-                    <strong>{server.name}</strong>
-                    <small>{server.baseUrl.replace(/^https?:\/\//, '')}</small>
-                    <small>{server.capabilities.playback ? 'Suporta catálogo e reprodução' : 'Sem suporte a reprodução'}</small>
+                    <strong>{serverAlias(server.id)} {server.id === 'goyabu' ? <span className="neko-recommended-badge">Recomendado</span> : null}</strong>
+                    <small className={status === 'ok' ? 'neko-server-status is-online' : status === 'unavailable' ? 'neko-server-status is-offline' : 'neko-server-status'}><span aria-hidden="true">●</span> {status === 'ok' ? 'Online' : status === 'unavailable' ? 'Offline' : health.isFetching ? 'Verificando…' : 'Status não verificado'}</small>
+                    <small>{server.capabilities.playback ? 'Catálogo e reprodução disponíveis' : 'Reprodução indisponível'}</small>
                   </span>
                 </button>
               );
@@ -41,4 +43,8 @@ export function ServersPage() {
       <p className="neko-account-notice">A preferência fica salva neste dispositivo. A disponibilidade de cada episódio será verificada ao abrir o vídeo.</p>
     </AppScreen>
   );
+}
+
+function serverAlias(serverId: string) {
+  return ({ goyabu: 'BR1', animesonlinecc: 'BR2', animesdigital: 'BR3' } as Record<string, string>)[serverId] ?? 'BR';
 }
