@@ -69,7 +69,7 @@ export function HomePage() {
         {session && pending ? <p className="neko-account-notice">Progresso salvo neste dispositivo; aguardando sincronização. Você pode tentar novamente na Conta.</p> : null}
         {session && watching.isError ? <p className="neko-error">Não foi possível carregar seu progresso agora.</p> : null}
       </Section>
-      <Section title="Catálogo em destaque" action={<button className="neko-link" onClick={() => void navigate({ to: '/categorias' })}>Ver categorias</button>}>
+      <Section title="Catálogo em destaque" action={<button type="button" className="neko-link" onClick={() => void navigate({ to: '/categorias' })}>Ver mais</button>}>
         {catalog.isPending ? <div className="neko-skeleton short" /> : null}
         {catalog.data?.items.length ? <div className="neko-list">{catalog.data.items.map((item) => <AnimeListRow key={item.reference} title={item.title} imageUrl={item.imageUrl} postType={item.postType} scoreBasisPoints={item.scoreBasisPoints} genres={item.genres} releaseLabel={item.releaseLabel} meta={catalog.data?.server.name} onClick={() => void navigate({ to: '/anime/$slug', params: { slug: item.workSlug??providerSlug(item) }, search: { provider: item.serverId, ref: item.reference } })} />)}</div> : null}
         {catalog.isError ? <div role="alert"><p className="neko-error">Não foi possível carregar o catálogo de {serverId ?? 'servidor'}.</p><button className="neko-secondary-button" onClick={()=>void catalog.refetch()}>Tentar novamente</button></div> : null}
