@@ -1,4 +1,4 @@
-import { AppManifestSchema, sameAnimeTitle, type AppManifest } from '@neko/contracts';
+import { AppManifestSchema, sameAnimeTitle, type AppManifest, type ProviderRecovery } from '@neko/contracts';
 import { getAccessToken, clearSession } from './auth';
 import { API_URL } from './config';
 
@@ -136,5 +136,9 @@ async function responseError(response: Response) {
 export type ProviderCategory = { id: string; name: string; reference: string };
 export function fetchProviderCategories(serverId: string) { return getJson<{items:ProviderCategory[]}>(`/v1/servers/${encodeURIComponent(serverId)}/categories`); }
 export function fetchSavedServerAnime(serverId: string, slug: string) { return getJson<ServerAnimeDetail>(`/v1/servers/${encodeURIComponent(serverId)}/anime?${new URLSearchParams({slug})}`); }
+export function fetchProviderRecovery(serverId: string, slug: string, signal?: AbortSignal) { return getJson<ProviderRecovery>(`/v1/servers/${encodeURIComponent(serverId)}/recovery?${new URLSearchParams({slug})}`, signal); }
+export function confirmProviderMatch(workSlug: string, serverId: string, reference: string, expectedTitle: string) {
+  return authJson<ServerAnimeDetail>('/v1/me/provider-links', { method: 'POST', body: JSON.stringify({ workSlug, serverId, reference, expectedTitle, confirmed: true }) });
+}
 export function saveProviderLibrary(serverId: string, reference: string, workSlug?: string) { return authJson<{animeId:string;slug:string}>('/v1/me/provider-library',{method:'PUT',body:JSON.stringify({serverId,reference,workSlug})}); }
 export function saveProviderProgress(data: {serverId:string;reference:string;workSlug?:string;episodeReference:string;seasonNumber:number;episodeNumber:number;positionSeconds:number;durationSeconds:number}) { return authJson<{animeId:string;slug:string;episodeId:string}>('/v1/me/provider-progress',{method:'PUT',body:JSON.stringify(data)}); }

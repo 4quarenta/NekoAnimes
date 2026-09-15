@@ -17,9 +17,22 @@ export async function resolveLibraryWork(c: Context, serverId: string, slug: str
   const row = await db.prepare('SELECT * FROM anime WHERE slug=?').bind(slug).first<Record<string, unknown>>();
   if (!row) throw new HTTPException(404, { message: 'Obra salva não encontrada.' });
   const identity = await identityFromRow(db, row);
-  const mapping = await db.prepare('SELECT external_id FROM anime_external_ids WHERE anime_id=? AND provider=?').bind(row.id, serverId).first<{external_id:string}>();
-  let reference = mapping?.external_id;
-  if (!reference) {
+  const mappings = (await db.prepare('SELECT external_id FROM anime_external_ids WHERE anime_id=? AND provider=? ORDER BY rowid DESC LIMIT 6').bind(row.id, serverId).all<{external_id:string}>()).results;
+  // A confirmed alias is identified by its exact provider reference, not by its
+  // display title (which can differ from MAL or another provider's localization).
+  if (mappings.length) {
+    let lastError: unknown;
+    for (const mapping of mappings) {
+      try {
+        const detail = await getProviderAnime(serverId, mapping.external_id);
+        if (canonicalReference(mapping.external_id) !== canonicalReference(detail.anime.reference)) throw new HTTPException(409, { message: 'O servidor redirecionou para outra obra. Confira o vínculo antes de continuar.' });
+        return { ...detail, identity, workSlug: slug, postType: identity.postType };
+      } catch (error) { lastError = error; }
+    }
+    throw lastError;
+  }
+  let reference: string;
+  {
     const titles = [...new Set([identity.canonicalTitle, identity.titleRomaji, identity.titleEnglish].filter((x): x is string => Boolean(x)))];
     const matches = new Map<string, Awaited<ReturnType<typeof searchProvider>>[number]>();
     for (const title of titles.slice(0, 3)) {

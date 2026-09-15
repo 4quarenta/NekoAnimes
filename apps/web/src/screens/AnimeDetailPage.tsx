@@ -9,6 +9,7 @@ import { AppScreen, Eyebrow, PosterImage, ScreenHeader, Section } from '../compo
 
 import { auth, currentUserId, type AuthSession } from '../lib/auth';
 import { PlaybackFeedback } from '../components/PlaybackFeedback';
+import { ProviderRecovery } from '../components/ProviderRecovery';
 
 type EpisodeOrder = 'asc' | 'desc';
 
@@ -29,7 +30,7 @@ export function AnimeDetailPage() {
   const providerId = search.provider ?? defaultServerId;
   const providerReference = search.ref;
   const legacyAnime = useQuery({ queryKey: ['anime', slug], queryFn: () => fetchAnime(slug), enabled: !providerId });
-  const providerAnime = useQuery({ queryKey: ['provider-anime', providerId, providerReference, slug], queryFn: () => providerReference ? fetchServerAnime(providerId!, providerReference) : fetchSavedServerAnime(providerId!, slug), enabled: Boolean(providerId), staleTime: 2 * 60 * 1000 });
+  const providerAnime = useQuery({ queryKey: ['provider-anime', providerId, providerReference, slug], queryFn: () => providerReference ? fetchServerAnime(providerId!, providerReference) : fetchSavedServerAnime(providerId!, slug), enabled: Boolean(providerId), staleTime: 2 * 60 * 1000, retry: false });
   const providerMode = Boolean(providerAnime.data);
   const providerIdentity = providerAnime.data?.identity;
   const remoteMetadata = useQuery({ queryKey: ['anilist-metadata', providerAnime.data?.anime.title], queryFn: () => fetchAniListMetadata(providerAnime.data!.anime.title), enabled: Boolean(providerMode && providerAnime.data?.anime.title && (!providerIdentity?.imageUrl || !providerIdentity.synopsis)), staleTime: 24 * 60 * 60 * 1000, retry: 1 });
@@ -145,7 +146,9 @@ export function AnimeDetailPage() {
   const loading = providerId ? providerAnime.isPending : legacyAnime.isPending;
   const error = providerId ? providerAnime.isError : legacyAnime.isError;
   if (loading) return <AppScreen><div className="neko-skeleton" /></AppScreen>;
-  if (error || !item) return <AppScreen><p className="neko-error">{providerAnime.error?.message ?? 'Não foi possível carregar este anime no servidor selecionado.'}</p><button className="neko-secondary-button" onClick={() => void providerAnime.refetch()}>Tentar novamente</button><button className="neko-link" onClick={() => void navigate({to:'/buscar',search:{q:undefined}})}>Pesquisar neste servidor</button><button className="neko-link" onClick={() => void navigate({to:'/servidores'})}>Trocar servidor</button></AppScreen>;
+  if (error || !item) return <AppScreen>{providerId && !providerReference
+    ? <ProviderRecovery key={`${providerId}:${slug}`} serverId={providerId} slug={slug} onRetry={() => void providerAnime.refetch()} />
+    : <><ScreenHeader title="Não foi possível abrir esta obra" subtitle="O servidor pode estar indisponível temporariamente." /><p className="neko-error">{providerAnime.error?.message ?? legacyAnime.error?.message}</p><button className="neko-secondary-button" onClick={() => void (providerId ? providerAnime.refetch() : legacyAnime.refetch())}>Tentar novamente</button></>}</AppScreen>;
   const currentItem = item;
   const savedLibraryItem = library.data?.find(value => value.animeId === (savedAnimeId ?? currentItem.id));
   const inLibrary = Boolean(savedLibraryItem) || libraryState === 'saved';

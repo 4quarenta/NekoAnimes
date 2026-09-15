@@ -18,6 +18,8 @@ try {
     window.NekoNativeBridge={postMessage:message=>window.testBridge.push(JSON.parse(message))};
   });
   let pendingResolve,resolveCount=0,requestedSlug=false;
+  let recoveryMode=false,linked=false,linkWrites=0,recoverySearches=0,linkFailure=false,searchFailure=false;
+  const fallbackServer={...server,id:'goyabu',name:'Goyabu',baseUrl:'https://goyabu.io'};
   await page.route('https://example.com/**',route=>route.fulfill({status:204}));
   await page.route('https://graphql.anilist.co/**',route=>route.fulfill({json:{data:{Page:{media:[]}}}}));
   await page.route('**/v1/**',async route=>{
@@ -27,7 +29,25 @@ try {
     else if(path==='/v1/servers')json={servers:[server]};
     else if(path.endsWith('/categories'))json={items:[{id:'acao',name:'Ação',reference:'/genero/acao/'}]};
     else if(path.endsWith('/catalog'))json={server,items:[{serverId:server.id,serverName:server.name,reference:'/anime/test/',title:'Contract Anime',postType:'anime'}],hasNextPage:url.searchParams.get('page')!=='2'};
-    else if(path.endsWith('/anime')){requestedSlug=url.searchParams.has('slug');json=detail;}
+    else if(path.endsWith('/recovery')) {
+      recoverySearches++;
+      json={work:{slug:'work-test',title:'Contract Anime',imageUrl:null,malId:912345,year:2025,postType:'anime'},server,
+        available:[{serverId:'goyabu',serverName:'Goyabu',reference:'/anime/test/',title:'Contract Anime',imageUrl:null,postType:'anime',year:2025}],
+        matches:searchFailure?[]:[{serverId:server.id,serverName:server.name,reference:'/anime/alias/',title:'Contract Anime Alternative',imageUrl:null,postType:'anime',year:2025}],searchFailed:searchFailure,availabilityFailed:false};
+    }
+    else if(path==='/v1/me/provider-links') {
+      const body=route.request().postDataJSON();
+      expect(body).toEqual({workSlug:'work-test',serverId:server.id,reference:'/anime/alias/',expectedTitle:'Contract Anime Alternative',confirmed:true});
+      linkWrites++;
+      if(linkFailure){await route.fulfill({status:409,json:{message:'Este item já está vinculado a outra obra.'}});return;}
+      linked=true;
+      json={...detail,anime:{...detail.anime,title:'Contract Anime Alternative',reference:'/anime/alias/'}};
+    }
+    else if(path.endsWith('/anime')) {
+      requestedSlug=url.searchParams.has('slug');
+      if(recoveryMode&&requestedSlug&&!linked&&path.includes('animesonlinecc')){await route.fulfill({status:404,json:{message:'Obra não encontrada neste servidor'}});return;}
+      json=path.includes('goyabu')?{...detail,server:fallbackServer}:url.searchParams.get('ref')==='/anime/alias/'?{...detail,identity:{...identity,canonicalId:'candidate:work',canonicalTitle:'Contract Anime Alternative'},anime:{...detail.anime,title:'Contract Anime Alternative',reference:'/anime/alias/'}}:detail;
+    }
     else if(path.includes('/resolve/')){
       resolveCount++;
       if(resolveCount===1){pendingResolve=route;return;}
@@ -75,4 +95,51 @@ try {
   await page.screenshot({path:'test-results/profile.png'});
   expect(pageErrors).toEqual([]);
   console.log('PASS provider categories + pagination; real profile counters/actions; zero browser errors');
+
+  recoveryMode=true;
+  await page.goto(`${base}/anime/work-test`);
+  await expect(page.getByRole('heading',{name:'Vamos encontrar sua obra'})).toBeVisible();
+  await expect(page.getByRole('button',{name:/Contract Anime Alternative/})).toBeVisible();
+  expect(recoverySearches).toBeGreaterThan(0);
+  expect(linkWrites).toBe(0);
+  await expect(page.getByRole('button',{name:'Pesquisar neste servidor'})).toHaveCount(0);
+  await page.screenshot({path:'test-results/provider-recovery.png',fullPage:true});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.getByRole('button',{name:/Contract Anime Alternative/}).click();
+  const comparison=page.getByRole('dialog',{name:'É o mesmo item?'});
+  await expect(comparison).toBeVisible();
+  await expect(comparison.getByRole('button',{name:'Sim, vincular e abrir'})).toBeEnabled();
+  await page.screenshot({path:'test-results/provider-comparison.png'});
+  await comparison.getByRole('button',{name:'Não, abrir separadamente'}).click();
+  await expect(page).toHaveURL(/ref=%2Fanime%2Falias%2F/);
+  expect(linkWrites).toBe(0);
+  await page.goto(`${base}/anime/work-test`);
+  await page.getByRole('button',{name:/Goyabu.*Trocar servidor/}).click();
+  await expect(page).toHaveURL(/provider=goyabu/);
+  expect(await page.evaluate(()=>localStorage.getItem('nekoanimes.selected-server.v1'))).toBe('goyabu');
+  await expect(page.getByRole('heading',{name:'Contract Anime',exact:true})).toBeVisible();
+  console.log('PASS automatic recovery; no implicit linking; comparison refusal; exact available-server switch');
+
+  await page.goto(`${base}/anime/work-test`);
+  await page.getByRole('button',{name:/Contract Anime Alternative/}).click();
+  linkFailure=true;
+  await comparison.getByRole('button',{name:'Sim, vincular e abrir'}).click();
+  await expect(comparison.getByRole('alert')).toContainText('já está vinculado');
+  await expect(comparison).toBeVisible();
+  linkFailure=false;
+  await comparison.getByRole('button',{name:'Sim, vincular e abrir'}).click();
+  await expect(comparison).not.toBeVisible();
+  await expect(page.getByRole('heading',{name:'Contract Anime',exact:true})).toBeVisible();
+  expect(linkWrites).toBe(2);
+  await page.reload();
+  await expect(page.getByRole('heading',{name:'Contract Anime',exact:true})).toBeVisible();
+  console.log('PASS conflict stays visible; explicit confirmation; canonical identity after reopening');
+
+  linked=false;searchFailure=true;
+  await page.goto(`${base}/anime/work-test`);
+  await expect(page.getByText('O servidor não respondeu à busca. Isso não significa que a obra não existe nele.')).toBeVisible();
+  await page.setViewportSize({width:320,height:640});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  expect(pageErrors).toEqual([]);
+  console.log('PASS unavailable-search explanation; 320px layout; zero browser errors');
 } finally {await browser.close();}

@@ -30,7 +30,8 @@ import {
   parseMalSlug
 } from './mal-client';
 import { mergeLoadedMetadata, parseLoadedProviderMetadata, resolveProviderIdentity } from './provider-identity';
-import { ProviderSelectionSchema, ProviderProgressSchema } from '@neko/contracts';
+import { ProviderSelectionSchema, ProviderProgressSchema, ConfirmProviderLinkSchema } from '@neko/contracts';
+import { confirmProviderLink, discoverProviderRecovery } from './provider-recovery';
 import { persistIdentity, canonicalReference, enrichProviderCatalog } from './catalog-store';
 import { resolveLibraryWork, saveProviderWork } from './provider-library';
 
@@ -429,6 +430,14 @@ app.get('/v1/servers/:serverId/resolve/:query/:season/:episode', async (c) => {
   }
 });
 
+app.get('/v1/servers/:serverId/recovery', async (c) => {
+  assertServerId(c.req.param('serverId'));
+  const slug = c.req.query('slug');
+  if (!slug || slug.length > 1500) throw new HTTPException(400, { message: 'Obra inválida.' });
+  c.header('Cache-Control', 'no-store');
+  return c.json(await discoverProviderRecovery(c.env.DB, c.req.param('serverId'), slug));
+});
+
 app.get('/v1/servers/:serverId/anime', async (c) => {
   assertServerId(c.req.param('serverId'));
   const slug = c.req.query('slug');
@@ -515,6 +524,13 @@ app.use('/v1/auth/logout', requireAuth);
 app.post('/v1/auth/logout', async (c) => { await c.env.DB.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(c.get('tokenHash')).run(); return c.json({ ok: true }); });
 app.use('/v1/me', requireAuth);
 app.use('/v1/me/*', requireAuth);
+
+app.post('/v1/me/provider-links', async (c) => {
+  const parsed = ConfirmProviderLinkSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) throw new HTTPException(400, { message: 'Confirmação ou referência inválida.' });
+  try { return c.json(await confirmProviderLink(c.env.DB, c.get('userId'), parsed.data)); }
+  catch (error) { throw error instanceof HTTPException ? error : providerHttpException(error); }
+});
 
 app.use('/v1/catalog/provider-data', requireAuth);
 app.post('/v1/catalog/provider-data', async (c) => {

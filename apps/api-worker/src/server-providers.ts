@@ -61,6 +61,7 @@ export type ServerAnimeDetail = {
     reference: string;
     url: string;
     year?: number;
+    imageUrl?: string | null;
   };
   seasons: ServerSeason[];
   fetchedAt: string;

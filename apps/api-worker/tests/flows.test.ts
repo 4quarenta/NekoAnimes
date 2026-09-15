@@ -126,6 +126,105 @@ test('favorite from server 1 opens episodes from server 2, with the same identit
   const search=await request('/v1/servers/animesonlinecc/anime?ref=/anime/contract-anime/');
   assert.equal(search.body.identity.canonicalId,target.body.identity.canonicalId);
 });
+
+test('recovery searches automatically without linking, and checks the exact available server',async()=>{
+  const saved=await persistIdentity(db,metadata,'goyabu','/anime/contract-anime/');
+  const result=await request(`/v1/servers/animesonlinecc/recovery?slug=${encodeURIComponent(saved.slug)}`);
+  assert.equal(result.status,200,JSON.stringify(result.body));
+  assert.equal(result.body.work.malId,metadata.malId);
+  assert.equal(result.body.available[0].serverId,'goyabu');
+  assert.equal(result.body.available[0].reference,'/anime/contract-anime');
+  assert.ok(result.body.matches.some((item:any)=>item.title==='Contract Anime'));
+  assert.ok(result.body.matches.every((item:any)=>item.serverId==='animesonlinecc'));
+  assert.ok(upstream.some(url=>url.startsWith('https://goyabu.io/anime/contract-anime')));
+  assert.equal(await readStoredIdentity(db,'animesonlinecc','/anime/contract-anime'),null);
+});
+
+test('confirmed alias persists the original MAL, metadata, library and progress after reopening',async()=>{
+  const saved=await persistIdentity(db,metadata,'goyabu','/anime/contract-anime');
+  const token=await user();
+  await request(`/v1/me/library/${metadata.canonicalId}`,token,{});
+  const originalFetch=globalThis.fetch;
+  globalThis.fetch=async(input,init)=>String(input).includes('/anime/contract-alias')
+    ? new Response('<h1>Outro nome da obra</h1><a href="/episodio/contract-anime-episodio-1/">Episódio 1</a>') : originalFetch(input,init);
+  const body={serverId:'animesonlinecc',reference:'/anime/contract-alias/',workSlug:saved.slug,expectedTitle:'Outro nome da obra',confirmed:true};
+  const first=await request('/v1/me/provider-links',token,body,'POST');
+  assert.equal(first.status,200,JSON.stringify(first.body));
+  assert.equal(first.body.identity.malId,912345);
+  assert.equal(first.body.identity.canonicalId,metadata.canonicalId);
+  assert.equal(first.body.identity.imageUrl,metadata.imageUrl);
+  assert.equal((await request('/v1/me/provider-links',token,body,'POST')).status,200);
+  const reopened=await request(`/v1/servers/animesonlinecc/anime?slug=${encodeURIComponent(saved.slug)}`);
+  assert.equal(reopened.status,200,JSON.stringify(reopened.body));
+  assert.equal(reopened.body.anime.title,'Outro nome da obra');
+  const searched=await request('/v1/servers/animesonlinecc/anime?ref=/anime/contract-alias/');
+  assert.equal(searched.body.identity.canonicalId,metadata.canonicalId);
+  const progress=await request('/v1/me/provider-progress',token,{serverId:body.serverId,reference:body.reference,workSlug:saved.slug,episodeReference:'/episodio/contract-anime-episodio-1',seasonNumber:1,episodeNumber:1,positionSeconds:42,durationSeconds:1200});
+  assert.equal(progress.status,200,JSON.stringify(progress.body));
+  const watching=(await request('/v1/me/continue-watching',token)).body;
+  assert.equal(watching[0].animeId,metadata.canonicalId);assert.equal(watching[0].positionSeconds,42);
+  assert.equal((await request('/v1/me/library',token)).body.length,1);
+});
+
+test('provider link requires explicit authenticated confirmation and ownership; conflicts never move links',async()=>{
+  const saved=await persistIdentity(db,metadata,'goyabu','/anime/contract-anime');
+  const token=await user(),other=await user('other');
+  await request(`/v1/me/library/${metadata.canonicalId}`,token,{});
+  const body={serverId:'animesonlinecc',reference:'/anime/contract-anime/',workSlug:saved.slug,expectedTitle:'Contract Anime',confirmed:true};
+  assert.equal((await request('/v1/me/provider-links',undefined,body,'POST')).status,401);
+  assert.equal((await request('/v1/me/provider-links',other,body,'POST')).status,403);
+  for(const invalid of [{...body,confirmed:false},{...body,confirmed:undefined},{...body,reference:'//other.test/anime/a'},{...body,malId:123}]) {
+    assert.equal((await request('/v1/me/provider-links',token,invalid,'POST')).status,400);
+  }
+  assert.equal((await request('/v1/me/provider-links',token,{...body,expectedTitle:'Different edition'},'POST')).status,409);
+  assert.equal(await readStoredIdentity(db,body.serverId,body.reference),null);
+  await persistIdentity(db,{...metadata,canonicalId:'other:work',malId:777},body.serverId,body.reference);
+  assert.equal((await request('/v1/me/provider-links',token,body,'POST')).status,409);
+  assert.equal((await readStoredIdentity(db,body.serverId,body.reference))?.malId,777);
+  assert.equal((await request('/v1/me/library',token)).body[0].animeId,metadata.canonicalId);
+});
+
+test('recovery distinguishes unavailable upstream from no matches and never recommends a dead link',async()=>{
+  const saved=await persistIdentity(db,metadata,'goyabu','/anime/contract-anime');
+  globalThis.fetch=async()=>new Response('',{status:503});
+  const result=await request(`/v1/servers/animesonlinecc/recovery?slug=${encodeURIComponent(saved.slug)}`);
+  assert.equal(result.status,200);
+  assert.deepEqual(result.body.available,[]);assert.deepEqual(result.body.matches,[]);
+  assert.equal(result.body.searchFailed,true);assert.equal(result.body.availabilityFailed,true);
+});
+
+test('confirmation without MAL shares canonical identity without fabricating a MAL ID',async()=>{
+  const saved=await persistIdentity(db,{...metadata,malId:null},'goyabu','/anime/contract-anime');
+  const token=await user();await request(`/v1/me/library/${metadata.canonicalId}`,token,{});
+  const result=await request('/v1/me/provider-links',token,{serverId:'animesonlinecc',reference:'/anime/contract-anime',workSlug:saved.slug,expectedTitle:'Contract Anime',confirmed:true},'POST');
+  assert.equal(result.status,200,JSON.stringify(result.body));assert.equal(result.body.identity.malId,null);
+  assert.equal(result.body.identity.canonicalId,metadata.canonicalId);
+});
+
+test('confirmed newer reference is used when an older provider mapping stopped working',async()=>{
+  const saved=await persistIdentity(db,metadata,'goyabu','/anime/contract-anime');
+  await persistIdentity(db,metadata,'animesonlinecc','/anime/dead-reference');
+  const token=await user();await request(`/v1/me/library/${metadata.canonicalId}`,token,{});
+  const confirmed=await request('/v1/me/provider-links',token,{serverId:'animesonlinecc',reference:'/anime/contract-anime',workSlug:saved.slug,expectedTitle:'Contract Anime',confirmed:true},'POST');
+  assert.equal(confirmed.status,200);
+  const reopened=await request(`/v1/servers/animesonlinecc/anime?slug=${encodeURIComponent(saved.slug)}`);
+  assert.equal(reopened.status,200,JSON.stringify(reopened.body));
+  assert.equal(reopened.body.anime.reference,'/anime/contract-anime');
+});
+
+test('confirmation rejects redirected references and mismatched work types without mutation',async()=>{
+  const saved=await persistIdentity(db,{...metadata,postType:'filme'},'goyabu','/anime/contract-anime');
+  const token=await user();await request(`/v1/me/library/${metadata.canonicalId}`,token,{});
+  const body={serverId:'animesonlinecc',reference:'/anime/contract-anime',workSlug:saved.slug,expectedTitle:'Contract Anime',confirmed:true};
+  assert.equal((await request('/v1/me/provider-links',token,body,'POST')).status,409);
+  globalThis.fetch=async()=>{
+    const response=new Response('<h1>Contract Anime</h1>');
+    Object.defineProperty(response,'url',{value:'https://animesonlinecc.to/anime/another-edition'});
+    return response;
+  };
+  assert.equal((await request('/v1/me/provider-links',token,body,'POST')).status,409);
+  assert.equal(await readStoredIdentity(db,body.serverId,body.reference),null);
+});
 test('provider progress persists canonically across servers, deduplicates works, isolates users',async()=>{
   const saved=await persistIdentity(db,metadata,'goyabu','/anime/contract-anime/');
   const token=await user(),other=await user('other');

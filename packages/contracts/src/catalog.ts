@@ -5,6 +5,24 @@ export const ProviderSelectionSchema = z.object({
   reference: z.string().min(2).max(1000).regex(/^\/(?!\/)/),
   workSlug: z.string().min(1).max(1500).optional()
 });
+export const ConfirmProviderLinkSchema = ProviderSelectionSchema.extend({
+  workSlug: z.string().min(1).max(1500),
+  confirmed: z.literal(true),
+  expectedTitle: z.string().min(1).max(500)
+}).strict();
+
+export type ProviderWorkOption = {
+  serverId: string; serverName: string; reference: string; title: string;
+  imageUrl: string | null; postType: 'anime' | 'filme' | 'manga'; year: number | null;
+};
+export type ProviderRecovery = {
+  work: { slug: string; title: string; imageUrl: string | null; malId: number | null; year: number | null; postType: 'anime' | 'filme' | 'manga' };
+  server: { id: string; name: string };
+  available: ProviderWorkOption[];
+  matches: ProviderWorkOption[];
+  searchFailed: boolean;
+  availabilityFailed: boolean;
+};
 export const ProviderProgressSchema = ProviderSelectionSchema.extend({
   episodeReference: z.string().min(2).max(1000).regex(/^\/(?!\/)/),
   seasonNumber: z.number().int().min(1).max(100000),
