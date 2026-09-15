@@ -146,6 +146,13 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
     val currentNetworkAccess by rememberUpdatedState(networkAccess)
 
     val ads = remember(manifest.configVersion) { NekoAdOrchestrator(activity, manifest.ads) }
+    DisposableEffect(activity, ads) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_START) ads.showAppOpenIfEligible()
+        }
+        activity.lifecycle.addObserver(observer)
+        onDispose { activity.lifecycle.removeObserver(observer) }
+    }
     val bridge = remember(manifest.configVersion) {
         lateinit var instance: NekoBridge
         instance = NekoBridge(

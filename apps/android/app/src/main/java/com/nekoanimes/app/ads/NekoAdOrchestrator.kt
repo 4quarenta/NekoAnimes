@@ -3,6 +3,7 @@ package com.nekoanimes.app.ads
 import android.app.Activity
 import android.content.Context
 import android.util.Log
+import java.util.Collections
 import com.applovin.mediation.MaxAd
 import com.applovin.mediation.MaxAdListener
 import com.applovin.mediation.MaxError
@@ -88,9 +89,15 @@ class NekoAdOrchestrator(
             onReady()
             return
         }
-        val initConfig = AppLovinSdkInitializationConfiguration.builder(BuildConfig.MAX_SDK_KEY)
+        val initConfigBuilder = AppLovinSdkInitializationConfiguration.builder(BuildConfig.MAX_SDK_KEY)
             .setMediationProvider(AppLovinMediationProvider.MAX)
-            .build()
+        if (BuildConfig.MAX_TEST_MODE && BuildConfig.MAX_TEST_DEVICE_ADVERTISING_ID.isNotBlank()) {
+            initConfigBuilder.setTestDeviceAdvertisingIds(
+                Collections.singletonList(BuildConfig.MAX_TEST_DEVICE_ADVERTISING_ID)
+            )
+            Log.i(TAG, "MAX Test Mode enabled for configured staging device")
+        }
+        val initConfig = initConfigBuilder.build()
 
         AppLovinSdk.getInstance(activity).initialize(initConfig) {
             initialized = true
@@ -118,8 +125,12 @@ class NekoAdOrchestrator(
         return System.currentTimeMillis() - last >= minutes * 60_000L
     }
 
-    override fun onAdLoaded(ad: MaxAd) = Unit
-    override fun onAdDisplayed(ad: MaxAd) = Unit
+    override fun onAdLoaded(ad: MaxAd) {
+        Log.i(TAG, "Ad loaded format=${ad.format.label} network=${ad.networkName}")
+    }
+    override fun onAdDisplayed(ad: MaxAd) {
+        Log.i(TAG, "Ad displayed format=${ad.format.label} network=${ad.networkName}")
+    }
     override fun onAdClicked(ad: MaxAd) = Unit
     override fun onAdHidden(ad: MaxAd) {
         if (ad.adUnitId == BuildConfig.MAX_INTERSTITIAL_AD_UNIT_ID) interstitial?.loadAd()

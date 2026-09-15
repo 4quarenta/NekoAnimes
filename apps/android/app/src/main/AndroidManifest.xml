@@ -3,6 +3,7 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
 
     <application
         android:allowBackup="false"
@@ -13,6 +14,10 @@
         android:label="NekoAnimes"
         android:supportsRtl="true"
         android:theme="@style/Theme.NekoAnimes">
+
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="${googleAdMobAppId}" />
 
         <activity
             android:name=".MainActivity"

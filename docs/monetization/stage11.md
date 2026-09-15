@@ -2,7 +2,7 @@
 
 ## Engine strategy
 
-NekoAnimes uses one mediation engine at a time. The remote manifest can select `max`, `admob`, or `levelplay`, but Android currently ships the first production adapter for **AppLovin MAX**.
+NekoAnimes uses one mediation engine at a time. The remote manifest can select `max`, `admob`, or `levelplay`; Android ships **AppLovin MAX** plus the official Google/AdMob and Meta Audience Network mediation adapters.
 
 MAX is the mediation layer. Google AdMob / Google Bidding and Meta Audience Network are configured as mediated demand sources in MAX rather than initialized independently by NekoAnimes. This avoids multiple SDKs racing to show the same placement.
 
@@ -40,6 +40,9 @@ Keep credentials and ad-unit identifiers outside source control and provide them
 - `MAX_BANNER_AD_UNIT_ID`
 - `MAX_APP_OPEN_AD_UNIT_ID`
 - `MAX_INTERSTITIAL_AD_UNIT_ID`
+- `maxTestMode=true` (passed only to a local/CI test build)
+- `maxTestDeviceAdvertisingId=<test device GAID>` (passed only to a local/CI test build)
+- `googleAdMobAppId=<AdMob application ID>`
 
 Without these values, monetization remains fail-closed.
 
@@ -51,4 +54,14 @@ Initial production plan:
 2. Google Bidding / AdMob through MAX.
 3. Meta Audience Network through MAX.
 
-Network accounts, approval, partner bidding/ad-unit setup and MAX dashboard credentials are operational prerequisites, not source-code configuration.
+Network accounts, approval, partner bidding/ad-unit setup and MAX dashboard credentials are operational prerequisites, not source-code configuration. The current repository has no MAX SDK key or ad-unit IDs, so the remote staging manifest must remain disabled until those values are supplied through protected CI/Gradle settings.
+
+## Test procedure
+
+1. Create one MAX Android app for `com.nekoanimes.app` and three MAX ad units: banner, app open and interstitial.
+2. Connect AppLovin, Google/AdMob and Meta Audience Network in MAX and enable the three networks on the three ad units.
+3. Add the physical device GAID to MAX Test Mode, selecting one network at a time.
+4. Build with `-PmaxTestMode=true -PmaxTestDeviceAdvertisingId=<GAID>` and the protected MAX IDs.
+5. Confirm `Test Mode On: true`, then verify the format and `network=` logs for each placement.
+
+Test ads do not represent production impressions or revenue; they only validate the integration.

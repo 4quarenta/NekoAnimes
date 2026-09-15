@@ -40,4 +40,27 @@ Demanda inicial:
 - App Open respeita cooldown e elegibilidade.
 - Interstitial só aparece em pontos de transição permitidos.
 - Em falha de configuração remota na primeira inicialização, anúncios ficam desligados.
-- SDKs reais entram na Etapa 11.
+- O app Android usa o AppLovin MAX como camada de mediação e inclui os adaptadores oficiais para Google/AdMob e Meta Audience Network.
+- A configuração dos três provedores permanece no painel MAX; não há IDs, chaves de rede ou credenciais no código-fonte.
+
+## Android e teste de staging
+
+Credenciais e identificadores ficam fora do controle de versão e são fornecidos como propriedades Gradle:
+
+- `MAX_SDK_KEY`
+- `MAX_BANNER_AD_UNIT_ID`
+- `MAX_APP_OPEN_AD_UNIT_ID`
+- `MAX_INTERSTITIAL_AD_UNIT_ID`
+- `maxTestMode=true` (somente build de teste)
+- `maxTestDeviceAdvertisingId=<GAID do aparelho de teste>` (somente build de teste; nunca versionar)
+- `googleAdMobAppId=<App ID do AdMob>` (necessário para Google/AdMob fora do modo de teste)
+
+Sem esses valores, a monetização permanece desligada de forma segura.
+
+| Formato | Ponto de teste | Critério observável |
+| --- | --- | --- |
+| Banner | shell nativo, acima do navbar | log `format=BANNER` com a rede carregada |
+| App Open | cold start/retorno ao app | log `format=APP_OPEN` e anúncio exibido |
+| Interstitial | transições de conteúdo autorizadas | log `format=INTERSTITIAL` e anúncio exibido |
+
+Para testar os três provedores, selecione AppLovin, Google/AdMob e Meta Audience Network no MAX Mediation Debugger/Test Mode do mesmo aparelho, um por vez. O log do SDK deve indicar `Test Mode On: true` e o app registra `network=` para a entrega efetiva.

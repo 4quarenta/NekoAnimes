@@ -28,6 +28,13 @@ jobs:
       STAGING_SIGNING_CONFIGURED: ${{ secrets.NEKO_STAGING_DEBUG_KEYSTORE_BASE64 != '' }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      MAX_SDK_KEY: ${{ secrets.MAX_SDK_KEY }}
+      MAX_BANNER_AD_UNIT_ID: ${{ secrets.MAX_BANNER_AD_UNIT_ID }}
+      MAX_APP_OPEN_AD_UNIT_ID: ${{ secrets.MAX_APP_OPEN_AD_UNIT_ID }}
+      MAX_INTERSTITIAL_AD_UNIT_ID: ${{ secrets.MAX_INTERSTITIAL_AD_UNIT_ID }}
+      MAX_TEST_DEVICE_ADVERTISING_ID: ${{ secrets.MAX_TEST_DEVICE_ADVERTISING_ID }}
+      MAX_TEST_MODE: ${{ vars.NEKO_MAX_TEST_MODE || 'false' }}
+      GOOGLE_ADMOB_APP_ID: ${{ vars.NEKO_GOOGLE_ADMOB_APP_ID || '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -64,7 +71,14 @@ jobs:
           gradle --no-daemon :app:assembleDirectDebug \
             -PnekoWebAppUrl="$NEKO_WEB_APP_URL" \
             -PnekoWebAppOrigin="$NEKO_WEB_APP_ORIGIN" \
-            -PnekoApiBaseUrl="$NEKO_API_BASE_URL"
+            -PnekoApiBaseUrl="$NEKO_API_BASE_URL" \
+            -PMAX_SDK_KEY="$MAX_SDK_KEY" \
+            -PMAX_BANNER_AD_UNIT_ID="$MAX_BANNER_AD_UNIT_ID" \
+            -PMAX_APP_OPEN_AD_UNIT_ID="$MAX_APP_OPEN_AD_UNIT_ID" \
+            -PMAX_INTERSTITIAL_AD_UNIT_ID="$MAX_INTERSTITIAL_AD_UNIT_ID" \
+            -PmaxTestMode="$MAX_TEST_MODE" \
+            -PmaxTestDeviceAdvertisingId="$MAX_TEST_DEVICE_ADVERTISING_ID" \
+            -PgoogleAdMobAppId="$GOOGLE_ADMOB_APP_ID"
       - name: Verify built version and prepare release files
         run: |
           set -euo pipefail
