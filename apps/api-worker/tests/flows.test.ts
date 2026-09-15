@@ -5,9 +5,9 @@ import { readFileSync } from 'node:fs';
 import app from '../src/index';
 import { persistIdentity, readStoredIdentity, fillMetadata, enrichProviderCatalog, CATALOG_METADATA_BATCH_SIZE } from '../src/catalog-store';
 import type { ServerAnimeMatch } from '../src/server-providers';
-import { extractProviderCategories, providerEpisodeId, browseProvider } from '../src/server-providers';
+import { extractProviderCategories, providerEpisodeId, browseProvider, searchProvider } from '../src/server-providers';
 import { ProviderProgressSchema, sameAnimeTitle } from '@neko/contracts';
-import { parseLoadedProviderMetadata, mergeLoadedMetadata } from '../src/provider-identity';
+import { parseLoadedProviderMetadata, mergeLoadedMetadata, resolveProviderIdentity } from '../src/provider-identity';
 import type { ProviderMetadata } from '../src/provider-identity';
 
 let sqlite: DatabaseSync;
@@ -58,6 +58,31 @@ test('shared title matching preserves sequel numbers and is not fuzzy',()=>{
   assert.equal(sameAnimeTitle('Contract Anime Dublado','Contract Anime'),true);
   assert.equal(sameAnimeTitle('Mob Psycho 100','Mob Psycho'),false);
   assert.equal(sameAnimeTitle('Contract Anime II','Contract Anime'),false);
+});
+
+test('provider search removes release labels before requesting the provider',async()=>{
+  const result=await searchProvider('animesonlinecc','Contract Anime Dublado');
+  assert.equal(result[0]?.title,'Contract Anime');
+  const searchUrls=upstream.filter(url=>url.includes('animesonlinecc.to/?s='));
+  assert.equal(searchUrls.length,1);
+  assert.equal(new URL(searchUrls[0]).searchParams.get('s'),'Contract Anime');
+});
+
+test('MAL and AniList lookups ignore dublado in provider titles',async()=>{
+  const calls:string[]=[];
+  const originalFetch=globalThis.fetch;
+  globalThis.fetch=async(input,init)=>{
+    const url=new URL(String(input));calls.push(url.toString());
+    if(url.hostname==='api.jikan.moe') return Response.json({data:[{mal_id:123,title:'Contract Anime',title_english:null,title_japanese:null,synopsis:'Synopsis',type:'TV',status:'Finished Airing',year:2025,score:8.5,episodes:12,genres:[{name:'Action'}],images:{jpg:{large_image_url:'https://example.com/poster.jpg'}}}]});
+    if(url.hostname==='graphql.anilist.co') return Response.json({data:{Media:null,Page:{media:[]}}});
+    return originalFetch(input,init);
+  };
+  const context={env:{DB:db},executionCtx:{waitUntil:()=>undefined}} as never;
+  const identity=await resolveProviderIdentity(context,{serverId:'goyabu',reference:'/anime/contract-anime-dublado',title:'Contract Anime Dublado',fallbackPostType:'anime',refresh:true});
+  assert.equal(identity.malId,123);assert.equal(identity.canonicalTitle,'Contract Anime');assert.equal(identity.imageUrl,'https://example.com/poster.jpg');
+  const jikan=new URL(calls.find(url=>url.includes('api.jikan.moe/v4/anime?'))!);
+  assert.equal(jikan.searchParams.get('q'),'contract anime');
+  globalThis.fetch=originalFetch;
 });
 test('categories use provider links, title attributes and exclude other hosts/letters',()=>{
   const items=extractProviderCategories('animesdigital','<a href="/genero/acao" title="Ação"></a><a href="/genero/letra-a/">A</a><a href="https://other.test/genero/drama">Drama</a>');

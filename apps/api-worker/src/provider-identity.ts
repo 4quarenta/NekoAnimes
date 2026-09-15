@@ -112,7 +112,7 @@ export async function resolveProviderIdentity(
     if (malId) {
       mal = await fetchMalAnime(c, malId);
     } else {
-      const candidates = await fetchMalCatalog(c, { query: input.title, limit: 5, letter: undefined });
+      const candidates = await fetchMalCatalog(c, { query: normalizeTitle(input.title), limit: 5, letter: undefined });
       mal = candidates.items.find((candidate) => sameTitle(candidate.title, input.title) || sameTitle(candidate.titleEnglish, input.title) || sameTitle(candidate.titleRomaji, input.title)) ?? null;
     }
   } catch {
@@ -137,7 +137,7 @@ export async function resolveProviderIdentity(
   }
   if (!mal && !anilist) {
     try {
-      anilist = await fetchAniListByTitle(c, input.title);
+      anilist = await fetchAniListByTitle(c, normalizeTitle(input.title));
       anilistId = anilist?.id ?? anilistId;
       backdropUrl = anilist?.bannerImage ?? backdropUrl;
     } catch {
@@ -196,7 +196,8 @@ async function fetchAniListByTitle(c: Context, title: string): Promise<AniListAn
   const edgeCache = (caches as unknown as { default: Cache }).default;
   const cached = await edgeCache.match(cacheKey);
   if (cached) return await cached.json<AniListAnimeSummary | null>();
-  const response = await fetch(ANILIST_URL, { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json', 'user-agent': 'NekoAnimes-Staging/1.0' }, body: JSON.stringify({ query, variables: { search: title } }) });
+  const normalizedTitle = normalizeTitle(title);
+  const response = await fetch(ANILIST_URL, { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json', 'user-agent': 'NekoAnimes-Staging/1.0' }, body: JSON.stringify({ query, variables: { search: normalizedTitle } }) });
   if (!response.ok) throw new Error(`AniList HTTP ${response.status}`);
   const body = await response.json<{ data?: { Page?: { media?: Array<Record<string, unknown>> } } }>();
   const candidates = (body.data?.Page?.media ?? []).map(toAniListSummary);

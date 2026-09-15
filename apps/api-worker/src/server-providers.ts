@@ -140,15 +140,16 @@ export function hasProvider(serverId: string): boolean {
 
 export async function searchProvider(serverId: string, query: string): Promise<ServerAnimeMatch[]> {
   const provider = getProvider(serverId);
-  const response = await getProviderHtml(provider, provider.searchPath(query));
-  const matches = extractAnimeMatches(provider, query, parseAnchors(response.html));
+  const searchQuery = cleanSearchQuery(query);
+  const response = await getProviderHtml(provider, provider.searchPath(searchQuery));
+  const matches = extractAnimeMatches(provider, searchQuery, parseAnchors(response.html));
   if (matches.length > 0) return matches.slice(0, 10);
 
-  const fallbackReference = provider.fallbackAnimePath(query);
+  const fallbackReference = provider.fallbackAnimePath(searchQuery);
   try {
     const detail = await getProviderHtml(provider, fallbackReference);
-    const title = provider.cleanTitle(parseH1(detail.html) ?? query);
-    const confidence = scoreTitleMatch(query, title);
+    const title = provider.cleanTitle(parseH1(detail.html) ?? searchQuery);
+    const confidence = scoreTitleMatch(searchQuery, title);
     return confidence >= 0.45 ? [toAnimeMatch(provider, title, detail.url, confidence)] : [];
   } catch {
     return [];
@@ -722,7 +723,14 @@ function decodeHtml(value: string): string {
 }
 
 function normalizeForMatch(value: string): string {
-  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+  return cleanSearchQuery(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// Provider labels such as "Dublado" describe the release, not the work.
+// Remove them before remote searches and match scoring so they cannot make a
+// valid MAL/AniList lookup miss the canonical title.
+function cleanSearchQuery(value: string): string {
+  return value.replace(/\b(dublado|legendado|online|todos\s+os\s+epis[oó]dios)\b/giu, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function providerGenreSlug(value: string): string {
