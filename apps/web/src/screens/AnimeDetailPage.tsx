@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { NekoNative } from '@neko/bridge-web';
-import { fetchAnime, fetchLibrary, fetchContinueWatching, removeLibraryItem, fetchSavedServerAnime, saveProviderLibrary, fetchAniListMetadata, fetchEpisodes, fetchServerAnime, fetchServerProviderResolution, saveProviderAnimeData, setLibraryItem, type AnimeDetail, type Episode, type RemoteAnimeMetadata, type ServerEpisode } from '../lib/api';
+import { fetchAnime, fetchLibrary, fetchContinueWatching, removeLibraryItem, fetchSavedServerAnime, saveProviderLibrary, fetchAniListMetadata, fetchEpisodes, fetchServerAnime, fetchServerProviderResolution, saveProviderAnimeData, setLibraryItem, type AnimeDetail, type Episode, type ProviderCatalogResponse, type RemoteAnimeMetadata, type ServerEpisode } from '../lib/api';
 import { readLocalContinueWatching, rememberActivePlayback, type LocalContinueWatching } from '../lib/local-progress';
 import { useServerPreference } from '../lib/server-preference';
 import { AppScreen, Eyebrow, PosterImage, ScreenHeader, Section } from '../components/AppScreen';
@@ -214,11 +214,33 @@ export function AnimeDetailPage() {
       setLoadedMetadata(result.identity);
       setSavedWorkSlug(result.anime.slug);
       setSavedAnimeId(result.anime.id);
-      void queryClient.invalidateQueries({queryKey:['provider-anime']});
-      void queryClient.invalidateQueries({queryKey:['me-library']});
-      void queryClient.invalidateQueries({predicate:query=>String(query.queryKey[0]).startsWith('provider-catalog')});
+      queryClient.setQueryData(['provider-anime', providerId, providerReference, slug], (current: Awaited<ReturnType<typeof fetchServerAnime>> | undefined) => current ? {
+        ...current,
+        workSlug: result.anime.slug,
+        postType: result.identity.postType,
+        anime: { ...current.anime, imageUrl: result.identity.imageUrl ?? current.anime.imageUrl },
+        identity: result.identity
+      } : current);
+      queryClient.setQueriesData<ProviderCatalogResponse>({ predicate: query => String(query.queryKey[0]).startsWith('provider-catalog') }, (current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          items: current.items.map((catalogItem) => catalogItem.serverId === providerId && catalogItem.reference.replace(/\/$/, '') === providerAnime.data!.anime.reference.replace(/\/$/, '') ? {
+            ...catalogItem,
+            workSlug: result.anime.slug,
+            title: result.identity.canonicalTitle || catalogItem.title,
+            postType: result.identity.postType,
+            imageUrl: result.identity.imageUrl ?? catalogItem.imageUrl,
+            scoreBasisPoints: result.identity.scoreBasisPoints ?? catalogItem.scoreBasisPoints,
+            genres: result.identity.genres.length ? result.identity.genres : catalogItem.genres
+          } : catalogItem)
+        };
+      });
+      await queryClient.invalidateQueries({queryKey:['provider-anime'], refetchType:'all'});
+      await queryClient.invalidateQueries({queryKey:['me-library'], refetchType:'all'});
+      await queryClient.invalidateQueries({predicate:query=>String(query.queryKey[0]).startsWith('provider-catalog'), refetchType:'all'});
       setDataState('loaded');
-      setDataMessage('Metadados disponíveis aplicados e salvos. Campos ausentes continuam pendentes nas fontes.');
+      setDataMessage('Dados sincronizados definitivamente e salvos. As listas serão atualizadas com esta informação.');
     } catch (loadError) {
       if (loadError instanceof Error && loadError.message === 'AUTH_REQUIRED') {
         void navigate({ to: '/conta' });

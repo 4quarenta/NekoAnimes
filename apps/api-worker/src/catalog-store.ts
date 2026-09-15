@@ -14,7 +14,7 @@ export async function enrichProviderCatalog(db: D1Database, serverId: string, it
   const ambiguous = new Set<string>();
   for (let start = 0; start < references.length; start += CATALOG_METADATA_BATCH_SIZE) {
     const batch = references.slice(start, start + CATALOG_METADATA_BATCH_SIZE);
-    const rows = (await db.prepare(`SELECT a.id,a.slug,a.image_url,a.score_basis_points,a.genres,a.type,
+    const rows = (await db.prepare(`SELECT a.id,a.slug,a.title,a.image_url,a.score_basis_points,a.genres,a.type,
       RTRIM(x.external_id,'/') AS reference FROM anime_external_ids x JOIN anime a ON a.id=x.anime_id
       WHERE x.provider=? AND RTRIM(x.external_id,'/') IN (${batch.map(() => '?').join(',')})`)
       .bind(serverId, ...batch).all<Row>()).results;
@@ -35,6 +35,7 @@ export async function enrichProviderCatalog(db: D1Database, serverId: string, it
     return {
       ...item,
       workSlug: String(row.slug),
+      ...(typeof row.title === 'string' && row.title ? { title: row.title } : {}),
       ...(typeof row.image_url === 'string' && row.image_url ? { imageUrl: row.image_url } : {}),
       ...(typeof row.score_basis_points === 'number' ? { scoreBasisPoints: row.score_basis_points } : {}),
       ...(Array.isArray(genres) && genres.every(value => typeof value === 'string') ? { genres } : {}),
@@ -63,13 +64,17 @@ export async function identityFromRow(db: D1Database, row: Row): Promise<Provide
   };
 }
 
-// Null/empty enrichment never erases already saved metadata.
+// Explicitly loaded non-empty metadata becomes the canonical value. Null or
+// empty enrichment never erases already saved metadata.
 export function fillMetadata(base: ProviderMetadata, extra: Partial<ProviderMetadata>): ProviderMetadata {
   const next = { ...base };
   for (const key of ['synopsis', 'titleEnglish', 'titleRomaji', 'titleNative', 'year', 'scoreBasisPoints', 'imageUrl', 'backdropUrl', 'malId', 'anilistId'] as const) {
-    if (!next[key] && extra[key]) (next as Record<string, unknown>)[key] = extra[key];
+    if (extra[key] !== undefined && extra[key] !== null && extra[key] !== '') (next as Record<string, unknown>)[key] = extra[key];
   }
-  if (!next.genres.length && extra.genres?.length) next.genres = extra.genres;
+  if (extra.genres?.length) next.genres = extra.genres;
+  if (extra.postType) next.postType = extra.postType;
+  if (extra.status) next.status = extra.status;
+  if (extra.canonicalTitle) next.canonicalTitle = extra.canonicalTitle;
   return next;
 }
 

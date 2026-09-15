@@ -1,7 +1,7 @@
 import type { Context } from 'hono';
 import mappings from '../data/provider-mappings.json';
 import { fetchMalAnime, fetchMalCatalog, type MalAnimeSummary } from './mal-client';
-import { readStoredIdentity, fillMetadata } from './catalog-store';
+import { readStoredIdentity } from './catalog-store';
 
 export type ProviderPostType = 'anime' | 'filme' | 'manga';
 
@@ -23,6 +23,8 @@ export type ProviderMetadata = {
   backdropUrl: string | null;
   source: 'myanimelist' | 'anilist' | 'mapping' | 'none';
 };
+
+export type LoadedProviderMetadata = Partial<Omit<ProviderMetadata, 'canonicalId' | 'source'>>;
 
 type MappingEntry = {
   canonicalId?: string;
@@ -53,6 +55,47 @@ type AniListAnimeSummary = {
 const entries = (mappings.entries as MappingEntry[]) ?? [];
 const ANILIST_URL = 'https://graphql.anilist.co';
 const ANILIST_CACHE_ORIGIN = 'https://nekoanimes-anilist-cache.invalid';
+
+export function parseLoadedProviderMetadata(value: unknown): LoadedProviderMetadata {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const input = value as Record<string, unknown>;
+  const text = (key: string, max: number) => typeof input[key] === 'string' && input[key].trim().length <= max ? input[key].trim() : undefined;
+  const url = (key: string) => {
+    const value = text(key, 2048);
+    try { return value && new URL(value).protocol === 'https:' ? value : undefined; } catch { return undefined; }
+  };
+  const id = (key: string) => typeof input[key] === 'number' && Number.isInteger(input[key]) && input[key] > 0 && input[key] <= 100_000_000 ? input[key] : undefined;
+  const year = typeof input.year === 'number' && Number.isInteger(input.year) && input.year >= 1900 && input.year <= 3000 ? input.year : undefined;
+  const score = typeof input.scoreBasisPoints === 'number' && Number.isInteger(input.scoreBasisPoints) && input.scoreBasisPoints >= 0 && input.scoreBasisPoints <= 1000 ? input.scoreBasisPoints : undefined;
+  const genres = Array.isArray(input.genres) ? input.genres.filter((item): item is string => typeof item === 'string' && item.trim().length > 0 && item.trim().length <= 80).map(item => item.trim()).slice(0, 40) : undefined;
+  const postType = input.postType === 'anime' || input.postType === 'filme' || input.postType === 'manga' ? input.postType : undefined;
+  return {
+    ...(text('canonicalTitle', 256) ? { canonicalTitle: text('canonicalTitle', 256) } : {}),
+    ...(id('malId') ? { malId: id('malId') } : {}),
+    ...(id('anilistId') ? { anilistId: id('anilistId') } : {}),
+    ...(postType ? { postType } : {}),
+    ...(text('status', 80) ? { status: text('status', 80) } : {}),
+    ...(text('synopsis', 20_000) ? { synopsis: text('synopsis', 20_000) } : {}),
+    ...(text('titleEnglish', 256) ? { titleEnglish: text('titleEnglish', 256) } : {}),
+    ...(text('titleRomaji', 256) ? { titleRomaji: text('titleRomaji', 256) } : {}),
+    ...(text('titleNative', 256) ? { titleNative: text('titleNative', 256) } : {}),
+    ...(year !== undefined ? { year } : {}),
+    ...(genres?.length ? { genres } : {}),
+    ...(score !== undefined ? { scoreBasisPoints: score } : {}),
+    ...(url('imageUrl') ? { imageUrl: url('imageUrl') } : {}),
+    ...(url('backdropUrl') ? { backdropUrl: url('backdropUrl') } : {})
+  };
+}
+
+export function mergeLoadedMetadata(base: ProviderMetadata, extra: LoadedProviderMetadata): ProviderMetadata {
+  const next = { ...base };
+  for (const key of ['canonicalTitle', 'malId', 'anilistId', 'postType', 'status', 'synopsis', 'titleEnglish', 'titleRomaji', 'titleNative', 'year', 'scoreBasisPoints', 'imageUrl', 'backdropUrl'] as const) {
+    const value = extra[key];
+    if (value !== undefined && value !== null && value !== '') next[key] = value as never;
+  }
+  if (extra.genres?.length) next.genres = extra.genres;
+  return next;
+}
 
 export async function resolveProviderIdentity(
   c: Context,
@@ -128,7 +171,7 @@ export async function resolveProviderIdentity(
     backdropUrl,
     source: mal ? (anilistId ? 'anilist' : 'myanimelist') : anilist ? 'anilist' : mapping ? 'mapping' : 'none'
   };
-  return stored ? fillMetadata(stored, result) : result;
+  return stored ? mergeLoadedMetadata(stored, result) : result;
 }
 
 const ANILIST_MEDIA_FIELDS = `id idMal title { romaji english native } description format status seasonYear averageScore genres coverImage { large extraLarge } bannerImage`;

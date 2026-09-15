@@ -7,6 +7,7 @@ import { persistIdentity, readStoredIdentity, fillMetadata, enrichProviderCatalo
 import type { ServerAnimeMatch } from '../src/server-providers';
 import { extractProviderCategories, providerEpisodeId, browseProvider } from '../src/server-providers';
 import { ProviderProgressSchema, sameAnimeTitle } from '@neko/contracts';
+import { parseLoadedProviderMetadata, mergeLoadedMetadata } from '../src/provider-identity';
 import type { ProviderMetadata } from '../src/provider-identity';
 
 let sqlite: DatabaseSync;
@@ -84,6 +85,31 @@ test('persisted metadata survives missing enrichment; conflicts cannot steal map
   await assert.rejects(()=>persistIdentity(db,{...metadata,malId:777},'goyabu','/anime/contract-anime/'));
   assert.equal((await readStoredIdentity(db,'goyabu','/anime/contract-anime'))?.canonicalId,'test:work');
 });
+test('carregar dados persists the explicit metadata and catalog returns it after leaving detail',async()=>{
+  const token=await user();
+  const loaded=parseLoadedProviderMetadata({
+    canonicalTitle:'Contract Anime Definitivo',
+    synopsis:'Sinopse sincronizada',
+    imageUrl:'https://cdn.example.invalid/contract.jpg',
+    backdropUrl:'https://cdn.example.invalid/contract-backdrop.jpg',
+    genres:['Action','Drama'],
+    scoreBasisPoints:975,
+    postType:'anime'
+  });
+  const response=await request('/v1/catalog/provider-data',token,{serverId:'goyabu',reference:'/anime/contract-anime',metadata:loaded},'POST');
+  assert.equal(response.status,200,JSON.stringify(response.body));
+  assert.equal(response.body.identity.canonicalTitle,'Contract Anime Definitivo');
+  assert.equal(response.body.identity.imageUrl,'https://cdn.example.invalid/contract.jpg');
+  const catalog=await request('/v1/servers/goyabu/catalog?q=Contract%20Anime');
+  assert.equal(catalog.status,200,JSON.stringify(catalog.body));
+  assert.equal(catalog.body.items[0].title,'Contract Anime Definitivo');
+  assert.equal(catalog.body.items[0].imageUrl,'https://cdn.example.invalid/contract.jpg');
+  assert.deepEqual(catalog.body.items[0].genres,['Action','Drama']);
+  assert.equal(catalog.body.items[0].scoreBasisPoints,975);
+  const replaced=mergeLoadedMetadata({...metadata,imageUrl:'https://old.invalid/poster.jpg',synopsis:'old'},loaded);
+  assert.equal(replaced.imageUrl,'https://cdn.example.invalid/contract.jpg');
+  assert.equal(replaced.synopsis,'Sinopse sincronizada');
+});
 test('favorite from server 1 opens episodes from server 2, with the same identity',async()=>{
   await persistIdentity(db,metadata,'goyabu','/anime/contract-anime/');
   const token=await user();
@@ -132,7 +158,7 @@ test('catalog enrichment uses only persisted provider/reference links, preserves
   assert.equal(result.body.pageSize,30);
   assert.equal(result.body.hasNextPage,true);
   assert.equal(result.body.source,'provider');
-  assert.equal(result.body.items[0].title,'Item 0');
+  assert.equal(result.body.items[0].title,'Contract Anime');
   assert.equal(result.body.items[0].workSlug,first.slug);
   assert.equal(result.body.items[0].scoreBasisPoints,0);
   assert.equal(result.body.items[0].postType,'filme');

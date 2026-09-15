@@ -29,7 +29,7 @@ import {
   parseMalSeasonSlug,
   parseMalSlug
 } from './mal-client';
-import { resolveProviderIdentity } from './provider-identity';
+import { mergeLoadedMetadata, parseLoadedProviderMetadata, resolveProviderIdentity } from './provider-identity';
 import { ProviderSelectionSchema, ProviderProgressSchema } from '@neko/contracts';
 import { persistIdentity, canonicalReference, enrichProviderCatalog } from './catalog-store';
 import { resolveLibraryWork, saveProviderWork } from './provider-library';
@@ -525,14 +525,17 @@ app.post('/v1/catalog/provider-data', async (c) => {
   if (!reference || reference.length > 1000 || !reference.startsWith('/')) throw new HTTPException(400, { message: 'Referência do anime inválida' });
   try {
     const detail = await getProviderAnime(serverId, reference);
-    const identity = await resolveProviderIdentity(c, {
+    const refreshedIdentity = await resolveProviderIdentity(c, {
       serverId,
       reference: detail.anime.reference,
       title: detail.anime.title,
       fallbackPostType: detail.postType,
       refresh: true
     });
-    // Client metadata cannot rewrite shared MAL/provider ownership.
+    // The button explicitly requests a definitive synchronization. The
+    // browser-provided result is validated and may fill/replace display data,
+    // while persistIdentity still rejects conflicting canonical links.
+    const identity = mergeLoadedMetadata(refreshedIdentity, parseLoadedProviderMetadata(body.metadata));
     if (!identity.imageUrl && !identity.synopsis) throw new HTTPException(503, { message: 'As fontes não retornaram capa ou sinopse. Nenhum dado foi aplicado.' });
     const saved = await persistIdentity(c.env.DB, identity, serverId, detail.anime.reference);
     const enrichedIdentity = saved.identity;
