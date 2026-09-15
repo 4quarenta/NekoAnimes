@@ -47,7 +47,7 @@ export function ProviderRecovery({ serverId, slug, onRetry }: { serverId: string
       </Section>
       <Section title={`Possíveis correspondências em ${data.server.name}`}>
         <p className="neko-recovery-hint">Buscamos automaticamente pelo título e seus nomes alternativos. Toque em um resultado para conferir se é a mesma obra.</p>
-        <div className="neko-recovery-results">{data.matches.map(match => <TextRow key={match.reference} title={match.title} imageUrl={match.imageUrl} showImagePlaceholder meta={`${typeLabel(match.postType)} · ${match.serverName}`} trailing="Conferir ›" onClick={() => setCandidate(match)} />)}</div>
+        <div className="neko-recovery-results">{data.matches.map(match => <TextRow key={match.reference} title={match.title} imageUrl={match.imageUrl} showImagePlaceholder releaseLabel={match.releaseLabel} meta={`${typeLabel(match.postType)} · ${match.serverName}`} trailing="Conferir ›" onClick={() => setCandidate(match)} />)}</div>
         {!data.matches.length ? <p className="neko-recovery-empty">{data.searchFailed ? 'O servidor não respondeu à busca. Isso não significa que a obra não existe nele.' : 'Nenhuma correspondência encontrada neste servidor.'}</p> : null}
         {data.searchFailed && data.matches.length ? <p className="neko-recovery-hint">A busca ficou incompleta; algumas consultas não responderam.</p> : null}
         <button type="button" className="neko-secondary-button" disabled={recovery.isFetching} onClick={() => void recovery.refetch()}>{recovery.isFetching ? 'Atualizando…' : 'Atualizar opções'}</button>

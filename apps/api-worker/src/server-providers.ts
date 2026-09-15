@@ -1,3 +1,5 @@
+import { releaseLabelForTitle, type ReleaseLabel } from '@neko/contracts';
+
 export type ServerResultStatus = 'ok' | 'unavailable' | 'timeout' | 'error';
 
 export type ServerDescriptor = {
@@ -24,6 +26,7 @@ export type ServerAnimeMatch = {
   imageUrl?: string | null;
   scoreBasisPoints?: number | null;
   genres?: string[];
+  releaseLabel?: ReleaseLabel | null;
 };
 
 export type ServerEpisode = {
@@ -62,6 +65,7 @@ export type ServerAnimeDetail = {
     url: string;
     year?: number;
     imageUrl?: string | null;
+    releaseLabel?: ReleaseLabel | null;
   };
   seasons: ServerSeason[];
   fetchedAt: string;
@@ -148,9 +152,10 @@ export async function searchProvider(serverId: string, query: string): Promise<S
   const fallbackReference = provider.fallbackAnimePath(searchQuery);
   try {
     const detail = await getProviderHtml(provider, fallbackReference);
-    const title = provider.cleanTitle(parseH1(detail.html) ?? searchQuery);
+    const rawTitle = parseH1(detail.html) ?? searchQuery;
+    const title = provider.cleanTitle(rawTitle);
     const confidence = scoreTitleMatch(searchQuery, title);
-    return confidence >= 0.45 ? [toAnimeMatch(provider, title, detail.url, confidence)] : [];
+    return confidence >= 0.45 ? [toAnimeMatch(provider, title, detail.url, confidence, undefined, undefined, releaseLabelForTitle(rawTitle))] : [];
   } catch {
     return [];
   }
@@ -174,7 +179,8 @@ export async function browseProvider(serverId: string, options: { letter?: strin
     if (!body.success || !Array.isArray(body.animes)) throw new ProviderError('Catálogo indisponível no servidor','unavailable');
     const items = body.animes.flatMap(item => {
       const reference = typeof item.url === 'string' ? referenceFromHref(provider,item.url) : null;
-      return reference && provider.isAnimeReference(reference) && typeof item.title === 'string' ? [toAnimeMatch(provider,provider.cleanTitle(decodeHtml(item.title)),new URL(reference,provider.baseUrl).toString(),1,typeof item.image === 'string' ? safeProviderImageUrl(provider, item.image) : null,parseProviderRating(item.rating))] : [];
+      const rawTitle = typeof item.title === 'string' ? decodeHtml(item.title) : null;
+      return reference && provider.isAnimeReference(reference) && rawTitle ? [toAnimeMatch(provider,provider.cleanTitle(rawTitle),new URL(reference,provider.baseUrl).toString(),1,typeof item.image === 'string' ? safeProviderImageUrl(provider, item.image) : null,parseProviderRating(item.rating),releaseLabelForTitle(rawTitle))] : [];
     });
     return {items,hasNextPage:Number(body.total_pages)>page};
   }
@@ -237,7 +243,8 @@ export async function getProviderAnime(serverId: string, reference: string): Pro
   const cached = await cache.match(key);
   if (cached) return { ...await cached.json<ServerAnimeDetail>(), server: provider };
   const response = await getProviderHtml(provider, safeReference);
-  const title = provider.cleanTitle(parseH1(response.html) ?? lastPathPart(safeReference) ?? 'Anime');
+  const rawTitle = parseH1(response.html) ?? lastPathPart(safeReference) ?? 'Anime';
+  const title = provider.cleanTitle(rawTitle);
   const imageUrl = extractProviderPageImage(provider, response.html);
   const anchors = parseAnchors(response.html);
   const episodes = [...extractEpisodeCandidates(provider, anchors, 2), ...extractScriptEpisodeCandidates(provider, response.html, 2)];
@@ -263,7 +270,8 @@ export async function getProviderAnime(serverId: string, reference: string): Pro
       reference: referenceFromUrl(provider, response.url),
       url: response.url,
       year: parseYear(pageText(response.html)),
-      ...(imageUrl ? { imageUrl } : {})
+      ...(imageUrl ? { imageUrl } : {}),
+      releaseLabel: releaseLabelForTitle(rawTitle)
     },
     seasons: groupEpisodes(provider, episodes),
     fetchedAt: new Date().toISOString(),
@@ -381,7 +389,7 @@ function extractAnimeMatches(provider: ProviderConfig, query: string, anchors: H
     if (!title || title.length < 2) continue;
     const confidence = scoreTitleMatch(query, title);
     if (confidence < 0.45) continue;
-    const match = toAnimeMatch(provider, title, new URL(reference, provider.baseUrl).toString(), confidence, safeProviderImageUrl(provider, anchor.imageUrl));
+    const match = toAnimeMatch(provider, title, new URL(reference, provider.baseUrl).toString(), confidence, safeProviderImageUrl(provider, anchor.imageUrl), undefined, releaseLabelForTitle(anchor.text));
     const existing = deduped.get(reference);
     if (!existing || match.confidence > existing.confidence) deduped.set(reference, match);
   }
@@ -395,7 +403,7 @@ function extractBrowseMatches(provider: ProviderConfig, anchors: HtmlAnchor[]): 
     if (!reference || !provider.isAnimeReference(reference)) continue;
     const title = provider.cleanTitle(anchor.text);
     if (!title || title.length < 2) continue;
-    const match = toAnimeMatch(provider, title, new URL(reference, provider.baseUrl).toString(), 1, safeProviderImageUrl(provider, anchor.imageUrl));
+    const match = toAnimeMatch(provider, title, new URL(reference, provider.baseUrl).toString(), 1, safeProviderImageUrl(provider, anchor.imageUrl), undefined, releaseLabelForTitle(anchor.text));
     if (!deduped.has(reference)) deduped.set(reference, match);
   }
   return [...deduped.values()].sort((a, b) => a.title.localeCompare(b.title));
@@ -410,7 +418,7 @@ function hasProviderNextPage(provider: ProviderConfig, anchors: HtmlAnchor[], cu
   });
 }
 
-function toAnimeMatch(provider: ProviderConfig, title: string, url: string, confidence: number, imageUrl?: string | null, scoreBasisPoints?: number | null): ServerAnimeMatch {
+function toAnimeMatch(provider: ProviderConfig, title: string, url: string, confidence: number, imageUrl?: string | null, scoreBasisPoints?: number | null, releaseLabel?: ReleaseLabel | null): ServerAnimeMatch {
   return {
     serverId: provider.id,
     serverName: provider.name,
@@ -420,7 +428,8 @@ function toAnimeMatch(provider: ProviderConfig, title: string, url: string, conf
     confidence,
     postType: inferPostType(title, url),
     ...(imageUrl ? { imageUrl } : {}),
-    ...(typeof scoreBasisPoints === 'number' ? { scoreBasisPoints } : {})
+    ...(typeof scoreBasisPoints === 'number' ? { scoreBasisPoints } : {}),
+    releaseLabel: releaseLabel ?? releaseLabelForTitle(title)
   };
 }
 

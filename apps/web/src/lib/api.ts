@@ -1,4 +1,4 @@
-import { AppManifestSchema, normalizeAnimeTitle, sameAnimeTitle, type AppManifest, type ProviderRecovery } from '@neko/contracts';
+import { AppManifestSchema, normalizeAnimeTitle, sameAnimeTitle, type AppManifest, type ProviderRecovery, type ReleaseLabel } from '@neko/contracts';
 import { getAccessToken, clearSession } from './auth';
 import { API_URL } from './config';
 
@@ -44,7 +44,7 @@ export async function fetchManifest(): Promise<AppManifest> {
   return AppManifestSchema.parse(await getJson<unknown>('/v1/app-manifest'));
 }
 
-export type CatalogAnime = { id: string; slug: string; title: string; year: number | null; type: string; status: string; genres: string[]; scoreBasisPoints: number | null; imageUrl?: string | null };
+export type CatalogAnime = { id: string; slug: string; title: string; year: number | null; type: string; status: string; genres: string[]; scoreBasisPoints: number | null; imageUrl?: string | null; releaseLabel?: ReleaseLabel | null };
 export type AnimeSeason = { id: string; animeId: string; number: number; title: string | null; episodesCount: number };
 export type Episode = { id: string; seasonId: string; number: number; title: string | null; durationSeconds: number | null; airedAt: string | null };
 export type AnimeDetail = CatalogAnime & { titleEnglish: string | null; titleRomaji: string | null; titleNative: string | null; synopsis: string | null; externalIds: Array<{ provider: string; externalId: string }>; seasons: AnimeSeason[] };
@@ -57,7 +57,7 @@ export type CatalogGenre = { id: number; name: string; count: number };
 export type ServerCapabilities = { search: boolean; anime: boolean; episodes: boolean; playback: boolean };
 export type ServerDescriptor = { id: string; name: string; baseUrl: string; capabilities: ServerCapabilities };
 export type ProviderPostType = 'anime' | 'filme' | 'manga';
-export type ServerAnimeMatch = { serverId: string; serverName: string; title: string; reference: string; url: string; confidence: number; postType: ProviderPostType; workSlug?: string; imageUrl?: string | null; scoreBasisPoints?: number | null; genres?: string[] };
+export type ServerAnimeMatch = { serverId: string; serverName: string; title: string; reference: string; url: string; confidence: number; postType: ProviderPostType; workSlug?: string; imageUrl?: string | null; scoreBasisPoints?: number | null; genres?: string[]; releaseLabel?: ReleaseLabel | null };
 export type ServerSearchProviderResult = { server: ServerDescriptor; status: 'ok' | 'unavailable' | 'timeout' | 'error'; matches: ServerAnimeMatch[]; error?: 'provider_unavailable' | 'provider_timeout' };
 export type ServerSearchResponse = { query: string; servers: ServerSearchProviderResult[]; fetchedAt: string };
 export type ServerPlaybackSource = { id: string; url: string; playbackUrl?: string; mimeType?: string; label: string; headers: Record<string, string>; isDefault: boolean; kind: 'direct' | 'embed' };
@@ -65,7 +65,7 @@ export type ServerEpisode = { id: string; title: string; number: number; seasonN
 export type ServerSeason = { id: string; number: number; title: string; episodes: ServerEpisode[] };
 export type ProviderIdentity = { canonicalId: string; canonicalTitle: string; malId: number | null; anilistId: number | null; postType: ProviderPostType; status?: string | null; synopsis: string | null; titleEnglish: string | null; titleRomaji: string | null; titleNative: string | null; year: number | null; genres: string[]; scoreBasisPoints: number | null; imageUrl: string | null; backdropUrl: string | null; source: 'myanimelist' | 'anilist' | 'mapping' | 'none' };
 export type RemoteAnimeMetadata = Pick<ProviderIdentity, 'canonicalTitle' | 'malId' | 'anilistId' | 'postType' | 'synopsis' | 'titleEnglish' | 'titleRomaji' | 'titleNative' | 'year' | 'genres' | 'scoreBasisPoints' | 'imageUrl' | 'backdropUrl'>;
-export type ServerAnimeDetail = { workSlug?: string; server: ServerDescriptor; anime: { title: string; reference: string; url: string; year?: number; imageUrl?: string | null }; seasons: ServerSeason[]; postType: ProviderPostType; identity?: ProviderIdentity; fetchedAt: string };
+export type ServerAnimeDetail = { workSlug?: string; server: ServerDescriptor; anime: { title: string; reference: string; url: string; year?: number; imageUrl?: string | null; releaseLabel?: ReleaseLabel | null }; seasons: ServerSeason[]; postType: ProviderPostType; identity?: ProviderIdentity; fetchedAt: string };
 export type ServerResolution = { query: string; season: number; episode: number; servers: Array<{ server: ServerDescriptor; status: 'ok' | 'unavailable' | 'timeout' | 'error'; available: boolean; anime?: ServerAnimeMatch; episode?: ServerEpisode; sources?: ServerPlaybackSource[]; error?: 'provider_unavailable' | 'provider_timeout' }>; fetchedAt: string };
 export type ServerProviderResolution = { query: string; season: number; episodeNumber: number; server: ServerDescriptor; anime: ServerAnimeMatch; episode: ServerEpisode; sources: ServerPlaybackSource[]; fetchedAt: string };
 export type ProviderCatalogResponse = { server: ServerDescriptor; items: ServerAnimeMatch[]; count: number; page: number; pageSize: number; hasNextPage: boolean; source: 'provider'; fetchedAt: string };

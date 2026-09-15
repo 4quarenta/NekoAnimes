@@ -3,6 +3,7 @@ import { NekoNative } from '@neko/bridge-web';
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect } from 'react';
 import { providerImageProxyUrl } from '../lib/api';
+import { releaseLabelForTitle } from '@neko/contracts';
 
 export function AppScreen({ children }: PropsWithChildren) {
   const navigate=useNavigate();
@@ -42,6 +43,7 @@ export function TextRow({
   trailing,
   imageUrl,
   showImagePlaceholder,
+  releaseLabel,
   onClick
 }: {
   title: string;
@@ -49,13 +51,14 @@ export function TextRow({
   trailing?: ReactNode;
   imageUrl?: string | null;
   showImagePlaceholder?: boolean;
+  releaseLabel?: string | null;
   onClick?: () => void;
 }) {
   const content = (
     <>
       {imageUrl ? <PosterImage className="neko-row-image" src={imageUrl} alt={`Capa de ${title}`} /> : showImagePlaceholder ? <span className="neko-row-image neko-row-image-placeholder" aria-hidden="true">✦</span> : null}
       <span className="neko-row-copy">
-        <strong>{title}</strong>
+        <span className="neko-row-title-line"><strong>{title}</strong>{releaseLabel ? <span className="neko-release-badge">{releaseLabel}</span> : null}</span>
         {meta ? <small>{meta}</small> : null}
       </span>
       {trailing ? <span className="neko-row-trailing">{trailing}</span> : null}
@@ -89,6 +92,7 @@ export function AnimeListRow({
   postType,
   scoreBasisPoints,
   genres,
+  releaseLabel,
   onClick
 }: {
   title: string;
@@ -98,6 +102,7 @@ export function AnimeListRow({
   postType?: string | null;
   scoreBasisPoints?: number | null;
   genres?: string[];
+  releaseLabel?: string | null;
   onClick?: () => void;
 }) {
   const rowMeta = [
@@ -106,7 +111,7 @@ export function AnimeListRow({
     formatScore(scoreBasisPoints),
     formatGenres(genres)
   ].filter(Boolean).join(' · ');
-  return <TextRow title={title} meta={rowMeta || undefined} trailing={trailing} imageUrl={imageUrl} showImagePlaceholder onClick={onClick} />;
+  return <TextRow title={title} meta={rowMeta || undefined} trailing={trailing} imageUrl={imageUrl} showImagePlaceholder releaseLabel={releaseLabel ?? releaseLabelForTitle(title)} onClick={onClick} />;
 }
 
 function formatPostType(value?: string | null) {

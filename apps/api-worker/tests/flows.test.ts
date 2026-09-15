@@ -6,7 +6,7 @@ import app from '../src/index';
 import { persistIdentity, readStoredIdentity, fillMetadata, enrichProviderCatalog, CATALOG_METADATA_BATCH_SIZE } from '../src/catalog-store';
 import type { ServerAnimeMatch } from '../src/server-providers';
 import { extractProviderCategories, providerEpisodeId, browseProvider, searchProvider } from '../src/server-providers';
-import { ProviderProgressSchema, sameAnimeTitle } from '@neko/contracts';
+import { ProviderProgressSchema, releaseLabelForTitle, sameAnimeTitle } from '@neko/contracts';
 import { parseLoadedProviderMetadata, mergeLoadedMetadata, resolveProviderIdentity } from '../src/provider-identity';
 import type { ProviderMetadata } from '../src/provider-identity';
 
@@ -58,6 +58,12 @@ test('shared title matching preserves sequel numbers and is not fuzzy',()=>{
   assert.equal(sameAnimeTitle('Contract Anime Dublado','Contract Anime'),true);
   assert.equal(sameAnimeTitle('Mob Psycho 100','Mob Psycho'),false);
   assert.equal(sameAnimeTitle('Contract Anime II','Contract Anime'),false);
+});
+
+test('release labels stay visible while identity matching ignores them',()=>{
+  assert.equal(releaseLabelForTitle('Beyblade - Dublado'),'Dublado');
+  assert.equal(releaseLabelForTitle('Beyblade Legendado'),'Legendado');
+  assert.equal(releaseLabelForTitle('Beyblade'),null);
 });
 
 test('provider search removes release labels before requesting the provider',async()=>{

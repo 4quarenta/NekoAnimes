@@ -14,6 +14,7 @@ export const ConfirmProviderLinkSchema = ProviderSelectionSchema.extend({
 export type ProviderWorkOption = {
   serverId: string; serverName: string; reference: string; title: string;
   imageUrl: string | null; postType: 'anime' | 'filme' | 'manga'; year: number | null;
+  releaseLabel?: ReleaseLabel | null;
 };
 export type ProviderRecovery = {
   work: { slug: string; title: string; imageUrl: string | null; malId: number | null; year: number | null; postType: 'anime' | 'filme' | 'manga' };
@@ -39,4 +40,14 @@ export function normalizeAnimeTitle(value: string): string {
 }
 export function sameAnimeTitle(left: string, right: string) {
   return Boolean(normalizeAnimeTitle(left)) && normalizeAnimeTitle(left) === normalizeAnimeTitle(right);
+}
+
+// Audio/release variants are presentation metadata, not part of the canonical
+// identity used to link the same work across providers.
+export type ReleaseLabel = 'Dublado' | 'Legendado';
+export function releaseLabelForTitle(value: string | null | undefined): ReleaseLabel | null {
+  if (!value) return null;
+  if (/\bdublad[oa]\b/i.test(value)) return 'Dublado';
+  if (/\blegendad[oa]\b/i.test(value)) return 'Legendado';
+  return null;
 }

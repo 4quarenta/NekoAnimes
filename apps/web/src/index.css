@@ -59,3 +59,6 @@
 .neko-match-actions .neko-primary-button { background:#6336a6; }
 .neko-match-actions .neko-secondary-button { background:#2b2036; }
 @media(max-width:360px) { .neko-recovery-switch { align-items:flex-start; flex-direction:column; } .neko-match-dialog { padding:16px; } }
+.neko-row-title-line { display:flex; align-items:center; gap:7px; min-width:0; }
+.neko-row-title-line strong { min-width:0; }
+.neko-release-badge { display:inline-flex; flex:none; align-items:center; padding:4px 7px; border:1px solid #7755c6; border-radius:999px; background:#2c1d50; color:#d9ccff; font-size:10px; font-weight:800; line-height:1; text-transform:uppercase; letter-spacing:.04em; }

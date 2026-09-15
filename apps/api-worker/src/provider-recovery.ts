@@ -25,6 +25,7 @@ export async function discoverProviderRecovery(db: D1Database, serverId: string,
       if (canonicalReference(detail.anime.reference) !== canonicalReference(link.external_id)) throw new Error('Provider redirected to another item');
       return { serverId: detail.server.id, serverName: detail.server.name, reference: detail.anime.reference,
         title: detail.anime.title, imageUrl: identity.imageUrl ?? detail.anime.imageUrl ?? null,
+        releaseLabel: detail.anime.releaseLabel ?? null,
         postType: identity.postType, year: identity.year } satisfies ProviderWorkOption;
     })),
     Promise.allSettled(titles.map(title => searchProvider(serverId, title)))
@@ -34,7 +35,8 @@ export async function discoverProviderRecovery(db: D1Database, serverId: string,
     if (result.status !== 'fulfilled') continue;
     for (const match of result.value) matches.set(canonicalReference(match.reference), {
       serverId, serverName: server.name, reference: match.reference, title: match.title,
-      imageUrl: match.imageUrl ?? null, postType: match.postType, year: null
+      imageUrl: match.imageUrl ?? null, releaseLabel: match.releaseLabel ?? null,
+      postType: match.postType, year: null
     });
   }
   const available = new Map<string, ProviderWorkOption>();

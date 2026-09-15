@@ -10,6 +10,7 @@ import { AppScreen, Eyebrow, PosterImage, ScreenHeader, Section } from '../compo
 import { auth, currentUserId, type AuthSession } from '../lib/auth';
 import { PlaybackFeedback } from '../components/PlaybackFeedback';
 import { ProviderRecovery } from '../components/ProviderRecovery';
+import { releaseLabelForTitle } from '@neko/contracts';
 
 type EpisodeOrder = 'asc' | 'desc';
 
@@ -268,7 +269,7 @@ export function AnimeDetailPage() {
         <ScreenHeader title={currentItem.title} subtitle={currentItem.titleEnglish ?? currentItem.titleRomaji ?? undefined} />
         {currentItem.imageUrl ? <PosterImage className="neko-anime-poster" src={currentItem.imageUrl} alt={`Capa de ${currentItem.title}`} /> : null}
         {providerAnime.data?.identity ? <div className="neko-external-meta"><span>MAL {providerAnime.data.identity.malId ?? '—'}</span><span>AniList {providerAnime.data.identity.anilistId ?? '—'}</span></div> : null}
-        <div className="neko-chips"><span>{currentItem.status}</span>{currentItem.genres.slice(0, 4).map((genre) => <span key={genre}>{genre}</span>)}{currentItem.scoreBasisPoints ? <span>★ {(currentItem.scoreBasisPoints / 100).toFixed(2)}</span> : null}</div>
+        <div className="neko-chips"><span>{currentItem.status}</span>{currentItem.releaseLabel ? <span className="neko-release-badge">{currentItem.releaseLabel}</span> : null}{currentItem.genres.slice(0, 4).map((genre) => <span key={genre}>{genre}</span>)}{currentItem.scoreBasisPoints ? <span>★ {(currentItem.scoreBasisPoints / 100).toFixed(2)}</span> : null}</div>
         <div className="neko-anime-actions">
           <button className="neko-primary-button neko-library-button" type="button" disabled={libraryState === 'saving'} onClick={() => void addToLibrary()}>{libraryState === 'saving' ? 'Adicionando...' : inLibrary ? '✓ Remover da minha lista' : '+ Adicionar à minha lista'}</button>
           <button className="neko-secondary-button neko-library-button" type="button" disabled={!providerMode || dataState === 'loading'} onClick={() => void loadAnimeData()}>{dataState === 'loading' ? 'Carregando...' : dataState === 'loaded' ? '✓ Dados salvos' : 'Carregar dados'}</button>
@@ -297,7 +298,7 @@ function normalizeProviderAnime(detail: Awaited<ReturnType<typeof fetchServerAni
     if (value !== null && value !== undefined && value !== '' && (!Array.isArray(value) || value.length)) Object.assign(metadata,{[key]:value});
   }
   const id = identity?.canonicalId ?? (metadata.malId ? `mal:${metadata.malId}` : metadata.anilistId ? `anilist:${metadata.anilistId}` : `provider:${detail.server.id}:${detail.anime.reference}`);
-  return { id, slug: detail.workSlug ?? slug, title: metadata.canonicalTitle ?? detail.anime.title, titleEnglish: metadata.titleEnglish ?? null, titleRomaji: metadata.titleRomaji ?? null, titleNative: metadata.titleNative ?? null, synopsis: metadata.synopsis ?? null, type: metadata.postType ?? detail.postType, status: 'disponível', year: metadata.year ?? detail.anime.year ?? null, genres: metadata.genres ?? [], scoreBasisPoints: metadata.scoreBasisPoints ?? null, imageUrl: metadata.imageUrl ?? detail.anime.imageUrl ?? null, externalIds: [{ provider: detail.server.id, externalId: detail.anime.reference }, ...(metadata.malId ? [{ provider: 'myanimelist', externalId: String(metadata.malId) }] : []), ...(metadata.anilistId ? [{ provider: 'anilist', externalId: String(metadata.anilistId) }] : [])], seasons: detail.seasons.map((season) => ({ id: season.id, animeId: id, number: season.number, title: season.title, episodesCount: season.episodes.length })) };
+  return { id, slug: detail.workSlug ?? slug, title: metadata.canonicalTitle ?? detail.anime.title, titleEnglish: metadata.titleEnglish ?? null, titleRomaji: metadata.titleRomaji ?? null, titleNative: metadata.titleNative ?? null, synopsis: metadata.synopsis ?? null, type: metadata.postType ?? detail.postType, status: 'disponível', year: metadata.year ?? detail.anime.year ?? null, genres: metadata.genres ?? [], scoreBasisPoints: metadata.scoreBasisPoints ?? null, imageUrl: metadata.imageUrl ?? detail.anime.imageUrl ?? null, releaseLabel: detail.anime.releaseLabel ?? releaseLabelForTitle(detail.anime.title), externalIds: [{ provider: detail.server.id, externalId: detail.anime.reference }, ...(metadata.malId ? [{ provider: 'myanimelist', externalId: String(metadata.malId) }] : []), ...(metadata.anilistId ? [{ provider: 'anilist', externalId: String(metadata.anilistId) }] : [])], seasons: detail.seasons.map((season) => ({ id: season.id, animeId: id, number: season.number, title: season.title, episodesCount: season.episodes.length })) };
 }
 
 function episodeNumber(episode: Episode | ServerEpisode): number { return episode.number; }
