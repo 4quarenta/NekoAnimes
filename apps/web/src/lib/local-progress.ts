@@ -7,6 +7,10 @@ export type LocalContinueWatching = {
   animeId: string;
   slug: string;
   title: string;
+  releaseLabel?: 'Dublado' | 'Legendado' | null;
+  type?: string | null;
+  genres?: string[];
+  scoreBasisPoints?: number | null;
   imageUrl: string | null;
   seasonNumber: number;
   episodeId: string;

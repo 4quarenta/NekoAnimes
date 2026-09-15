@@ -50,7 +50,7 @@ export type Episode = { id: string; seasonId: string; number: number; title: str
 export type AnimeDetail = CatalogAnime & { titleEnglish: string | null; titleRomaji: string | null; titleNative: string | null; synopsis: string | null; externalIds: Array<{ provider: string; externalId: string }>; seasons: AnimeSeason[] };
 export type NewsArticle = { id: string; slug: string; title: string; summary: string | null; category: string; sourceName: string; sourceUrl: string; imageUrl: string | null; imageAllowed: boolean; publishedAt: string };
 export type LibraryItem = { animeId: string; slug: string; title: string; year: number | null; type?: string | null; genres: string[]; scoreBasisPoints?: number | null; status: string; imageUrl?: string | null; updatedAt: string };
-export type ContinueWatchingItem = { animeId: string; slug: string; title: string; seasonNumber: number; episodeId: string; episodeNumber: number; episodeTitle: string | null; positionSeconds: number; durationSeconds: number; completed: boolean; type?: string | null; genres?: string[]; scoreBasisPoints?: number | null; imageUrl?: string | null; updatedAt: string };
+export type ContinueWatchingItem = { animeId: string; slug: string; title: string; seasonNumber: number; episodeId: string; episodeNumber: number; episodeTitle: string | null; positionSeconds: number; durationSeconds: number; completed: boolean; type?: string | null; genres?: string[]; scoreBasisPoints?: number | null; imageUrl?: string | null; releaseLabel?: ReleaseLabel | null; updatedAt: string };
 export type SavedNewsItem = { id: string; slug: string; title: string; category: string; sourceName: string; publishedAt: string };
 export type CatalogGenre = { id: number; name: string; count: number };
 
