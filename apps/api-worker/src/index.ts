@@ -30,7 +30,7 @@ import {
   parseMalSlug
 } from './mal-client';
 import { mergeLoadedMetadata, parseLoadedProviderMetadata, resolveProviderIdentity } from './provider-identity';
-import { ProviderSelectionSchema, ProviderProgressSchema, ConfirmProviderLinkSchema } from '@neko/contracts';
+import { ProviderSelectionSchema, ProviderProgressSchema, ConfirmProviderLinkSchema, episodeOrdinal, seasonEpisodeAtOrdinal } from '@neko/contracts';
 import { confirmProviderLink, discoverProviderRecovery } from './provider-recovery';
 import { persistIdentity, canonicalReference, enrichProviderCatalog } from './catalog-store';
 import { resolveLibraryWork, saveProviderWork } from './provider-library';
@@ -661,18 +661,42 @@ app.put('/v1/me/provider-progress', async (c) => {
     const episode = saved.detail.seasons.find(s => s.number === data.seasonNumber)?.episodes.find(e => e.number === data.episodeNumber && canonicalReference(e.reference) === canonicalReference(data.episodeReference));
     if (!episode) throw new HTTPException(409, { message: 'O episódio não pertence a esta obra/temporada no servidor.' });
     const animeId = saved.identity.canonicalId;
-    const oldSeason = await c.env.DB.prepare('SELECT id FROM anime_seasons WHERE anime_id=? AND number=?').bind(animeId, data.seasonNumber).first<{id:string}>();
-    const seasonId = oldSeason?.id ?? `${animeId}:s${data.seasonNumber}`;
-    const oldEpisode = await c.env.DB.prepare('SELECT id FROM episodes WHERE season_id=? AND number=?').bind(seasonId, data.episodeNumber).first<{id:string}>();
-    const episodeId = oldEpisode?.id ?? `${seasonId}:e${data.episodeNumber}`;
+    const sourceOrdinal = episodeOrdinal(saved.detail.seasons, data.seasonNumber, data.episodeNumber, data.episodeReference);
+    const sourceTotal = saved.detail.seasons.reduce((total, season) => total + Math.max(season.episodes.length, 0), 0);
+    let canonicalSeasons = await all<Row>(c.env.DB, 'SELECT id, number, title, episodes_count FROM anime_seasons WHERE anime_id=? ORDER BY number', animeId);
+    const canonicalTotal = canonicalSeasons.reduce((total, season) => total + Math.max(Number(season.episodes_count ?? 0), 0), 0);
+
+    // The first provider establishes a canonical season shape. If old data only
+    // contains a partial shape, enrich it once the provider exposes more episodes.
+    if (!canonicalSeasons.length || (sourceTotal > canonicalTotal && sourceOrdinal !== null)) {
+      const seasonStatements = saved.detail.seasons.map((season) => c.env.DB.prepare(
+        `INSERT INTO anime_seasons(id,anime_id,number,title,episodes_count) VALUES(?,?,?,?,?)
+         ON CONFLICT(anime_id,number) DO UPDATE SET episodes_count = CASE
+           WHEN anime_seasons.episodes_count < excluded.episodes_count THEN excluded.episodes_count
+           ELSE anime_seasons.episodes_count END`
+      ).bind(`${animeId}:s${season.number}`, animeId, season.number, season.title || `Temporada ${season.number}`, season.episodes.length));
+      if (seasonStatements.length) await c.env.DB.batch(seasonStatements);
+      canonicalSeasons = await all<Row>(c.env.DB, 'SELECT id, number, title, episodes_count FROM anime_seasons WHERE anime_id=? ORDER BY number', animeId);
+    }
+
+    const mapped = sourceOrdinal === null ? null : seasonEpisodeAtOrdinal(canonicalSeasons.map((row) => ({
+      number: Number(row.number),
+      episodesCount: Number(row.episodes_count ?? 0)
+    })), sourceOrdinal);
+    const targetSeasonNumber = mapped?.season.number ?? data.seasonNumber;
+    const targetEpisodeNumber = mapped?.episodeNumber ?? data.episodeNumber;
+    const targetSeason = canonicalSeasons.find((season) => Number(season.number) === targetSeasonNumber);
+    const seasonId = String(targetSeason?.id ?? `${animeId}:s${targetSeasonNumber}`);
+    const oldEpisode = await c.env.DB.prepare('SELECT id FROM episodes WHERE season_id=? AND number=?').bind(seasonId, targetEpisodeNumber).first<{id:string}>();
+    const episodeId = oldEpisode?.id ?? `${seasonId}:e${targetEpisodeNumber}`;
     const position = Math.floor(data.positionSeconds), duration = Math.floor(data.durationSeconds);
     const completed = duration > 0 && position / duration >= .9 ? 1 : 0;
     await c.env.DB.batch([
-      c.env.DB.prepare('INSERT INTO anime_seasons(id,anime_id,number,title,episodes_count) VALUES(?,?,?,?,?) ON CONFLICT(anime_id,number) DO NOTHING').bind(seasonId,animeId,data.seasonNumber,`Temporada ${data.seasonNumber}`,saved.detail.seasons.find(s => s.number === data.seasonNumber)!.episodes.length),
-      c.env.DB.prepare('INSERT INTO episodes(id,season_id,number,title) VALUES(?,?,?,?) ON CONFLICT(season_id,number) DO NOTHING').bind(episodeId,seasonId,data.episodeNumber,episode.title),
+      c.env.DB.prepare('INSERT INTO anime_seasons(id,anime_id,number,title,episodes_count) VALUES(?,?,?,?,?) ON CONFLICT(anime_id,number) DO NOTHING').bind(seasonId,animeId,targetSeasonNumber,`Temporada ${targetSeasonNumber}`,saved.detail.seasons.find(s => s.number === targetSeasonNumber)?.episodes.length ?? targetEpisodeNumber),
+      c.env.DB.prepare('INSERT INTO episodes(id,season_id,number,title) VALUES(?,?,?,?) ON CONFLICT(season_id,number) DO NOTHING').bind(episodeId,seasonId,targetEpisodeNumber,episode.title),
       c.env.DB.prepare(`INSERT INTO user_episode_progress(id,user_id,episode_id,position_seconds,duration_seconds,completed) VALUES(?,?,?,?,?,?) ON CONFLICT(user_id,episode_id) DO UPDATE SET position_seconds=excluded.position_seconds,duration_seconds=excluded.duration_seconds,completed=excluded.completed,updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')`).bind(crypto.randomUUID(),c.get('userId'),episodeId,position,duration,completed)
     ]);
-    return c.json({ ok: true, animeId, slug: saved.slug, episodeId });
+    return c.json({ ok: true, animeId, slug: saved.slug, episodeId, seasonNumber: targetSeasonNumber, episodeNumber: targetEpisodeNumber, episodeOrdinal: sourceOrdinal });
   } catch (error) { throw error instanceof HTTPException ? error : providerHttpException(error); }
 });
 app.get('/v1/me/library', async (c) => {
@@ -688,8 +712,8 @@ app.put('/v1/me/library/:animeId', async (c) => {
 });
 app.delete('/v1/me/library/:animeId', async (c) => { await c.env.DB.prepare('DELETE FROM user_library WHERE user_id = ? AND anime_id = ?').bind(c.get('userId'), c.req.param('animeId')).run(); return c.json({ ok: true }); });
 app.get('/v1/me/continue-watching', async (c) => {
-  const rows = await all<Row>(c.env.DB, `SELECT * FROM (SELECT ROW_NUMBER() OVER (PARTITION BY anime.id ORDER BY julianday(user_episode_progress.updated_at) DESC, user_episode_progress.rowid DESC) AS rn, anime.id AS anime_id, anime.slug, anime.title, anime.type, anime.genres, anime.score_basis_points, anime.image_url, anime_seasons.number AS season_number, episodes.id AS episode_id, episodes.number AS episode_number, episodes.title AS episode_title, user_episode_progress.position_seconds, user_episode_progress.duration_seconds, user_episode_progress.completed, user_episode_progress.updated_at FROM user_episode_progress INNER JOIN episodes ON episodes.id = user_episode_progress.episode_id INNER JOIN anime_seasons ON anime_seasons.id = episodes.season_id INNER JOIN anime ON anime.id = anime_seasons.anime_id WHERE user_episode_progress.user_id = ?  ) WHERE rn=1 AND completed=0 ORDER BY julianday(updated_at) DESC LIMIT 20`, c.get('userId'));
-  return c.json(rows.map((row) => ({ animeId: row.anime_id, slug: row.slug, title: row.title, seasonNumber: row.season_number, episodeId: row.episode_id, episodeNumber: row.episode_number, episodeTitle: row.episode_title, positionSeconds: row.position_seconds, durationSeconds: row.duration_seconds, completed: Boolean(row.completed), type: row.type, genres: parseArray(row.genres), scoreBasisPoints: row.score_basis_points, imageUrl: typeof row.image_url === 'string' ? row.image_url : null, updatedAt: row.updated_at })));
+  const rows = await all<Row>(c.env.DB, `SELECT * FROM (SELECT ROW_NUMBER() OVER (PARTITION BY anime.id ORDER BY julianday(user_episode_progress.updated_at) DESC, user_episode_progress.rowid DESC) AS rn, anime.id AS anime_id, anime.slug, anime.title, anime.type, anime.genres, anime.score_basis_points, anime.image_url, anime_seasons.number AS season_number, episodes.id AS episode_id, episodes.number AS episode_number, episodes.title AS episode_title, COALESCE((SELECT SUM(previous_season.episodes_count) FROM anime_seasons previous_season WHERE previous_season.anime_id = anime.id AND previous_season.number < anime_seasons.number), 0) + episodes.number AS episode_ordinal, user_episode_progress.position_seconds, user_episode_progress.duration_seconds, user_episode_progress.completed, user_episode_progress.updated_at FROM user_episode_progress INNER JOIN episodes ON episodes.id = user_episode_progress.episode_id INNER JOIN anime_seasons ON anime_seasons.id = episodes.season_id INNER JOIN anime ON anime.id = anime_seasons.anime_id WHERE user_episode_progress.user_id = ?  ) WHERE rn=1 AND completed=0 ORDER BY julianday(updated_at) DESC LIMIT 20`, c.get('userId'));
+  return c.json(rows.map((row) => ({ animeId: row.anime_id, slug: row.slug, title: row.title, seasonNumber: row.season_number, episodeId: row.episode_id, episodeNumber: row.episode_number, episodeOrdinal: Number(row.episode_ordinal ?? 0) || undefined, episodeTitle: row.episode_title, positionSeconds: row.position_seconds, durationSeconds: row.duration_seconds, completed: Boolean(row.completed), type: row.type, genres: parseArray(row.genres), scoreBasisPoints: row.score_basis_points, imageUrl: typeof row.image_url === 'string' ? row.image_url : null, updatedAt: row.updated_at })));
 });
 app.put('/v1/me/progress/:episodeId', async (c) => {
   const body = await c.req.json<{ positionSeconds: number; durationSeconds: number }>(); const positionSeconds = Math.max(0, Math.floor(body.positionSeconds)); const durationSeconds = Math.max(0, Math.floor(body.durationSeconds));

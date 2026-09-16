@@ -15,6 +15,7 @@ export type LocalContinueWatching = {
   seasonNumber: number;
   episodeId: string;
   episodeNumber: number;
+  episodeOrdinal?: number;
   episodeTitle: string | null;
   positionSeconds: number;
   durationSeconds: number;

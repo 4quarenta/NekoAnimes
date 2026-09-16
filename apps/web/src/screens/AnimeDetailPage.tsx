@@ -11,7 +11,7 @@ import { AppScreen, Eyebrow, LoadingState, PosterImage, ScreenHeader, Section } 
 import { auth, currentUserId, type AuthSession } from '../lib/auth';
 import { PlaybackFeedback } from '../components/PlaybackFeedback';
 import { ProviderRecovery } from '../components/ProviderRecovery';
-import { releaseLabelForTitle } from '@neko/contracts';
+import { episodeAtOrdinal, episodeOrdinal, releaseLabelForTitle } from '@neko/contracts';
 
 type EpisodeOrder = 'asc' | 'desc';
 
@@ -103,6 +103,7 @@ export function AnimeDetailPage() {
       seasonNumber: resolution.season,
       episodeId: resolution.episode.id,
       episodeNumber: resolution.episode.number,
+      episodeOrdinal: episodeOrdinal(providerAnime.data?.seasons ?? [], resolution.season, resolution.episode.number, resolution.episode.reference) ?? undefined,
       episodeTitle: resolution.episode.title,
       providerId: providerId ?? undefined,
       animeReference: providerAnime.data?.anime.reference,
@@ -110,6 +111,8 @@ export function AnimeDetailPage() {
     });
     const episodeList = providerAnime.data?.seasons.find((season) => season.number === resolution.season)?.episodes ?? [];
     const episodeIndex = episodeList.findIndex((episode) => episode.id === resolution.episode.id || episode.number === resolution.episode.number);
+    const ordinal = episodeOrdinal(providerAnime.data?.seasons ?? [], resolution.season, resolution.episode.number, resolution.episode.reference);
+    const totalProviderEpisodes = (providerAnime.data?.seasons ?? []).reduce((total, season) => total + season.episodes.length, 0);
     const opened = NekoNative.player.open(
       resolution.episode.id,
       { ...source, url: source.playbackUrl ?? source.url },
@@ -117,8 +120,8 @@ export function AnimeDetailPage() {
       {
         animeTitle: item.title,
         episodeNumber: resolution.episode.number,
-        hasPreviousEpisode: episodeIndex > 0,
-        hasNextEpisode: episodeIndex >= 0 && episodeIndex < episodeList.length - 1
+        hasPreviousEpisode: ordinal ? ordinal > 1 : episodeIndex > 0,
+        hasNextEpisode: ordinal ? ordinal < totalProviderEpisodes : episodeIndex >= 0 && episodeIndex < episodeList.length - 1
       }
     );
     if (opened) {
@@ -130,11 +133,9 @@ export function AnimeDetailPage() {
 
   useEffect(() => NekoNative.subscribe(event => {
     if (event.type !== 'player.navigate' || !activeEpisode || !item || !providerMode) return;
-    const season = providerAnime.data?.seasons.find(value => value.number === activeEpisode.seasonNumber);
-    const episodes = [...(season?.episodes ?? [])].sort((left, right) => episodeNumber(left) - episodeNumber(right));
-    const index = episodes.findIndex(episode => episode.id === activeEpisode.id || episodeNumber(episode) === activeEpisode.number);
-    const target = episodes[index + (event.payload.direction === 'next' ? 1 : -1)];
-    if (target && 'reference' in target) openEpisode(target);
+    const ordinal = episodeOrdinal(providerAnime.data?.seasons ?? [], activeEpisode.seasonNumber, activeEpisode.number, activeEpisode.reference);
+    const target = ordinal ? episodeAtOrdinal(providerAnime.data?.seasons ?? [], ordinal + (event.payload.direction === 'next' ? 1 : -1))?.episode : null;
+    if (target) openEpisode(target);
   }), [activeEpisode, item, providerAnime.data, providerMode]);
 
   useEffect(() => {
@@ -172,8 +173,11 @@ export function AnimeDetailPage() {
 
   function resumeWatching() {
     if (!continueWatching || !providerMode || !providerAnime.data) return;
-    const targetSeason = providerAnime.data.seasons.find((season) => season.number === continueWatching.seasonNumber);
-    const targetEpisode = targetSeason?.episodes.find((episode) => episode.id === continueWatching.episodeId || episode.number === continueWatching.episodeNumber);
+    const ordinalTarget = continueWatching.episodeOrdinal
+      ? episodeAtOrdinal(providerAnime.data.seasons, continueWatching.episodeOrdinal)
+      : null;
+    const targetSeason = ordinalTarget?.season ?? providerAnime.data.seasons.find((season) => season.number === continueWatching.seasonNumber);
+    const targetEpisode = ordinalTarget?.episode ?? targetSeason?.episodes.find((episode) => episode.id === continueWatching.episodeId || episode.number === continueWatching.episodeNumber);
     if (!targetSeason || !targetEpisode) {
       setPlaybackError('O episódio salvo não está mais disponível neste provider.');
       return;

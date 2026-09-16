@@ -6,7 +6,7 @@ import app from '../src/index';
 import { persistIdentity, readStoredIdentity, fillMetadata, enrichProviderCatalog, CATALOG_METADATA_BATCH_SIZE } from '../src/catalog-store';
 import type { ServerAnimeMatch } from '../src/server-providers';
 import { extractProviderCategories, providerEpisodeId, browseProvider, searchProvider } from '../src/server-providers';
-import { ProviderProgressSchema, releaseLabelForTitle, sameAnimeTitle } from '@neko/contracts';
+import { ProviderProgressSchema, episodeAtOrdinal, episodeOrdinal, releaseLabelForTitle, sameAnimeTitle } from '@neko/contracts';
 import { parseLoadedProviderMetadata, mergeLoadedMetadata, resolveProviderIdentity } from '../src/provider-identity';
 import type { ProviderMetadata } from '../src/provider-identity';
 
@@ -15,6 +15,17 @@ let db: D1Database;
 let upstream: string[];
 let metadataQueries: number[];
 const metadata: ProviderMetadata = {canonicalId:'test:work',canonicalTitle:'Contract Anime',malId:912345,anilistId:null,postType:'anime',status:'finished',synopsis:'Saved synopsis',titleEnglish:null,titleRomaji:'Contract Anime',titleNative:null,year:2025,genres:['Action'],scoreBasisPoints:850,imageUrl:'https://example.com/poster.jpg',backdropUrl:null,source:'mapping'};
+
+test('episode continuity maps equivalent season layouts by ordinal position',()=>{
+  const split=[1,2].map(number=>({number,episodes:Array.from({length:12},(_,index)=>({number:index+1,reference:`/s${number}/e${index+1}`}))}));
+  const flattened=[{number:1,episodes:Array.from({length:24},(_,index)=>({number:index+1,reference:`/e${index+1}`}))}];
+  const ordinal=episodeOrdinal(split,2,1,'/s2/e1');
+  assert.equal(ordinal,13);
+  assert.equal(episodeAtOrdinal(flattened,ordinal)?.episode.number,13);
+  assert.equal(episodeAtOrdinal(split,13)?.season.number,2);
+  assert.equal(episodeAtOrdinal(split,13)?.episode.number,1);
+});
+
 beforeEach(()=>{
   sqlite?.close();
   sqlite=new DatabaseSync(':memory:');
