@@ -7,7 +7,7 @@ type AdsConfig = {
   engine: 'max' | 'admob' | 'levelplay';
   banner: { enabled: boolean };
   appOpen: { enabled: boolean; minIntervalMinutes: number; skipFirstOpens: number };
-  interstitial: { enabled: boolean; minIntervalMinutes: number; maxPerSession: number };
+  interstitial: { enabled: boolean; minIntervalMinutes: number; maxPerSession: number; pageTransitionFrequency: number; showOnEpisodeStart: boolean };
 };
 
 type AppConfig = {
@@ -41,26 +41,63 @@ const control: React.CSSProperties = {
 
 export default function ConfigurationPage() {
   const [config, setConfig] = useState<AppConfig | null>(null);
+  const [adminKey, setAdminKey] = useState('');
+  const [keyInput, setKeyInput] = useState('');
   const [message, setMessage] = useState('Carregando...');
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    const storedKey = window.sessionStorage.getItem('neko-admin-key');
+    if (storedKey) setAdminKey(storedKey);
+    else setMessage('Informe a chave administrativa para acessar este painel.');
+  }, []);
+
   const load = useCallback(async () => {
+    if (!adminKey) return;
     setMessage('Carregando...');
-    const response = await fetch('/api/app-config', { cache: 'no-store' });
+    const authorization = `Basic ${window.btoa(`admin:${adminKey}`)}`;
+    const response = await fetch('/api/app-config', { cache: 'no-store', headers: { Authorization: authorization } });
     const body = await response.json();
 
     if (!response.ok) {
+      if (response.status === 401) {
+        window.sessionStorage.removeItem('neko-admin-key');
+        setAdminKey('');
+        setKeyInput('');
+        setConfig(null);
+        setMessage('Chave administrativa inválida.');
+        return;
+      }
       setMessage(body.message ?? 'Falha ao carregar configuração');
       return;
     }
 
     setConfig(body);
     setMessage('');
-  }, []);
+  }, [adminKey]);
 
   useEffect(() => {
-    void load();
+    if (adminKey) void load();
   }, [load]);
+
+  function authenticate() {
+    const normalized = keyInput.trim();
+    if (!normalized) {
+      setMessage('Informe a chave administrativa.');
+      return;
+    }
+    window.sessionStorage.setItem('neko-admin-key', normalized);
+    setConfig(null);
+    setAdminKey(normalized);
+  }
+
+  function logout() {
+    window.sessionStorage.removeItem('neko-admin-key');
+    setAdminKey('');
+    setConfig(null);
+    setKeyInput('');
+    setMessage('Informe a chave administrativa para acessar este painel.');
+  }
 
   async function save() {
     if (!config) return;
@@ -70,7 +107,7 @@ export default function ConfigurationPage() {
     try {
       const response = await fetch('/api/app-config', {
         method: 'PUT',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', Authorization: `Basic ${window.btoa(`admin:${adminKey}`)}` },
         body: JSON.stringify({ mode: config.mode, ads: config.ads })
       });
       const body = await response.json();
@@ -87,6 +124,24 @@ export default function ConfigurationPage() {
     }
   }
 
+  if (!adminKey) {
+    return (
+      <main style={{ maxWidth: 520, margin: '0 auto', padding: '40px 20px' }}>
+        <p style={{ color: '#a78bfa', fontSize: 12, fontWeight: 700, letterSpacing: '0.18em' }}>NEKO ADMIN</p>
+        <h1>Entrar no painel</h1>
+        <p style={{ color: '#a1a1aa' }}>A chave é usada somente nesta sessão e não faz parte do código público.</p>
+        <form onSubmit={(event) => { event.preventDefault(); authenticate(); }} style={{ display: 'grid', gap: 12, marginTop: 24 }}>
+          <label style={field}>
+            Chave administrativa
+            <input type="password" value={keyInput} onChange={(event) => setKeyInput(event.target.value)} style={control} autoComplete="current-password" />
+          </label>
+          <button type="submit" style={{ ...control, cursor: 'pointer', background: '#7c3aed', borderColor: '#7c3aed', fontWeight: 700 }}>Acessar</button>
+        </form>
+        <p style={{ color: '#a1a1aa' }}>{message}</p>
+      </main>
+    );
+  }
+
   if (!config) {
     return (
       <main style={{ maxWidth: 900, margin: '0 auto', padding: '40px 20px' }}>
@@ -100,6 +155,7 @@ export default function ConfigurationPage() {
   return (
     <main style={{ maxWidth: 900, margin: '0 auto', padding: '40px 20px 80px' }}>
       <a href="/" style={{ color: '#a78bfa', textDecoration: 'none' }}>← Admin</a>
+      <button type="button" onClick={logout} style={{ ...control, float: 'right', minHeight: 34, cursor: 'pointer' }}>Sair</button>
       <h1 style={{ marginBottom: 4 }}>Configuração do aplicativo</h1>
       <p style={{ marginTop: 0, color: '#a1a1aa' }}>
         Versão {config.version} · atualizada em {new Date(config.updatedAt).toLocaleString('pt-BR')}
@@ -217,7 +273,20 @@ export default function ConfigurationPage() {
               value={config.ads.interstitial.maxPerSession}
               onChange={(value) => setConfig({ ...config, ads: { ...config.ads, interstitial: { ...config.ads.interstitial, maxPerSession: value } } })}
             />
+            <NumberField
+              label="A cada quantas transições"
+              value={config.ads.interstitial.pageTransitionFrequency}
+              onChange={(value) => setConfig({ ...config, ads: { ...config.ads, interstitial: { ...config.ads.interstitial, pageTransitionFrequency: value } } })}
+            />
           </div>
+          <label style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 18 }}>
+            <input
+              type="checkbox"
+              checked={config.ads.interstitial.showOnEpisodeStart}
+              onChange={(event) => setConfig({ ...config, ads: { ...config.ads, interstitial: { ...config.ads.interstitial, showOnEpisodeStart: event.target.checked } } })}
+            />
+            Exibir ao iniciar episódio
+          </label>
         </section>
       </div>
 

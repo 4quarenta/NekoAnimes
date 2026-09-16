@@ -38,6 +38,13 @@ import { resolveLibraryWork, saveProviderWork } from './provider-library';
 type Variables = { userId: string; userEmail?: string; tokenHash?: string };
 type App = Hono<{ Bindings: Env; Variables: Variables }>;
 type Row = Record<string, unknown>;
+type WorkerAdsConfig = {
+  enabled: boolean;
+  engine: 'max' | 'admob' | 'levelplay';
+  banner: { enabled: boolean };
+  appOpen: { enabled: boolean; minIntervalMinutes: number; skipFirstOpens: number };
+  interstitial: { enabled: boolean; minIntervalMinutes: number; maxPerSession: number; pageTransitionFrequency: number; showOnEpisodeStart: boolean };
+};
 const MEDIA_PROXY_HOSTS = new Set(['cdn.imagesskill.com', 'goyabu.io', 'animesonlinecc.to', 'animesdigital.org']);
 
 const app: App = new Hono();
@@ -49,7 +56,7 @@ app.use('*', async (c, next) => {
     origin: allowed,
     credentials: true,
     allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowHeaders: ['Content-Type', 'Authorization'],
+    allowHeaders: ['Content-Type', 'Authorization', 'X-Admin-Key'],
     maxAge: 600
   })(c, next);
 });
@@ -78,6 +85,26 @@ app.get('/v1/app-manifest', async (c) => {
     features: { player: mode === 'streaming', downloads: false, notifications: true, news: mode === 'news' },
     ads: isAdsConfig(payload.ads) ? payload.ads : defaultAds()
   }, 200, { 'Cache-Control': 'no-store' });
+});
+
+app.get('/v1/admin/app-config', requireAdmin, async (c) => {
+  const row = await first<Row>(c.env.DB, 'SELECT version, mode, payload, updated_at FROM app_config WHERE id = 1');
+  if (!row) throw new HTTPException(404, { message: 'Configuração do aplicativo não encontrada' });
+  return c.json(appConfigState(row));
+});
+
+app.put('/v1/admin/app-config', requireAdmin, async (c) => {
+  const body = await c.req.json<unknown>().catch(() => null);
+  const input = parseAdminAppConfig(body);
+  if (!input) throw new HTTPException(400, { message: 'Configuração inválida' });
+
+  await c.env.DB.prepare(
+    `UPDATE app_config SET mode = ?, payload = ?, version = version + 1, updated_at = CURRENT_TIMESTAMP WHERE id = 1`
+  ).bind(input.mode, JSON.stringify({ ads: input.ads })).run();
+
+  const row = await first<Row>(c.env.DB, 'SELECT version, mode, payload, updated_at FROM app_config WHERE id = 1');
+  if (!row) throw new HTTPException(404, { message: 'Configuração do aplicativo não encontrada' });
+  return c.json(appConfigState(row));
 });
 
 app.get('/v1/app-update/android', (c) => {
@@ -699,8 +726,58 @@ function assertServerId(value: string) { if (!hasProvider(value)) throw new HTTP
 function providerStatus(error: unknown): 'timeout' | 'error' { return error instanceof ProviderError && error.kind === 'timeout' ? 'timeout' : 'error'; }
 function providerErrorCode(error: unknown): 'provider_unavailable' | 'provider_timeout' { return error instanceof ProviderError && error.kind === 'timeout' ? 'provider_timeout' : 'provider_unavailable'; }
 function providerHttpException(error: unknown): HTTPException { return new HTTPException(error instanceof ProviderError && error.kind === 'timeout' ? 504 : 503, { message: error instanceof Error ? error.message : 'Provider indisponível' }); }
-function defaultAds() { return { enabled: false, engine: 'max' as const, banner: { enabled: false }, appOpen: { enabled: false, minIntervalMinutes: 60, skipFirstOpens: 3 }, interstitial: { enabled: false, minIntervalMinutes: 30, maxPerSession: 2, pageTransitionFrequency: 3, showOnEpisodeStart: true } }; }
-function isAdsConfig(value: unknown): value is ReturnType<typeof defaultAds> { return Boolean(value && typeof value === 'object' && 'enabled' in value && 'banner' in value && 'appOpen' in value && 'interstitial' in value); }
+async function requireAdmin(c: Context, next: Next) {
+  const expected = c.env.ADMIN_API_KEY;
+  const authorization = c.req.header('authorization') ?? '';
+  const bearer = authorization.match(/^Bearer\s+(.+)$/i)?.[1] ?? '';
+  const provided = c.req.header('x-admin-key') ?? bearer;
+  if (!expected || !provided || !constantTimeEqual(provided, expected)) throw new HTTPException(401, { message: 'Credencial administrativa inválida' });
+  await next();
+}
+function constantTimeEqual(left: string, right: string): boolean {
+  const leftBytes = new TextEncoder().encode(left);
+  const rightBytes = new TextEncoder().encode(right);
+  let difference = leftBytes.length ^ rightBytes.length;
+  const length = Math.max(leftBytes.length, rightBytes.length);
+  for (let index = 0; index < length; index += 1) difference |= (leftBytes[index] ?? 0) ^ (rightBytes[index] ?? 0);
+  return difference === 0;
+}
+function appConfigState(row: Row) {
+  const payload = parseObject(row.payload);
+  return { version: Number(row.version ?? 1), mode: row.mode === 'news' ? 'news' : 'streaming', ads: isAdsConfig(payload.ads) ? payload.ads : defaultAds(), updatedAt: String(row.updated_at ?? new Date().toISOString()) };
+}
+function parseAdminAppConfig(value: unknown): { mode: 'streaming' | 'news'; ads: WorkerAdsConfig } | null {
+  if (!value || typeof value !== 'object') return null;
+  const input = value as Record<string, unknown>;
+  const rawAds = input.ads;
+  if (!rawAds || typeof rawAds !== 'object') return null;
+  const ads = rawAds as Record<string, unknown>;
+  const banner = ads.banner && typeof ads.banner === 'object' ? ads.banner as Record<string, unknown> : {};
+  const appOpen = ads.appOpen && typeof ads.appOpen === 'object' ? ads.appOpen as Record<string, unknown> : {};
+  const interstitial = ads.interstitial && typeof ads.interstitial === 'object' ? ads.interstitial as Record<string, unknown> : {};
+  const engine = ads.engine === 'admob' || ads.engine === 'levelplay' || ads.engine === 'max' ? ads.engine : null;
+  if (input.mode !== 'streaming' && input.mode !== 'news') return null;
+  if (typeof ads.enabled !== 'boolean' || !engine || typeof banner.enabled !== 'boolean' || typeof appOpen.enabled !== 'boolean' || typeof interstitial.enabled !== 'boolean') return null;
+  const minAppOpen = boundedInt(appOpen.minIntervalMinutes, 0, 1440);
+  const skipFirstOpens = boundedInt(appOpen.skipFirstOpens, 0, 20);
+  const minInterstitial = boundedInt(interstitial.minIntervalMinutes, 0, 1440);
+  const maxPerSession = boundedInt(interstitial.maxPerSession, 0, 20);
+  const pageTransitionFrequency = boundedInt(interstitial.pageTransitionFrequency ?? 3, 0, 20);
+  if ([minAppOpen, skipFirstOpens, minInterstitial, maxPerSession, pageTransitionFrequency].some(value => value === null)) return null;
+  return {
+    mode: input.mode,
+    ads: {
+      enabled: ads.enabled,
+      engine,
+      banner: { enabled: banner.enabled },
+      appOpen: { enabled: appOpen.enabled, minIntervalMinutes: minAppOpen!, skipFirstOpens: skipFirstOpens! },
+      interstitial: { enabled: interstitial.enabled, minIntervalMinutes: minInterstitial!, maxPerSession: maxPerSession!, pageTransitionFrequency: pageTransitionFrequency!, showOnEpisodeStart: typeof interstitial.showOnEpisodeStart === 'boolean' ? interstitial.showOnEpisodeStart : true }
+    }
+  };
+}
+function boundedInt(value: unknown, min: number, max: number): number | null { return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max ? value : null; }
+function defaultAds(): WorkerAdsConfig { return { enabled: false, engine: 'max', banner: { enabled: false }, appOpen: { enabled: false, minIntervalMinutes: 60, skipFirstOpens: 3 }, interstitial: { enabled: false, minIntervalMinutes: 30, maxPerSession: 2, pageTransitionFrequency: 3, showOnEpisodeStart: true } }; }
+function isAdsConfig(value: unknown): value is WorkerAdsConfig { return Boolean(value && typeof value === 'object' && 'enabled' in value && 'banner' in value && 'appOpen' in value && 'interstitial' in value); }
 // Android classifies drawer items by route; /continuar belongs to that secondary group.
 function streamingNavigation() { return [{ id: 'home', label: 'Início', icon: 'home', route: '/' }, { id: 'search', label: 'Buscar', icon: 'search', route: '/buscar' }, { id: 'categories', label: 'Categorias', icon: 'category', route: '/categorias' }, { id: 'library', label: 'Minha lista', icon: 'library', route: '/lista' }, { id: 'continue', label: 'Continuar assistindo', icon: 'library', route: '/continuar' }, { id: 'account', label: 'Conta', icon: 'profile', route: '/conta' }, { id: 'servers', label: 'Servidores', icon: 'server', route: '/servidores' }]; }
 function newsNavigation() { return [{ id: 'home', label: 'Início', icon: 'home', route: '/' }, { id: 'search', label: 'Buscar', icon: 'search', route: '/buscar' }, { id: 'saved', label: 'Salvos', icon: 'bookmark', route: '/salvos' }, { id: 'account', label: 'Conta', icon: 'profile', route: '/conta' }]; }

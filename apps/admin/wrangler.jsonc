@@ -1,0 +1,18 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "nekoanimes-admin-staging",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-09-16",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "vars": {
+    "API_BASE_URL": "https://nekoanimes-api-staging.john-alleff01.workers.dev"
+  },
+  "services": [
+    { "binding": "API_WORKER", "service": "nekoanimes-api-staging" }
+  ],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  }
+}

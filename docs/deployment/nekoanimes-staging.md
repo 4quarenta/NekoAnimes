@@ -9,6 +9,8 @@ recursos Cloudflare e não exige Supabase. Nenhum segredo é versionado.
   (project id `7e3d03c6-6809-4d8f-a135-d8668ca502e3`)
 - Worker: `nekoanimes-api-staging` —
   <https://nekoanimes-api-staging.john-alleff01.workers.dev>
+- Worker admin: `nekoanimes-admin-staging` —
+  <https://nekoanimes-admin-staging.john-alleff01.workers.dev>
 - D1: `nekoanimes-staging-db` — database id
   `b075bb90-a027-40de-8a28-b74f74192f2f`
 - R2: `nekoanimes-releases-staging` — bucket id
@@ -36,6 +38,19 @@ fica preservado para o runtime tradicional/produção.
 - Disponibilidade do episódio nos providers, sem sources: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/servers/resolve/Bleach/1/1>
 - Sources do episódio de um provider: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/servers/animesdigital/resolve/Bleach/1/1>
 - Atualização Android: <https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/app-update/android>
+
+## Painel administrativo
+
+Abra <https://nekoanimes-admin-staging.john-alleff01.workers.dev> e entre em
+`Configuração do aplicativo`. A tela solicita a chave administrativa de staging;
+ela é usada somente na sessão do navegador e nunca é enviada ao bundle público.
+O painel lê e grava a configuração por um endpoint protegido no Worker da API,
+usando um Service Binding interno entre os dois Workers.
+
+A configuração atual mantém `ads.enabled=false`, `banner.enabled=false`,
+`appOpen.enabled=false` e `interstitial.enabled=false`. Os SDKs Android de
+anúncios continuam instalados para testes futuros, mas a primeira versão da loja
+não exibe anúncios.
 
 Para validar providers e sources do episódio de teste:
 
@@ -156,6 +171,7 @@ staging:
 
 - `deploy-web-staging.yml`
 - `deploy-api-staging.yml`
+- `deploy-admin-staging.yml`
 - `android-staging.yml`
 
 Configure no repositório:
