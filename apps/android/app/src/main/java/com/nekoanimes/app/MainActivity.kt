@@ -153,7 +153,11 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
     val ads = remember(manifest.configVersion) { NekoAdOrchestrator(activity, adsConfig) }
     DisposableEffect(activity, ads) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_START) ads.showAppOpenIfEligible()
+            when (event) {
+                Lifecycle.Event.ON_START -> ads.showAppOpenIfEligible()
+                Lifecycle.Event.ON_STOP -> ads.onAppBackgrounded()
+                else -> Unit
+            }
         }
         activity.lifecycle.addObserver(observer)
         onDispose { activity.lifecycle.removeObserver(observer) }
@@ -162,6 +166,7 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
         lateinit var instance: NekoBridge
         instance = NekoBridge(
             onRouteChanged = { route ->
+                ads.onPageTransition(route)
                 currentWebRoute = route
                 selectedRoute = route
             },
@@ -174,6 +179,7 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
                     }
                 } else if (playerRequest == null && !playerOpening) {
                     playerOpening = true
+                    ads.onEpisodeStarted()
                     // The SPA route is authoritative because WebView.url can
                     // still point at the shell after a history.pushState.
                     playerReturnRoute = currentWebRouteState.takeIf { it != "/" }
@@ -216,7 +222,6 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
     fun navigateTo(item: NavigationItem) {
         if (currentNetworkAccess != NetworkAccessState.Online) return
         selectedRoute = item.route
-        ads.onAppEvent("content_opened", item.id)
         webView?.let { bridge.sendNavigation(it, item.route) }
         drawerScope.launch { drawerState.close() }
     }
@@ -334,7 +339,6 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
                             drawerState.close()
                             playerRequest = null
                             playerReturnRoute = null
-                            ads.onAppEvent("episode_closed", "player")
                             webView?.let {
                                 bridge.sendPlayerClosed(it, playing.episodeId, positionSeconds, durationSeconds, playbackReady)
                                 if (!returnRoute.isNullOrBlank()) bridge.sendNavigation(it, returnRoute)
@@ -383,7 +387,13 @@ private fun adsConfigForBuild(manifest: AppManifest): AdsConfig = if (!BuildConf
         engine = "admob",
         banner = BannerAdConfig(enabled = true),
         appOpen = AppOpenAdConfig(enabled = true, minIntervalMinutes = 0, skipFirstOpens = 0),
-        interstitial = InterstitialAdConfig(enabled = true, minIntervalMinutes = 0, maxPerSession = 3)
+        interstitial = InterstitialAdConfig(
+            enabled = true,
+            minIntervalMinutes = 0,
+            maxPerSession = 3,
+            pageTransitionFrequency = 3,
+            showOnEpisodeStart = true
+        )
     )
 }
 

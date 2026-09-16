@@ -33,5 +33,7 @@ data class AppOpenAdConfig(
 data class InterstitialAdConfig(
     val enabled: Boolean,
     val minIntervalMinutes: Int,
-    val maxPerSession: Int
+    val maxPerSession: Int,
+    val pageTransitionFrequency: Int,
+    val showOnEpisodeStart: Boolean
 )

@@ -14,7 +14,9 @@ export const AdConfigSchema = z.object({
   interstitial: z.object({
     enabled: z.boolean(),
     minIntervalMinutes: z.number().int().min(0).max(1440),
-    maxPerSession: z.number().int().min(0).max(20)
+    maxPerSession: z.number().int().min(0).max(20),
+    pageTransitionFrequency: z.number().int().min(0).max(20).default(3),
+    showOnEpisodeStart: z.boolean().default(true)
   })
 });
 
@@ -43,6 +45,8 @@ export const DEFAULT_AD_CONFIG: AdConfig = {
   interstitial: {
     enabled: false,
     minIntervalMinutes: 15,
-    maxPerSession: 3
+    maxPerSession: 3,
+    pageTransitionFrequency: 3,
+    showOnEpisodeStart: true
   }
 };

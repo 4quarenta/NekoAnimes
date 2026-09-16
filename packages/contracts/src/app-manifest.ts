@@ -47,7 +47,9 @@ export const AppManifestSchema = z.object({
     }),
     interstitial: AdFormatSettingsSchema.extend({
       minIntervalMinutes: z.number().int().nonnegative(),
-      maxPerSession: z.number().int().nonnegative()
+      maxPerSession: z.number().int().nonnegative(),
+      pageTransitionFrequency: z.number().int().nonnegative().default(3),
+      showOnEpisodeStart: z.boolean().default(true)
     })
   })
 });

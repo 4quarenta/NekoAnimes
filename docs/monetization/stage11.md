@@ -15,7 +15,9 @@ mediation or Meta demand.
 
 - Banner: native Android slot above the bottom navigation.
 - App Open: managed by the native shell with skip-first-opens and cooldown policy.
-- Interstitial: triggered only from semantic product events and capped by cooldown + maximum impressions per session.
+- Interstitial: triggered at the configured page-transition frequency and, by
+  default, when a new video starts; cooldown + maximum impressions per session
+  remain active as safety caps.
 
 The SPA never calls `showInterstitial()` directly. It only emits product events through NekoBridge. Native `NekoAdOrchestrator` owns policy and presentation.
 
@@ -27,7 +29,8 @@ The SPA never calls `showInterstitial()` directly. It only emits product events 
 - active mediation engine;
 - banner enabled;
 - App Open enabled, minimum interval, first opens to skip;
-- interstitial enabled, minimum interval, maximum per session.
+- interstitial enabled, minimum interval, maximum per session,
+  `pageTransitionFrequency` and `showOnEpisodeStart`.
 
 If configuration, consent, SDK key, or required ad-unit ID is unavailable, that format stays disabled.
 
@@ -68,7 +71,7 @@ Network accounts, approval, partner bidding/ad-unit setup and MAX dashboard cred
 
 1. Build with `-PadmobTestMode=true` and the staging web/API URLs.
 2. Install the Direct Debug APK on the physical device.
-3. Confirm the banner above the bottom navigation, an App Open ad after returning to the app, and an interstitial after a permitted content transition.
+3. Confirm the banner above the bottom navigation, an App Open ad only on cold start/return from background, and an interstitial on the third configured route transition and when opening a new video.
 4. Check the `NekoAds` log entries for `format=BANNER`, `format=APP_OPEN` and `format=INTERSTITIAL`.
 
 Google's demo units are intended for development and show test creatives only.

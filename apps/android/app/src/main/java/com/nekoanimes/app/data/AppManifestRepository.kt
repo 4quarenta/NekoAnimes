@@ -78,7 +78,9 @@ class AppManifestRepository(context: Context) {
             interstitial = InterstitialAdConfig(
                 enabled = interstitialJson.getBoolean("enabled"),
                 minIntervalMinutes = interstitialJson.getInt("minIntervalMinutes").coerceIn(0, 1440),
-                maxPerSession = interstitialJson.getInt("maxPerSession").coerceIn(0, 20)
+                maxPerSession = interstitialJson.getInt("maxPerSession").coerceIn(0, 20),
+                pageTransitionFrequency = interstitialJson.optInt("pageTransitionFrequency", 3).coerceIn(0, 20),
+                showOnEpisodeStart = interstitialJson.optBoolean("showOnEpisodeStart", true)
             )
         )
 

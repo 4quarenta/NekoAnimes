@@ -1,6 +1,6 @@
 -- NekoAnimes STAGING seed only. No production or pirated media URLs are included.
 INSERT INTO app_config (id, version, mode, payload) VALUES
-  (1, 1, 'streaming', '{"ads":{"enabled":false,"engine":"max","banner":{"enabled":false},"appOpen":{"enabled":false,"minIntervalMinutes":60,"skipFirstOpens":3},"interstitial":{"enabled":false,"minIntervalMinutes":30,"maxPerSession":2}}}')
+  (1, 1, 'streaming', '{"ads":{"enabled":false,"engine":"max","banner":{"enabled":false},"appOpen":{"enabled":false,"minIntervalMinutes":60,"skipFirstOpens":3},"interstitial":{"enabled":false,"minIntervalMinutes":30,"maxPerSession":2,"pageTransitionFrequency":3,"showOnEpisodeStart":true}}}')
 ON CONFLICT(id) DO UPDATE SET mode = excluded.mode, payload = excluded.payload, version = excluded.version, updated_at = CURRENT_TIMESTAMP;
 
 INSERT INTO anime (id, slug, title, title_english, title_romaji, title_native, synopsis, type, status, year, score_basis_points, genres) VALUES

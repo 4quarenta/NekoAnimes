@@ -38,6 +38,14 @@ class NekoAdOrchestrator(
     private var admobInterstitialLoading = false
     private var admobAppOpenLoading = false
     private var sessionInterstitials = 0
+    private var pageTransitionCount = 0
+    private var lastPageRoute: String? = null
+    private var pendingInterstitialPlacement: String? = null
+    private var appOpenForegroundGeneration = 0
+    private var appOpenRequestedGeneration = -1
+    private var appOpenPending = false
+    private var appOpenGateActive = false
+    private var fullscreenAdShowing = false
 
     fun initialize(onReady: () -> Unit = {}) {
         if (BuildConfig.ADMOB_TEST_MODE) {
@@ -69,29 +77,92 @@ class NekoAdOrchestrator(
     fun onAppEvent(name: String, placement: String?) {
         if (!initialized) return
         when (name) {
-            "content_opened", "episode_closed", "article_opened" -> showInterstitialIfEligible(placement ?: name)
+            "page_transition" -> onPageTransition(placement)
+            "episode_started" -> onEpisodeStarted()
         }
     }
 
+    fun onPageTransition(route: String?) {
+        if (!initialized || route.isNullOrBlank()) return
+        val normalizedRoute = route.trim()
+        val previousRoute = lastPageRoute
+        lastPageRoute = normalizedRoute
+        if (previousRoute == null || previousRoute == normalizedRoute) return
+        if (appOpenGateActive) return
+
+        pageTransitionCount += 1
+        val frequency = config.interstitial.pageTransitionFrequency
+        if (frequency > 0 && pageTransitionCount >= frequency) {
+            pageTransitionCount = 0
+            showInterstitialIfEligible("page_transition")
+        }
+    }
+
+    fun onEpisodeStarted() {
+        if (!initialized || appOpenGateActive || !config.interstitial.showOnEpisodeStart) return
+        pageTransitionCount = 0
+        showInterstitialIfEligible("episode_start", queueIfNotReady = true)
+    }
+
+    fun onAppBackgrounded() {
+        if (fullscreenAdShowing) return
+        appOpenForegroundGeneration += 1
+        appOpenRequestedGeneration = -1
+        appOpenPending = false
+        appOpenGateActive = false
+        pageTransitionCount = 0
+        lastPageRoute = null
+    }
+
     fun showAppOpenIfEligible() {
+        if (appOpenRequestedGeneration == appOpenForegroundGeneration) return
+        appOpenRequestedGeneration = appOpenForegroundGeneration
+        if (!initialized) {
+            appOpenPending = true
+            appOpenGateActive = config.appOpen.enabled
+            return
+        }
+        appOpenGateActive = config.appOpen.enabled
+        showAppOpenNowIfEligible()
+    }
+
+    private fun showAppOpenNowIfEligible() {
         if (BuildConfig.ADMOB_TEST_MODE) {
             showAdMobTestAppOpenIfEligible()
             return
         }
-        if (!initialized || !config.appOpen.enabled || BuildConfig.MAX_APP_OPEN_AD_UNIT_ID.isBlank()) return
+        if (!initialized || !config.appOpen.enabled || BuildConfig.MAX_APP_OPEN_AD_UNIT_ID.isBlank()) {
+            appOpenGateActive = false
+            return
+        }
         val opens = prefs.getInt(KEY_OPEN_COUNT, 0) + 1
         prefs.edit().putInt(KEY_OPEN_COUNT, opens).apply()
-        if (opens <= config.appOpen.skipFirstOpens) return
-        if (!cooldownPassed(KEY_LAST_APP_OPEN, config.appOpen.minIntervalMinutes)) return
+        if (opens <= config.appOpen.skipFirstOpens) {
+            appOpenGateActive = false
+            return
+        }
+        if (!cooldownPassed(KEY_LAST_APP_OPEN, config.appOpen.minIntervalMinutes)) {
+            appOpenGateActive = false
+            return
+        }
 
-        val ad = appOpen ?: return
+        val ad = appOpen ?: run {
+            appOpenPending = true
+            return
+        }
         if (ad.isReady) {
+            appOpenPending = false
+            fullscreenAdShowing = true
             ad.showAd("app_open")
             prefs.edit().putLong(KEY_LAST_APP_OPEN, System.currentTimeMillis()).apply()
-        } else ad.loadAd()
+        } else {
+            appOpenPending = true
+            ad.loadAd()
+        }
     }
 
-    private fun showInterstitialIfEligible(placement: String) {
+    private fun showInterstitialIfEligible(placement: String, queueIfNotReady: Boolean = false) {
+        if (appOpenGateActive) return
         if (BuildConfig.ADMOB_TEST_MODE) {
             showAdMobTestInterstitialIfEligible(placement)
             return
@@ -102,10 +173,14 @@ class NekoAdOrchestrator(
 
         val ad = interstitial ?: return
         if (ad.isReady) {
+            fullscreenAdShowing = true
             ad.showAd(placement)
             sessionInterstitials += 1
             prefs.edit().putLong(KEY_LAST_INTERSTITIAL, System.currentTimeMillis()).apply()
-        } else ad.loadAd()
+        } else {
+            if (queueIfNotReady) pendingInterstitialPlacement = placement
+            ad.loadAd()
+        }
     }
 
     private fun initializeMax(onReady: () -> Unit) {
@@ -138,6 +213,7 @@ class NekoAdOrchestrator(
                 }
             }
             onReady()
+            if (appOpenPending) showAppOpenNowIfEligible()
         }
     }
 
@@ -151,6 +227,10 @@ class NekoAdOrchestrator(
 
     override fun onAdLoaded(ad: MaxAd) {
         Log.i(TAG, "Ad loaded format=${ad.format.label} network=${ad.networkName}")
+        if (ad.adUnitId == BuildConfig.MAX_APP_OPEN_AD_UNIT_ID && appOpenPending) {
+            appOpenPending = false
+            showAppOpenNowIfEligible()
+        }
     }
 
     private fun initializeAdMobTest(onReady: () -> Unit) {
@@ -164,6 +244,7 @@ class NekoAdOrchestrator(
             loadAdMobTestInterstitial()
             loadAdMobTestAppOpen()
             onReady()
+            if (appOpenPending) showAppOpenNowIfEligible()
         }
     }
 
@@ -179,6 +260,10 @@ class NekoAdOrchestrator(
                     admobInterstitialLoading = false
                     admobInterstitial = ad
                     Log.i(TAG, "AdMob test ad loaded format=INTERSTITIAL")
+                    pendingInterstitialPlacement?.let { placement ->
+                        pendingInterstitialPlacement = null
+                        showInterstitialIfEligible(placement)
+                    }
                 }
 
                 override fun onAdFailedToLoad(error: LoadAdError) {
@@ -201,10 +286,16 @@ class NekoAdOrchestrator(
                     admobAppOpenLoading = false
                     admobAppOpen = ad
                     Log.i(TAG, "AdMob test ad loaded format=APP_OPEN")
+                    if (appOpenPending) {
+                        appOpenPending = false
+                        showAppOpenNowIfEligible()
+                    }
                 }
 
                 override fun onAdFailedToLoad(error: LoadAdError) {
                     admobAppOpenLoading = false
+                    appOpenPending = false
+                    appOpenGateActive = false
                     Log.w(TAG, "AdMob test ad failed format=APP_OPEN code=${error.code}")
                 }
             }
@@ -212,29 +303,41 @@ class NekoAdOrchestrator(
     }
 
     private fun showAdMobTestAppOpenIfEligible() {
-        if (!initialized || !config.appOpen.enabled) return
+        if (!initialized || !config.appOpen.enabled) {
+            appOpenGateActive = false
+            return
+        }
         val opens = prefs.getInt(KEY_OPEN_COUNT, 0) + 1
         prefs.edit().putInt(KEY_OPEN_COUNT, opens).apply()
-        if (opens <= config.appOpen.skipFirstOpens) return
-        if (!cooldownPassed(KEY_LAST_APP_OPEN, config.appOpen.minIntervalMinutes)) return
+        if (opens <= config.appOpen.skipFirstOpens) {
+            appOpenGateActive = false
+            return
+        }
+        if (!cooldownPassed(KEY_LAST_APP_OPEN, config.appOpen.minIntervalMinutes)) {
+            appOpenGateActive = false
+            return
+        }
 
         val ad = admobAppOpen
         if (ad == null) {
+            appOpenPending = true
             loadAdMobTestAppOpen()
             return
         }
         admobAppOpen = null
+        appOpenPending = false
+        fullscreenAdShowing = true
         ad.fullScreenContentCallback = object : FullScreenContentCallback() {
             override fun onAdShowedFullScreenContent() { Log.i(TAG, "AdMob test ad displayed format=APP_OPEN") }
-            override fun onAdDismissedFullScreenContent() { loadAdMobTestAppOpen() }
-            override fun onAdFailedToShowFullScreenContent(error: AdError) { Log.w(TAG, "AdMob test ad display failed format=APP_OPEN code=${error.code}"); loadAdMobTestAppOpen() }
+            override fun onAdDismissedFullScreenContent() { fullscreenAdShowing = false; appOpenGateActive = false; loadAdMobTestAppOpen() }
+            override fun onAdFailedToShowFullScreenContent(error: AdError) { fullscreenAdShowing = false; appOpenGateActive = false; Log.w(TAG, "AdMob test ad display failed format=APP_OPEN code=${error.code}"); loadAdMobTestAppOpen() }
         }
         ad.show(activity)
         prefs.edit().putLong(KEY_LAST_APP_OPEN, System.currentTimeMillis()).apply()
     }
 
     private fun showAdMobTestInterstitialIfEligible(placement: String) {
-        if (!initialized || !config.interstitial.enabled) return
+        if (!initialized || appOpenGateActive || !config.interstitial.enabled) return
         if (sessionInterstitials >= config.interstitial.maxPerSession) return
         if (!cooldownPassed(KEY_LAST_INTERSTITIAL, config.interstitial.minIntervalMinutes)) return
 
@@ -244,27 +347,37 @@ class NekoAdOrchestrator(
             return
         }
         admobInterstitial = null
+        fullscreenAdShowing = true
         ad.fullScreenContentCallback = object : FullScreenContentCallback() {
             override fun onAdShowedFullScreenContent() { Log.i(TAG, "AdMob test ad displayed format=INTERSTITIAL placement=$placement") }
-            override fun onAdDismissedFullScreenContent() { loadAdMobTestInterstitial() }
-            override fun onAdFailedToShowFullScreenContent(error: AdError) { Log.w(TAG, "AdMob test ad display failed format=INTERSTITIAL code=${error.code}"); loadAdMobTestInterstitial() }
+            override fun onAdDismissedFullScreenContent() { fullscreenAdShowing = false; loadAdMobTestInterstitial() }
+            override fun onAdFailedToShowFullScreenContent(error: AdError) { fullscreenAdShowing = false; Log.w(TAG, "AdMob test ad display failed format=INTERSTITIAL code=${error.code}"); loadAdMobTestInterstitial() }
         }
         ad.show(activity)
         sessionInterstitials += 1
         prefs.edit().putLong(KEY_LAST_INTERSTITIAL, System.currentTimeMillis()).apply()
     }
     override fun onAdDisplayed(ad: MaxAd) {
+        fullscreenAdShowing = true
         Log.i(TAG, "Ad displayed format=${ad.format.label} network=${ad.networkName}")
     }
     override fun onAdClicked(ad: MaxAd) = Unit
     override fun onAdHidden(ad: MaxAd) {
+        fullscreenAdShowing = false
+        if (ad.adUnitId == BuildConfig.MAX_APP_OPEN_AD_UNIT_ID) appOpenGateActive = false
         if (ad.adUnitId == BuildConfig.MAX_INTERSTITIAL_AD_UNIT_ID) interstitial?.loadAd()
         if (ad.adUnitId == BuildConfig.MAX_APP_OPEN_AD_UNIT_ID) appOpen?.loadAd()
     }
     override fun onAdLoadFailed(adUnitId: String, error: MaxError) {
+        if (adUnitId == BuildConfig.MAX_APP_OPEN_AD_UNIT_ID) {
+            appOpenPending = false
+            appOpenGateActive = false
+        }
         Log.w(TAG, "Ad load failed for $adUnitId: ${error.code}")
     }
     override fun onAdDisplayFailed(ad: MaxAd, error: MaxError) {
+        fullscreenAdShowing = false
+        if (ad.adUnitId == BuildConfig.MAX_APP_OPEN_AD_UNIT_ID) appOpenGateActive = false
         Log.w(TAG, "Ad display failed: ${error.code}")
         if (ad.adUnitId == BuildConfig.MAX_INTERSTITIAL_AD_UNIT_ID) interstitial?.loadAd()
         if (ad.adUnitId == BuildConfig.MAX_APP_OPEN_AD_UNIT_ID) appOpen?.loadAd()
