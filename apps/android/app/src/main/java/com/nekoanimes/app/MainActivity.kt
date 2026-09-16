@@ -50,6 +50,10 @@ import com.nekoanimes.app.bridge.NekoBridge
 import com.nekoanimes.app.bridge.PlayerSourceOverride
 import com.nekoanimes.app.data.AppManifestRepository
 import com.nekoanimes.app.model.AppManifest
+import com.nekoanimes.app.model.AdsConfig
+import com.nekoanimes.app.model.AppOpenAdConfig
+import com.nekoanimes.app.model.BannerAdConfig
+import com.nekoanimes.app.model.InterstitialAdConfig
 import com.nekoanimes.app.model.NavigationItem
 import com.nekoanimes.app.player.NekoPlayerScreen
 import com.nekoanimes.app.ui.NekoNavigationBar
@@ -144,8 +148,9 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
     }
     val currentWebRouteState by rememberUpdatedState(currentWebRoute)
     val currentNetworkAccess by rememberUpdatedState(networkAccess)
+    val adsConfig = remember(manifest.configVersion) { adsConfigForBuild(manifest) }
 
-    val ads = remember(manifest.configVersion) { NekoAdOrchestrator(activity, manifest.ads) }
+    val ads = remember(manifest.configVersion) { NekoAdOrchestrator(activity, adsConfig) }
     DisposableEffect(activity, ads) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_START) ads.showAppOpenIfEligible()
@@ -200,7 +205,7 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
     }
 
     if (!adsBootstrapped) {
-        LoadingScreen(message = if (manifest.ads.enabled) "Preparando experiência…" else null)
+        LoadingScreen(message = if (adsConfig.enabled) "Preparando experiência…" else null)
         return
     }
 
@@ -281,7 +286,7 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
                 bottomBar = {
                     if (navigationVisible) {
                         Column {
-                            NekoBannerSlot(manifest.ads)
+                            NekoBannerSlot(adsConfig)
                             NekoNavigationBar(
                                 items = primaryItems,
                                 selectedRoute = selectedRoute,
@@ -368,6 +373,18 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
             }
         }
     }
+}
+
+private fun adsConfigForBuild(manifest: AppManifest): AdsConfig = if (!BuildConfig.ADMOB_TEST_MODE) {
+    manifest.ads
+} else {
+    AdsConfig(
+        enabled = true,
+        engine = "admob",
+        banner = BannerAdConfig(enabled = true),
+        appOpen = AppOpenAdConfig(enabled = true, minIntervalMinutes = 0, skipFirstOpens = 0),
+        interstitial = InterstitialAdConfig(enabled = true, minIntervalMinutes = 0, maxPerSession = 3)
+    )
 }
 
 private data class PlayerRequest(

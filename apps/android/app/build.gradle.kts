@@ -10,9 +10,11 @@ val releaseKeyPassword = providers.environmentVariable("NEKO_RELEASE_KEY_PASSWOR
 val hasReleaseSigning = releaseStoreFile.isPresent && releaseStorePassword.isPresent && releaseKeyAlias.isPresent && releaseKeyPassword.isPresent
 fun nekoUrl(property: String, fallback: String) = providers.gradleProperty(property).orElse(fallback).get()
 val maxTestMode = providers.gradleProperty("maxTestMode").map { it.toBoolean() }.orElse(false).get()
+val admobTestMode = providers.gradleProperty("admobTestMode").map { it.toBoolean() }.orElse(false).get()
 val maxTestDeviceAdvertisingId = providers.gradleProperty("maxTestDeviceAdvertisingId").orElse("").get()
 val googleAdMobAppId = providers.gradleProperty("googleAdMobAppId")
-    .orElse(if (maxTestMode) "ca-app-pub-3940256099942544~3347511713" else "")
+    .map { it.takeIf(String::isNotBlank) ?: if (maxTestMode || admobTestMode) "ca-app-pub-3940256099942544~3347511713" else "" }
+    .orElse(if (maxTestMode || admobTestMode) "ca-app-pub-3940256099942544~3347511713" else "")
     .get()
 
 android {
@@ -33,6 +35,7 @@ android {
         buildConfigField("String", "MAX_INTERSTITIAL_AD_UNIT_ID", "\"${providers.gradleProperty("MAX_INTERSTITIAL_AD_UNIT_ID").orElse("").get()}\"")
         buildConfigField("boolean", "MAX_TEST_MODE", maxTestMode.toString())
         buildConfigField("String", "MAX_TEST_DEVICE_ADVERTISING_ID", "\"$maxTestDeviceAdvertisingId\"")
+        buildConfigField("boolean", "ADMOB_TEST_MODE", admobTestMode.toString())
         manifestPlaceholders["googleAdMobAppId"] = googleAdMobAppId
     }
 
@@ -137,6 +140,7 @@ dependencies {
     implementation("com.applovin.mediation:google-adapter:25.4.0.0")
     implementation("com.applovin.mediation:facebook-adapter:6.22.0.0")
     implementation("com.google.android.ump:user-messaging-platform:4.0.0")
+    implementation("com.google.android.gms:play-services-ads:25.4.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

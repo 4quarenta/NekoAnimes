@@ -53,9 +53,22 @@ Credenciais e identificadores ficam fora do controle de versão e são fornecido
 - `MAX_INTERSTITIAL_AD_UNIT_ID`
 - `maxTestMode=true` (somente build de teste)
 - `maxTestDeviceAdvertisingId=<GAID do aparelho de teste>` (somente build de teste; nunca versionar)
+- `admobTestMode=true` (build local/CI de teste sem conta MAX)
 - `googleAdMobAppId=<App ID do AdMob>` (necessário para Google/AdMob fora do modo de teste)
 
 Sem esses valores, a monetização permanece desligada de forma segura.
+
+### Teste local com Google AdMob
+
+Quando `admobTestMode=true`, o APK Direct Debug usa diretamente o Google Mobile Ads
+com os IDs oficiais de demonstração. Isso permite validar a posição e o ciclo de
+vida dos três formatos antes de configurar MAX:
+
+- Banner: `ca-app-pub-3940256099942544/6300978111`
+- App Open: `ca-app-pub-3940256099942544/9257395921`
+- Interstitial: `ca-app-pub-3940256099942544/1033173712`
+
+Esse modo é somente para teste e não valida a mediação AppLovin ou Meta.
 
 | Formato | Ponto de teste | Critério observável |
 | --- | --- | --- |

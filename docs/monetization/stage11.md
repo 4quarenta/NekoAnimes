@@ -6,6 +6,11 @@ NekoAnimes uses one mediation engine at a time. The remote manifest can select `
 
 MAX is the mediation layer. Google AdMob / Google Bidding and Meta Audience Network are configured as mediated demand sources in MAX rather than initialized independently by NekoAnimes. This avoids multiple SDKs racing to show the same placement.
 
+For physical staging validation, Android also supports an explicit `admobTestMode`
+build. It uses Google's public demo units directly and does not require an AppLovin
+account. This path validates placement and lifecycle only; it is not a test of MAX
+mediation or Meta demand.
+
 ## Formats
 
 - Banner: native Android slot above the bottom navigation.
@@ -42,6 +47,7 @@ Keep credentials and ad-unit identifiers outside source control and provide them
 - `MAX_INTERSTITIAL_AD_UNIT_ID`
 - `maxTestMode=true` (passed only to a local/CI test build)
 - `maxTestDeviceAdvertisingId=<test device GAID>` (passed only to a local/CI test build)
+- `admobTestMode=true` (passed only to a local/CI test build)
 - `googleAdMobAppId=<AdMob application ID>`
 
 Without these values, monetization remains fail-closed.
@@ -57,6 +63,17 @@ Initial production plan:
 Network accounts, approval, partner bidding/ad-unit setup and MAX dashboard credentials are operational prerequisites, not source-code configuration. The current repository has no MAX SDK key or ad-unit IDs, so the remote staging manifest must remain disabled until those values are supplied through protected CI/Gradle settings.
 
 ## Test procedure
+
+### Google AdMob direct test
+
+1. Build with `-PadmobTestMode=true` and the staging web/API URLs.
+2. Install the Direct Debug APK on the physical device.
+3. Confirm the banner above the bottom navigation, an App Open ad after returning to the app, and an interstitial after a permitted content transition.
+4. Check the `NekoAds` log entries for `format=BANNER`, `format=APP_OPEN` and `format=INTERSTITIAL`.
+
+Google's demo units are intended for development and show test creatives only.
+
+### MAX mediation test
 
 1. Create one MAX Android app for `com.nekoanimes.app` and three MAX ad units: banner, app open and interstitial.
 2. Connect AppLovin, Google/AdMob and Meta Audience Network in MAX and enable the three networks on the three ad units.

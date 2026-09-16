@@ -34,6 +34,7 @@ jobs:
       MAX_INTERSTITIAL_AD_UNIT_ID: ${{ secrets.MAX_INTERSTITIAL_AD_UNIT_ID }}
       MAX_TEST_DEVICE_ADVERTISING_ID: ${{ secrets.MAX_TEST_DEVICE_ADVERTISING_ID }}
       MAX_TEST_MODE: ${{ vars.NEKO_MAX_TEST_MODE || 'false' }}
+      ADMOB_TEST_MODE: 'true'
       GOOGLE_ADMOB_APP_ID: ${{ vars.NEKO_GOOGLE_ADMOB_APP_ID || '' }}
     steps:
       - uses: actions/checkout@v4
@@ -78,6 +79,7 @@ jobs:
             -PMAX_INTERSTITIAL_AD_UNIT_ID="$MAX_INTERSTITIAL_AD_UNIT_ID" \
             -PmaxTestMode="$MAX_TEST_MODE" \
             -PmaxTestDeviceAdvertisingId="$MAX_TEST_DEVICE_ADVERTISING_ID" \
+            -PadmobTestMode="$ADMOB_TEST_MODE" \
             -PgoogleAdMobAppId="$GOOGLE_ADMOB_APP_ID"
       - name: Verify built version and prepare release files
         run: |
