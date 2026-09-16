@@ -44,13 +44,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
-import com.nekoanimes.app.ads.NekoAdOrchestrator
-import com.nekoanimes.app.ads.NekoBannerSlot
 import com.nekoanimes.app.bridge.NekoBridge
 import com.nekoanimes.app.bridge.PlayerSourceOverride
 import com.nekoanimes.app.data.AppManifestRepository
 import com.nekoanimes.app.model.AppManifest
-import com.nekoanimes.app.model.AdsConfig
 import com.nekoanimes.app.model.NavigationItem
 import com.nekoanimes.app.player.NekoPlayerScreen
 import com.nekoanimes.app.review.NekoReviewRequester
@@ -128,7 +125,6 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
     var playerRequest by remember(manifest.configVersion) { mutableStateOf<PlayerRequest?>(null) }
     var playerReturnRoute by remember(manifest.configVersion) { mutableStateOf<String?>(null) }
     var playerOpening by remember(manifest.configVersion) { mutableStateOf(false) }
-    var adsBootstrapped by remember(manifest.configVersion) { mutableStateOf(false) }
     var lastBackPressedAt by remember { mutableLongStateOf(0L) }
     var showExitDialog by remember { mutableStateOf(false) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -146,26 +142,12 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
     }
     val currentWebRouteState by rememberUpdatedState(currentWebRoute)
     val currentNetworkAccess by rememberUpdatedState(networkAccess)
-    val adsConfig = remember(manifest.configVersion) { adsConfigForBuild(manifest) }
     val reviewRequester = remember { NekoReviewRequester(activity) }
 
-    val ads = remember(manifest.configVersion) { NekoAdOrchestrator(activity, adsConfig) }
-    DisposableEffect(activity, ads) {
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_START -> ads.showAppOpenIfEligible()
-                Lifecycle.Event.ON_STOP -> ads.onAppBackgrounded()
-                else -> Unit
-            }
-        }
-        activity.lifecycle.addObserver(observer)
-        onDispose { activity.lifecycle.removeObserver(observer) }
-    }
     val bridge = remember(manifest.configVersion) {
         lateinit var instance: NekoBridge
         instance = NekoBridge(
             onRouteChanged = { route ->
-                ads.onPageTransition(route)
                 reviewRequester.onRouteChanged(route)
                 currentWebRoute = route
                 selectedRoute = route
@@ -180,7 +162,6 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
                 } else if (playerRequest == null && !playerOpening) {
                     playerOpening = true
                     reviewRequester.onPlayerOpened()
-                    ads.onEpisodeStarted()
                     // The SPA route is authoritative because WebView.url can
                     // still point at the shell after a history.pushState.
                     playerReturnRoute = currentWebRouteState.takeIf { it != "/" }
@@ -200,22 +181,10 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
                     }
                 } else if (name == "review_request") {
                     reviewRequester.requestNow()
-                } else ads.onAppEvent(name, placement)
+                }
             }
         )
         instance
-    }
-
-    LaunchedEffect(manifest.configVersion) {
-        ads.initialize {
-            ads.showAppOpenIfEligible()
-            adsBootstrapped = true
-        }
-    }
-
-    if (!adsBootstrapped) {
-        LoadingScreen(message = if (adsConfig.enabled) "Preparando experiência…" else null)
-        return
     }
 
     LaunchedEffect(playerRequest) {
@@ -293,14 +262,11 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
                 modifier = Modifier.fillMaxSize(),
                 bottomBar = {
                     if (navigationVisible) {
-                        Column {
-                            NekoBannerSlot(adsConfig)
-                            NekoNavigationBar(
-                                items = primaryItems,
-                                selectedRoute = selectedRoute,
-                                onSelected = ::navigateTo
-                            )
-                        }
+                        NekoNavigationBar(
+                            items = primaryItems,
+                            selectedRoute = selectedRoute,
+                            onSelected = ::navigateTo
+                        )
                     }
                 }
             ) { padding ->
@@ -359,7 +325,6 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
                             playerRequest = null
                             reviewRequester.onPlayerClosed()
                             playerReturnRoute = null
-                            ads.onAppEvent("episode_navigate", direction)
                             webView?.let {
                                 bridge.sendPlayerClosed(it, playing.episodeId, positionSeconds, durationSeconds, playbackReady)
                                 bridge.sendPlayerNavigate(it, direction)
@@ -383,12 +348,6 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
         }
     }
 }
-
-private fun adsConfigForBuild(manifest: AppManifest): AdsConfig = if (BuildConfig.ADMOB_TEST_MODE) {
-    // Test IDs are only a transport substitute. The remote feature flags still
-    // control whether any format may be shown, including on debug builds.
-    manifest.ads.copy(engine = "admob")
-} else manifest.ads
 
 private data class PlayerRequest(
     val episodeId: String,

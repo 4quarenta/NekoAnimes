@@ -3,11 +3,7 @@ package com.nekoanimes.app.data
 import android.content.Context
 import android.net.Uri
 import com.nekoanimes.app.BuildConfig
-import com.nekoanimes.app.model.AdsConfig
 import com.nekoanimes.app.model.AppManifest
-import com.nekoanimes.app.model.AppOpenAdConfig
-import com.nekoanimes.app.model.BannerAdConfig
-import com.nekoanimes.app.model.InterstitialAdConfig
 import com.nekoanimes.app.model.NavigationItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -22,7 +18,7 @@ class AppManifestRepository(context: Context) {
         runCatching { fetchRemote() }.recoverCatching { error ->
             val cached = preferences.getString(CACHE_KEY, null)
                 ?: throw IllegalStateException("Configuração remota indisponível e nenhum cache válido foi encontrado", error)
-            parse(cached).withoutAds()
+            parse(cached)
         }
     }
 
@@ -61,44 +57,8 @@ class AppManifestRepository(context: Context) {
             }
         }
 
-        val adsJson = json.getJSONObject("ads")
-        val engine = adsJson.getString("engine")
-        require(engine in setOf("max", "admob", "levelplay")) { "Motor de anúncios inválido" }
-        val appOpenJson = adsJson.getJSONObject("appOpen")
-        val interstitialJson = adsJson.getJSONObject("interstitial")
-        val ads = AdsConfig(
-            enabled = adsJson.getBoolean("enabled"),
-            engine = engine,
-            banner = BannerAdConfig(adsJson.getJSONObject("banner").getBoolean("enabled")),
-            appOpen = AppOpenAdConfig(
-                enabled = appOpenJson.getBoolean("enabled"),
-                minIntervalMinutes = appOpenJson.getInt("minIntervalMinutes").coerceIn(0, 1440),
-                skipFirstOpens = appOpenJson.getInt("skipFirstOpens").coerceIn(0, 20)
-            ),
-            interstitial = InterstitialAdConfig(
-                enabled = interstitialJson.getBoolean("enabled"),
-                minIntervalMinutes = interstitialJson.getInt("minIntervalMinutes").coerceIn(0, 1440),
-                maxPerSession = interstitialJson.getInt("maxPerSession").coerceIn(0, 20),
-                pageTransitionFrequency = interstitialJson.optInt("pageTransitionFrequency", 3).coerceIn(0, 20),
-                showOnEpisodeStart = interstitialJson.optBoolean("showOnEpisodeStart", true)
-            )
-        )
-
-        return AppManifest(schemaVersion, json.getInt("configVersion"), mode, webAppUrl, navigation, ads.withoutAdsWhenDisabled())
+        return AppManifest(schemaVersion, json.getInt("configVersion"), mode, webAppUrl, navigation)
     }
-
-    private fun AdsConfig.withoutAdsWhenDisabled(): AdsConfig = if (enabled) this else copy(
-        banner = banner.copy(enabled = false),
-        appOpen = appOpen.copy(enabled = false),
-        interstitial = interstitial.copy(enabled = false)
-    )
-
-    private fun AppManifest.withoutAds(): AppManifest = copy(ads = ads.copy(
-        enabled = false,
-        banner = ads.banner.copy(enabled = false),
-        appOpen = ads.appOpen.copy(enabled = false),
-        interstitial = ads.interstitial.copy(enabled = false)
-    ))
 
     private fun isTrustedWebAppUrl(url: String): Boolean {
         val candidate = Uri.parse(url)

@@ -47,15 +47,8 @@ ela é usada somente na sessão do navegador e nunca é enviada ao bundle públi
 O painel lê e grava a configuração por um endpoint protegido no Worker da API,
 usando um Service Binding interno entre os dois Workers.
 
-A configuração atual mantém `ads.enabled=false`, portanto nenhum formato é
-solicitado mesmo quando o APK é compilado com os IDs de teste. Os SDKs Android
-de anúncios continuam instalados para testes futuros, mas a primeira versão da
-loja não exibe anúncios. Os IDs/chaves da aba Anúncios são protegidos no
-painel/API e entram em builds futuros; não são publicados no manifesto público.
-
 As abas operacionais do painel são:
 
-- **Anúncios**: liga/desliga global, formatos, frequência e identificadores MAX/AdMob.
 - **Servidores**: habilita/desabilita BR1, BR2 e BR3; endpoints desativados não
   são usados pela API.
 - **Reports**: recebe relatos em `/reportar` e permite acompanhar o status.

@@ -38,26 +38,9 @@ import { resolveLibraryWork, saveProviderWork } from './provider-library';
 type Variables = { userId: string; userEmail?: string; tokenHash?: string };
 type App = Hono<{ Bindings: Env; Variables: Variables }>;
 type Row = Record<string, unknown>;
-type WorkerAdsConfig = {
-  enabled: boolean;
-  engine: 'max' | 'admob' | 'levelplay';
-  credentials: {
-    maxSdkKey: string;
-    maxBannerAdUnitId: string;
-    maxAppOpenAdUnitId: string;
-    maxInterstitialAdUnitId: string;
-    admobAppId: string;
-    admobBannerAdUnitId: string;
-    admobAppOpenAdUnitId: string;
-    admobInterstitialAdUnitId: string;
-  };
-  banner: { enabled: boolean };
-  appOpen: { enabled: boolean; minIntervalMinutes: number; skipFirstOpens: number };
-  interstitial: { enabled: boolean; minIntervalMinutes: number; maxPerSession: number; pageTransitionFrequency: number; showOnEpisodeStart: boolean };
-};
 type WorkerServerConfig = { id: string; enabled: boolean; recommended: boolean };
 type WorkerUpdateConfig = { enabled: boolean; mode: 'direct' | 'play_store'; versionCode: number; versionName: string; apkUrl: string; sha256: string; required: boolean; storeUrl: string };
-type WorkerAppConfig = { mode: 1 | 2; ads: WorkerAdsConfig; servers: WorkerServerConfig[]; updates: WorkerUpdateConfig };
+type WorkerAppConfig = { mode: 1 | 2; servers: WorkerServerConfig[]; updates: WorkerUpdateConfig };
 const MEDIA_PROXY_HOSTS = new Set(['cdn.imagesskill.com', 'goyabu.io', 'animesonlinecc.to', 'animesdigital.org']);
 
 const app: App = new Hono();
@@ -96,7 +79,6 @@ app.get('/v1/app-manifest', async (c) => {
     webAppUrl: c.env.WEB_APP_URL,
     navigation: mode === 2 ? secondaryNavigation() : primaryNavigation(),
     features: { player: mode === 1, downloads: false, notifications: true, news: mode === 2 },
-    ads: publicAdsConfig(normalizeAdsConfig(payload.ads)),
     servers: await enabledServerDescriptors(c.env.DB)
   }, 200, { 'Cache-Control': 'no-store' });
 });
@@ -114,7 +96,7 @@ app.put('/v1/admin/app-config', requireAdmin, async (c) => {
 
   await c.env.DB.prepare(
     `UPDATE app_config SET mode = ?, payload = ?, version = version + 1, updated_at = CURRENT_TIMESTAMP WHERE id = 1`
-  ).bind(input.mode, JSON.stringify({ ads: input.ads, servers: input.servers, updates: input.updates })).run();
+  ).bind(input.mode, JSON.stringify({ servers: input.servers, updates: input.updates })).run();
 
   const row = await first<Row>(c.env.DB, 'SELECT version, mode, payload, updated_at FROM app_config WHERE id = 1');
   if (!row) throw new HTTPException(404, { message: 'Configuração do aplicativo não encontrada' });
@@ -820,42 +802,16 @@ function constantTimeEqual(left: string, right: string): boolean {
 }
 function appConfigState(row: Row) {
   const payload = parseObject(row.payload);
-  return { version: Number(row.version ?? 1), mode: normalizeAppMode(row.mode), ads: normalizeAdsConfig(payload.ads), servers: normalizeServerConfig(payload.servers), updates: normalizeUpdateConfig(payload.updates), updatedAt: String(row.updated_at ?? new Date().toISOString()) };
+  return { version: Number(row.version ?? 1), mode: normalizeAppMode(row.mode), servers: normalizeServerConfig(payload.servers), updates: normalizeUpdateConfig(payload.updates), updatedAt: String(row.updated_at ?? new Date().toISOString()) };
 }
 function parseAdminAppConfig(value: unknown): WorkerAppConfig | null {
   if (!value || typeof value !== 'object') return null;
   const input = value as Record<string, unknown>;
   if (input.mode !== 1 && input.mode !== 2) return null;
-  return { mode: input.mode, ads: normalizeAdsConfig(input.ads), servers: normalizeServerConfig(input.servers), updates: normalizeUpdateConfig(input.updates) };
+  return { mode: input.mode, servers: normalizeServerConfig(input.servers), updates: normalizeUpdateConfig(input.updates) };
 }
 function normalizeAppMode(value: unknown): 1 | 2 { return Number(value) === 2 ? 2 : 1; }
 function boundedInt(value: unknown, min: number, max: number): number | null { return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max ? value : null; }
-function defaultAds(): WorkerAdsConfig { return { enabled: false, engine: 'max', credentials: { maxSdkKey: '', maxBannerAdUnitId: '', maxAppOpenAdUnitId: '', maxInterstitialAdUnitId: '', admobAppId: '', admobBannerAdUnitId: '', admobAppOpenAdUnitId: '', admobInterstitialAdUnitId: '' }, banner: { enabled: false }, appOpen: { enabled: false, minIntervalMinutes: 60, skipFirstOpens: 3 }, interstitial: { enabled: false, minIntervalMinutes: 30, maxPerSession: 2, pageTransitionFrequency: 3, showOnEpisodeStart: true } }; }
-function isAdsConfig(value: unknown): value is WorkerAdsConfig { return Boolean(value && typeof value === 'object' && 'enabled' in value && 'banner' in value && 'appOpen' in value && 'interstitial' in value); }
-function normalizeAdsConfig(value: unknown): WorkerAdsConfig {
-  const defaults = defaultAds();
-  if (!isAdsConfig(value)) return defaults;
-  const input = value as Partial<WorkerAdsConfig>;
-  const credentials = input.credentials && typeof input.credentials === 'object' ? input.credentials as Partial<WorkerAdsConfig['credentials']> : {};
-  const normalized = {
-    ...defaults,
-    ...value,
-    credentials: { ...defaults.credentials, ...credentials },
-    banner: { ...defaults.banner, ...value.banner },
-    appOpen: { ...defaults.appOpen, ...value.appOpen },
-    interstitial: { ...defaults.interstitial, ...value.interstitial }
-  };
-  return normalized.enabled ? normalized : {
-    ...normalized,
-    banner: { ...normalized.banner, enabled: false },
-    appOpen: { ...normalized.appOpen, enabled: false },
-    interstitial: { ...normalized.interstitial, enabled: false }
-  };
-}
-function publicAdsConfig(value: WorkerAdsConfig) {
-  const { credentials: _credentials, ...publicConfig } = value;
-  return publicConfig;
-}
 function defaultServerConfig(): WorkerServerConfig[] {
   return listServerDescriptors().map((server) => ({ id: server.id, enabled: true, recommended: server.id === 'goyabu' }));
 }

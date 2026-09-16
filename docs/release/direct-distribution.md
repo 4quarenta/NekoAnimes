@@ -48,8 +48,6 @@ O GitHub Actions precisa de:
 - `NEKO_RELEASE_KEY_ALIAS`
 - `NEKO_RELEASE_KEY_PASSWORD`
 
-Os secrets do AppLovin são opcionais até a monetização real ser ativada.
-
 ## Fluxo para nova versão
 
 1. Atualizar `versionCode` e `versionName` no Gradle.

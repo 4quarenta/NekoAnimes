@@ -28,13 +28,6 @@
 - [ ] Provisionar projeto Supabase exclusivo do NekoAnimes.
 - [ ] Validar login, renovação e logout ponta a ponta no projeto real.
 
-## Ads
-- [x] Ads falham fechados sem configuração/consentimento.
-- [x] Frequência é aplicada no Android, não confiada à SPA.
-- [x] Somente um mediation engine fica ativo por vez.
-- [ ] Inserir SDK key/ad units reais apenas no ambiente de release.
-- [ ] Validar UMP e anúncios em dispositivo real.
-
 ## Release blockers
 1. GitHub Actions/runner deve voltar a executar steps normalmente.
 2. Gerar APK/AAB e concluir smoke test Android.

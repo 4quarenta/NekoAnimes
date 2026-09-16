@@ -9,19 +9,6 @@ val releaseKeyAlias = providers.environmentVariable("NEKO_RELEASE_KEY_ALIAS")
 val releaseKeyPassword = providers.environmentVariable("NEKO_RELEASE_KEY_PASSWORD")
 val hasReleaseSigning = releaseStoreFile.isPresent && releaseStorePassword.isPresent && releaseKeyAlias.isPresent && releaseKeyPassword.isPresent
 fun nekoUrl(property: String, fallback: String) = providers.gradleProperty(property).orElse(fallback).get()
-val maxTestMode = providers.gradleProperty("maxTestMode").map { it.toBoolean() }.orElse(false).get()
-val admobTestMode = providers.gradleProperty("admobTestMode").map { it.toBoolean() }.orElse(false).get()
-val maxTestDeviceAdvertisingId = providers.gradleProperty("maxTestDeviceAdvertisingId").orElse("").get()
-// The Google Mobile Ads provider validates this manifest value before the
-// application starts, even when all remote ad formats are disabled. Use the
-// official test application id until a real one is explicitly configured.
-// This fallback does not enable ads; the remote manifest flags still decide
-// whether any format is requested at runtime.
-val defaultAdMobAppId = "ca-app-pub-3940256099942544~3347511713"
-val googleAdMobAppId = providers.gradleProperty("googleAdMobAppId")
-    .map { it.takeIf(String::isNotBlank) ?: defaultAdMobAppId }
-    .orElse(defaultAdMobAppId)
-    .get()
 
 android {
     namespace = "com.nekoanimes.app"
@@ -35,14 +22,6 @@ android {
         versionName = "1.0.36"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        buildConfigField("String", "MAX_SDK_KEY", "\"${providers.gradleProperty("MAX_SDK_KEY").orElse("").get()}\"")
-        buildConfigField("String", "MAX_BANNER_AD_UNIT_ID", "\"${providers.gradleProperty("MAX_BANNER_AD_UNIT_ID").orElse("").get()}\"")
-        buildConfigField("String", "MAX_APP_OPEN_AD_UNIT_ID", "\"${providers.gradleProperty("MAX_APP_OPEN_AD_UNIT_ID").orElse("").get()}\"")
-        buildConfigField("String", "MAX_INTERSTITIAL_AD_UNIT_ID", "\"${providers.gradleProperty("MAX_INTERSTITIAL_AD_UNIT_ID").orElse("").get()}\"")
-        buildConfigField("boolean", "MAX_TEST_MODE", maxTestMode.toString())
-        buildConfigField("String", "MAX_TEST_DEVICE_ADVERTISING_ID", "\"$maxTestDeviceAdvertisingId\"")
-        buildConfigField("boolean", "ADMOB_TEST_MODE", admobTestMode.toString())
-        manifestPlaceholders["googleAdMobAppId"] = googleAdMobAppId
     }
 
     signingConfigs {
@@ -143,12 +122,6 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-dash:1.11.0")
     implementation("androidx.media3:media3-ui:1.11.0")
 
-    implementation("com.applovin:applovin-sdk:13.6.4")
-    // MAX mediation adapters. Network activation remains controlled by MAX.
-    implementation("com.applovin.mediation:google-adapter:25.4.0.0")
-    implementation("com.applovin.mediation:facebook-adapter:6.22.0.0")
-    implementation("com.google.android.ump:user-messaging-platform:4.0.0")
-    implementation("com.google.android.gms:play-services-ads:25.4.0")
     implementation("com.google.android.play:review:2.0.2")
     implementation("com.google.android.play:review-ktx:2.0.2")
 

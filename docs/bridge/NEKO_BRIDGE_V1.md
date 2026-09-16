@@ -32,7 +32,7 @@ Web -> Nativo:
 
 - `navigation.routeChanged`
 - `player.open`
-- `ads.event`
+- `app.event`
 
 Nativo -> Web:
 

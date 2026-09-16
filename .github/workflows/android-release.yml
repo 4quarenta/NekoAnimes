@@ -53,11 +53,6 @@ jobs:
           NEKO_RELEASE_STORE_PASSWORD: ${{ secrets.NEKO_RELEASE_STORE_PASSWORD }}
           NEKO_RELEASE_KEY_ALIAS: ${{ secrets.NEKO_RELEASE_KEY_ALIAS }}
           NEKO_RELEASE_KEY_PASSWORD: ${{ secrets.NEKO_RELEASE_KEY_PASSWORD }}
-          ORG_GRADLE_PROJECT_MAX_SDK_KEY: ${{ secrets.MAX_SDK_KEY }}
-          ORG_GRADLE_PROJECT_MAX_BANNER_AD_UNIT_ID: ${{ secrets.MAX_BANNER_AD_UNIT_ID }}
-          ORG_GRADLE_PROJECT_MAX_APP_OPEN_AD_UNIT_ID: ${{ secrets.MAX_APP_OPEN_AD_UNIT_ID }}
-          ORG_GRADLE_PROJECT_MAX_INTERSTITIAL_AD_UNIT_ID: ${{ secrets.MAX_INTERSTITIAL_AD_UNIT_ID }}
-          ORG_GRADLE_PROJECT_googleAdMobAppId: ${{ vars.NEKO_GOOGLE_ADMOB_APP_ID || '' }}
         run: gradle --no-daemon :app:assembleDirectRelease :app:bundlePlayRelease
 
       - name: Prepare named release files

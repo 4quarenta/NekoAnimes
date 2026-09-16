@@ -21,10 +21,6 @@ export const NavigationItemSchema = z.object({
   route: z.string().startsWith('/')
 });
 
-export const AdFormatSettingsSchema = z.object({
-  enabled: z.boolean()
-});
-
 export const AppManifestSchema = z.object({
   schemaVersion: z.literal(1),
   configVersion: z.number().int().positive(),
@@ -36,21 +32,6 @@ export const AppManifestSchema = z.object({
     downloads: z.boolean(),
     notifications: z.boolean(),
     news: z.boolean()
-  }),
-  ads: z.object({
-    enabled: z.boolean(),
-    engine: z.enum(['max', 'admob', 'levelplay']).default('max'),
-    banner: AdFormatSettingsSchema,
-    appOpen: AdFormatSettingsSchema.extend({
-      minIntervalMinutes: z.number().int().nonnegative(),
-      skipFirstOpens: z.number().int().nonnegative()
-    }),
-    interstitial: AdFormatSettingsSchema.extend({
-      minIntervalMinutes: z.number().int().nonnegative(),
-      maxPerSession: z.number().int().nonnegative(),
-      pageTransitionFrequency: z.number().int().nonnegative().default(3),
-      showOnEpisodeStart: z.boolean().default(true)
-    })
   })
 });
 

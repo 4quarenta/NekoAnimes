@@ -68,7 +68,6 @@ export class AppConfigService {
         notifications: true,
         news: settings.mode === 2
       },
-      ads: settings.ads
     };
   }
 

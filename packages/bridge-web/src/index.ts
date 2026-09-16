@@ -80,11 +80,6 @@ export const NekoNative = {
     return post('app.event', { name, placement });
   },
 
-  // Compatibility alias until monetization migrates to semantic app events.
-  adEvent(event: string, placement?: string): boolean {
-    return this.appEvent(event, placement);
-  },
-
   subscribe(listener: Listener): () => void {
     listeners.add(listener);
     return () => listeners.delete(listener);

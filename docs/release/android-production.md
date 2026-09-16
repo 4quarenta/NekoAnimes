@@ -43,15 +43,6 @@ GitHub Actions secrets required by `.github/workflows/android-release.yml`:
 - `NEKO_RELEASE_KEY_ALIAS`
 - `NEKO_RELEASE_KEY_PASSWORD`
 
-Ads secrets, when monetization is enabled:
-
-- `MAX_SDK_KEY`
-- `MAX_BANNER_AD_UNIT_ID`
-- `MAX_APP_OPEN_AD_UNIT_ID`
-- `MAX_INTERSTITIAL_AD_UNIT_ID`
-
-If ad credentials are absent, monetization must remain disabled in remote config.
-
 ## Store compliance
 
 The store listing and declarations must describe the capabilities actually shipped in the submitted binary and the mode/capabilities available to users. Remote configuration must not be used to conceal functionality from store review.
@@ -62,7 +53,7 @@ Before publishing:
 - Complete Play Console Data safety using the actual production data flows.
 - Declare account creation/authentication if enabled.
 - Provide account deletion instructions/flow if accounts can be created.
-- Declare advertising SDKs and consent behavior.
+- Confirm the submitted binary does not include advertising SDKs or advertising permissions.
 - Complete content rating questionnaire accurately.
 - Confirm rights/licensing for all media, metadata, images and streaming sources used in production.
 - Confirm copyright/source attribution for News Mode.
@@ -82,9 +73,6 @@ Run on at least one physical Android device and one emulator:
 - Login, token refresh, logout and expired-session behavior.
 - News Mode: Home → Search → Article → Save → Saved → Account.
 - Switching remote mode does not expose routes from the inactive experience.
-- Banner does not cover navigation/content.
-- App Open and Interstitial obey remote frequency limits.
-- Consent refusal does not crash the app.
 - External URLs open outside the WebView.
 - Release build refuses HTTP production endpoints.
 - No debug suffix/package is present in release.
