@@ -91,8 +91,12 @@ test('MAL and AniList lookups ignore dublado in provider titles',async()=>{
   globalThis.fetch=originalFetch;
 });
 test('categories use provider links, title attributes and exclude other hosts/letters',()=>{
-  const items=extractProviderCategories('animesdigital','<a href="/genero/acao" title="Ação"></a><a href="/genero/letra-a/">A</a><a href="https://other.test/genero/drama">Drama</a>');
-  assert.deepEqual(items,[{id:'acao',name:'Ação',reference:'/genero/acao'}]);
+  const items=extractProviderCategories('animesdigital','<a href="/genero/acao" title="Ação"></a><a href="/genero/comedia" title="Comédia"></a><a href="/genero/ficcao-cientifica" title="Ficção Científica"></a><a href="/genero/acao-comedia-ficcao-cientifica" title="Ação Comédia Ficção Científica"></a><a href="/genero/letra-a/">A</a><a href="https://other.test/genero/drama">Drama</a>');
+  assert.deepEqual(items,[
+    {id:'acao',name:'Ação',reference:'/genero/acao'},
+    {id:'comedia',name:'Comédia',reference:'/genero/comedia'},
+    {id:'ficcao-cientifica',name:'Ficção Científica',reference:'/genero/ficcao-cientifica'}
+  ]);
 });
 test('native episode ids differ between works and normalize trailing slash',()=>{
   assert.notEqual(providerEpisodeId('goyabu','/episodio/a-1'),providerEpisodeId('goyabu','/episodio/b-1'));

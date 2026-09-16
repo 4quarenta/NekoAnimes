@@ -210,12 +210,12 @@ export function extractProviderCategories(serverId: string, html: string): Provi
     if (name.length < 2 || name.length > 80 || !/\p{L}/u.test(name)) continue;
     items.set(match[1], { id: match[1], name, reference: reference! });
   }
-  return [...items.values()].sort((a,b) => a.name.localeCompare(b.name, 'pt-BR'));
+  return normalizeProviderCategories(provider, [...items.values()]);
 }
 
 export async function getProviderCategories(serverId: string): Promise<ProviderCategory[]> {
   const provider = getProvider(serverId);
-  const key = new Request(`https://nekoanimes-provider-cache.local/categories/v2/${serverId}`);
+  const key = new Request(`https://nekoanimes-provider-cache.local/categories/v3/${serverId}`);
   const cache = (caches as unknown as { default: Cache }).default;
   const cached = await cache.match(key);
   if (cached) return cached.json<ProviderCategory[]>();
@@ -225,7 +225,38 @@ export async function getProviderCategories(serverId: string): Promise<ProviderC
   if (index) items = [...new Map([...items,...extractProviderCategories(serverId,(await getProviderHtml(provider,index)).html)].map(item => [item.id,item])).values()];
   if (!items.length) throw new ProviderError('O servidor não retornou categorias disponíveis', 'unavailable');
   await cache.put(key,new Response(JSON.stringify(items),{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=900'}}));
-  return items.sort((a,b) => a.name.localeCompare(b.name,'pt-BR'));
+  return normalizeProviderCategories(provider, items);
+}
+
+function normalizeProviderCategories(provider: ProviderConfig, items: ProviderCategory[]): ProviderCategory[] {
+  if (provider.id !== 'animesdigital') {
+    return items.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  }
+
+  const ids = new Set(items.map((item) => item.id));
+  const normalized = items.filter((item) => !isDecomposableCategory(item.id, ids));
+  return normalized.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+}
+
+function isDecomposableCategory(categoryId: string, availableIds: Set<string>): boolean {
+  const candidates = [...availableIds]
+    .filter((id) => id !== categoryId)
+    .sort((a, b) => b.length - a.length);
+  const parts = decomposeCategoryId(categoryId, candidates, []);
+  return Boolean(parts && parts.length >= 2);
+}
+
+function decomposeCategoryId(value: string, candidates: string[], selected: string[]): string[] | null {
+  const rest = value.replace(/^e-/, '');
+  if (!rest) return selected;
+
+  for (const candidate of candidates) {
+    if (rest !== candidate && !rest.startsWith(`${candidate}-`)) continue;
+    const remaining = rest === candidate ? '' : rest.slice(candidate.length + 1);
+    const result = decomposeCategoryId(remaining, candidates, [...selected, candidate]);
+    if (result) return result;
+  }
+  return null;
 }
 
 export function providerEpisodeId(serverId: string, reference: string) {
