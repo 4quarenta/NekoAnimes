@@ -22,7 +22,7 @@ type AdsConfig = {
 };
 type ServerConfig = { id: string; enabled: boolean; recommended: boolean };
 type UpdateConfig = { enabled: boolean; mode: 'direct' | 'play_store'; versionCode: number; versionName: string; apkUrl: string; sha256: string; required: boolean; storeUrl: string };
-type AppConfig = { version: number; mode: 'streaming' | 'news'; ads: AdsConfig; servers: ServerConfig[]; updates: UpdateConfig; updatedAt: string };
+type AppConfig = { version: number; mode: 1 | 2; ads: AdsConfig; servers: ServerConfig[]; updates: UpdateConfig; updatedAt: string };
 type Report = { id: string; userId: string | null; email: string | null; category: string; message: string; route: string | null; appVersion: string | null; status: 'open' | 'in_progress' | 'resolved' | 'dismissed'; createdAt: string; updatedAt: string };
 type Tab = 'app' | 'ads' | 'servers' | 'reports' | 'updates';
 
@@ -154,7 +154,7 @@ function Login({ keyInput, setKeyInput, authenticate, message }: { keyInput: str
 }
 
 function AppTab({ config, setConfig }: { config: AppConfig; setConfig: (value: AppConfig) => void }) {
-  return <section style={panel}><h2 style={{ marginTop: 0 }}>Experiência ativa</h2><label style={{ ...field, maxWidth: 360 }}>Modo entregue pela configuração remota<select value={config.mode} onChange={(event) => setConfig({ ...config, mode: event.target.value as AppConfig['mode'] })} style={control}><option value="streaming">Streaming</option><option value="news">Somente notícias</option></select></label><p style={{ color: '#a1a1aa', marginBottom: 0 }}>A publicação é versionada e o Android consulta o manifesto remoto ao iniciar.</p></section>;
+  return <section style={panel}><h2 style={{ marginTop: 0 }}>Experiência ativa</h2><label style={{ ...field, maxWidth: 420 }}>Perfil entregue pela configuração remota<select value={String(config.mode)} onChange={(event) => setConfig({ ...config, mode: Number(event.target.value) as AppConfig['mode'] })} style={control}><option value="1">Modo 1 — catálogo e player</option><option value="2">Modo 2 — conteúdo editorial</option></select></label><p style={{ color: '#a1a1aa', marginBottom: 0 }}>Modo 1 concentra catálogo e reprodução. Modo 2 concentra leitura e conteúdo editorial. A publicação é versionada e o Android consulta o manifesto remoto ao iniciar.</p></section>;
 }
 
 function AdsTab({ config, setConfig }: { config: AppConfig; setConfig: (value: AppConfig) => void }) {

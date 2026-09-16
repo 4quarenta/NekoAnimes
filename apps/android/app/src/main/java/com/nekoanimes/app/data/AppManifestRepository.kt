@@ -45,8 +45,8 @@ class AppManifestRepository(context: Context) {
         val json = JSONObject(raw)
         val schemaVersion = json.getInt("schemaVersion")
         require(schemaVersion == 1) { "schemaVersion não suportada: $schemaVersion" }
-        val mode = json.getString("mode")
-        require(mode == "streaming" || mode == "news") { "Modo inválido" }
+        val mode = json.getInt("mode")
+        require(mode == 1 || mode == 2) { "Modo inválido" }
         val webAppUrl = json.getString("webAppUrl")
         require(isTrustedWebAppUrl(webAppUrl)) { "Origem web não permitida" }
 

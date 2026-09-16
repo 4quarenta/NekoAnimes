@@ -8,7 +8,6 @@
   "browser": { "binding": "BROWSER" },
   "vars": {
     "NODE_ENV": "production",
-    "APP_MODE": "streaming",
     "WEB_APP_URL": "https://nekoanimes-staging.pages.dev",
     "ANDROID_LATEST_VERSION_CODE": "10036",
     "ANDROID_LATEST_VERSION_NAME": "1.0.36"

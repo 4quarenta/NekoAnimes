@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const AppModeSchema = z.enum(['streaming', 'news']);
+export const AppModeSchema = z.union([z.literal(1), z.literal(2)]);
 
 export const NavigationIconSchema = z.enum([
   'home',

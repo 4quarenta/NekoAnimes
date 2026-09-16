@@ -16,7 +16,7 @@ function isNativeRoute(route: string): route is NativeRoute { return (NATIVE_ROU
 function isNavigableRoute(route: string): route is NavigableRoute {
   return isNativeRoute(route) || route.startsWith('/anime/') || route.startsWith('/noticias/') || route.startsWith('/categorias/');
 }
-function isStreamingOnly(route: string) { return route === '/categorias' || route.startsWith('/categorias/') || route === '/lista' || route === '/continuar' || route === '/servidores' || route.startsWith('/anime/'); }
+function isModeOneOnly(route: string) { return route === '/categorias' || route.startsWith('/categorias/') || route === '/lista' || route === '/continuar' || route === '/servidores' || route.startsWith('/anime/'); }
 
 export function App() {
   const queryClient = useQueryClient();
@@ -45,7 +45,7 @@ export function App() {
 
     void fetchManifest().then((manifest) => {
       const route = window.location.pathname;
-      if (manifest.mode === 'news' && isStreamingOnly(route)) void router.navigate({ to: '/' });
+      if (manifest.mode === 2 && isModeOneOnly(route)) void router.navigate({ to: '/' });
     }).catch(() => undefined);
 
     const unsubscribe = NekoNative.subscribe((event) => {

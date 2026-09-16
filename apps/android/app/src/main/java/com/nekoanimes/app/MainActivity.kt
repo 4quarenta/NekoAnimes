@@ -139,7 +139,7 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
     }
     val drawerItems = remember(manifest.configVersion) {
         manifest.navigation.filter(::isDrawerItem).let { items ->
-            if (manifest.mode == "streaming" && items.none { it.route == "/continuar" }) {
+            if (manifest.mode == 1 && items.none { it.route == "/continuar" }) {
                 items + NavigationItem("continue", "Continuar assistindo", "history", "/continuar")
             } else items
         }

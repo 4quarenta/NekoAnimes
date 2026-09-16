@@ -57,7 +57,7 @@ type WorkerAdsConfig = {
 };
 type WorkerServerConfig = { id: string; enabled: boolean; recommended: boolean };
 type WorkerUpdateConfig = { enabled: boolean; mode: 'direct' | 'play_store'; versionCode: number; versionName: string; apkUrl: string; sha256: string; required: boolean; storeUrl: string };
-type WorkerAppConfig = { mode: 'streaming' | 'news'; ads: WorkerAdsConfig; servers: WorkerServerConfig[]; updates: WorkerUpdateConfig };
+type WorkerAppConfig = { mode: 1 | 2; ads: WorkerAdsConfig; servers: WorkerServerConfig[]; updates: WorkerUpdateConfig };
 const MEDIA_PROXY_HOSTS = new Set(['cdn.imagesskill.com', 'goyabu.io', 'animesonlinecc.to', 'animesdigital.org']);
 
 const app: App = new Hono();
@@ -88,14 +88,14 @@ app.get('/health/ready', async (c) => {
 app.get('/v1/app-manifest', async (c) => {
   const row = await first<Row>(c.env.DB, 'SELECT version, mode, payload FROM app_config WHERE id = 1');
   const payload = parseObject(row?.payload);
-  const mode = row?.mode === 'news' ? 'news' : 'streaming';
+  const mode = normalizeAppMode(row?.mode);
   return c.json({
     schemaVersion: 1,
     configVersion: Number(row?.version ?? 1),
     mode,
     webAppUrl: c.env.WEB_APP_URL,
-    navigation: mode === 'news' ? newsNavigation() : streamingNavigation(),
-    features: { player: mode === 'streaming', downloads: false, notifications: true, news: mode === 'news' },
+    navigation: mode === 2 ? secondaryNavigation() : primaryNavigation(),
+    features: { player: mode === 1, downloads: false, notifications: true, news: mode === 2 },
     ads: publicAdsConfig(normalizeAdsConfig(payload.ads)),
     servers: await enabledServerDescriptors(c.env.DB)
   }, 200, { 'Cache-Control': 'no-store' });
@@ -796,14 +796,15 @@ function constantTimeEqual(left: string, right: string): boolean {
 }
 function appConfigState(row: Row) {
   const payload = parseObject(row.payload);
-  return { version: Number(row.version ?? 1), mode: row.mode === 'news' ? 'news' : 'streaming', ads: normalizeAdsConfig(payload.ads), servers: normalizeServerConfig(payload.servers), updates: normalizeUpdateConfig(payload.updates), updatedAt: String(row.updated_at ?? new Date().toISOString()) };
+  return { version: Number(row.version ?? 1), mode: normalizeAppMode(row.mode), ads: normalizeAdsConfig(payload.ads), servers: normalizeServerConfig(payload.servers), updates: normalizeUpdateConfig(payload.updates), updatedAt: String(row.updated_at ?? new Date().toISOString()) };
 }
 function parseAdminAppConfig(value: unknown): WorkerAppConfig | null {
   if (!value || typeof value !== 'object') return null;
   const input = value as Record<string, unknown>;
-  if (input.mode !== 'streaming' && input.mode !== 'news') return null;
+  if (input.mode !== 1 && input.mode !== 2) return null;
   return { mode: input.mode, ads: normalizeAdsConfig(input.ads), servers: normalizeServerConfig(input.servers), updates: normalizeUpdateConfig(input.updates) };
 }
+function normalizeAppMode(value: unknown): 1 | 2 { return Number(value) === 2 ? 2 : 1; }
 function boundedInt(value: unknown, min: number, max: number): number | null { return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max ? value : null; }
 function defaultAds(): WorkerAdsConfig { return { enabled: false, engine: 'max', credentials: { maxSdkKey: '', maxBannerAdUnitId: '', maxAppOpenAdUnitId: '', maxInterstitialAdUnitId: '', admobAppId: '', admobBannerAdUnitId: '', admobAppOpenAdUnitId: '', admobInterstitialAdUnitId: '' }, banner: { enabled: false }, appOpen: { enabled: false, minIntervalMinutes: 60, skipFirstOpens: 3 }, interstitial: { enabled: false, minIntervalMinutes: 30, maxPerSession: 2, pageTransitionFrequency: 3, showOnEpisodeStart: true } }; }
 function isAdsConfig(value: unknown): value is WorkerAdsConfig { return Boolean(value && typeof value === 'object' && 'enabled' in value && 'banner' in value && 'appOpen' in value && 'interstitial' in value); }
@@ -854,7 +855,7 @@ function normalizeUpdateConfig(value: unknown): WorkerUpdateConfig {
 function parseUpdateConfig(value: unknown): WorkerUpdateConfig | null { const config = normalizeUpdateConfig(value); return config.enabled ? config : null; }
 function report(row: Row) { return { id: row.id, userId: row.user_id, email: row.email, category: row.category, message: row.message, route: row.route, appVersion: row.app_version, status: row.status, createdAt: row.created_at, updatedAt: row.updated_at }; }
 // Android classifies drawer items by route; /continuar belongs to that secondary group.
-function streamingNavigation() { return [{ id: 'home', label: 'Início', icon: 'home', route: '/' }, { id: 'search', label: 'Buscar', icon: 'search', route: '/buscar' }, { id: 'categories', label: 'Categorias', icon: 'category', route: '/categorias' }, { id: 'library', label: 'Minha lista', icon: 'library', route: '/lista' }, { id: 'continue', label: 'Continuar assistindo', icon: 'library', route: '/continuar' }, { id: 'account', label: 'Conta', icon: 'profile', route: '/conta' }, { id: 'servers', label: 'Servidores', icon: 'server', route: '/servidores' }]; }
-function newsNavigation() { return [{ id: 'home', label: 'Início', icon: 'home', route: '/' }, { id: 'search', label: 'Buscar', icon: 'search', route: '/buscar' }, { id: 'saved', label: 'Salvos', icon: 'bookmark', route: '/salvos' }, { id: 'account', label: 'Conta', icon: 'profile', route: '/conta' }]; }
+function primaryNavigation() { return [{ id: 'home', label: 'Início', icon: 'home', route: '/' }, { id: 'search', label: 'Buscar', icon: 'search', route: '/buscar' }, { id: 'categories', label: 'Categorias', icon: 'category', route: '/categorias' }, { id: 'library', label: 'Minha lista', icon: 'library', route: '/lista' }, { id: 'continue', label: 'Continuar assistindo', icon: 'library', route: '/continuar' }, { id: 'account', label: 'Conta', icon: 'profile', route: '/conta' }, { id: 'servers', label: 'Servidores', icon: 'server', route: '/servidores' }]; }
+function secondaryNavigation() { return [{ id: 'home', label: 'Início', icon: 'home', route: '/' }, { id: 'search', label: 'Buscar', icon: 'search', route: '/buscar' }, { id: 'saved', label: 'Salvos', icon: 'bookmark', route: '/salvos' }, { id: 'account', label: 'Conta', icon: 'profile', route: '/conta' }]; }
 
 export default app;

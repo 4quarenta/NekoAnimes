@@ -17,15 +17,15 @@ export function HomePage() {
   const {session,query:watching,items:progressItems,pending}=useContinueWatching();
   const manifest = useQuery({ queryKey: ['app-manifest'], queryFn: fetchManifest });
   const serverId = useServerPreference((state) => state.serverId);
-  const news = useQuery({ queryKey: ['news-home'], queryFn: () => fetchNews({ limit: 30 }), enabled: manifest.data?.mode === 'news' });
-  const categories=useQuery({queryKey:['provider-categories',serverId],queryFn:()=>fetchProviderCategories(serverId!),enabled:Boolean(serverId)&&manifest.data?.mode==='streaming',staleTime:15*60*1000});
-  const catalog = useQuery({ queryKey: ['provider-catalog-home', serverId], queryFn: () => fetchProviderCatalog(serverId!, { limit: 6 }), enabled: manifest.data?.mode === 'streaming' && Boolean(serverId) });
+  const news = useQuery({ queryKey: ['news-home'], queryFn: () => fetchNews({ limit: 30 }), enabled: manifest.data?.mode === 2 });
+  const categories=useQuery({queryKey:['provider-categories',serverId],queryFn:()=>fetchProviderCategories(serverId!),enabled:Boolean(serverId)&&manifest.data?.mode===1,staleTime:15*60*1000});
+  const catalog = useQuery({ queryKey: ['provider-catalog-home', serverId], queryFn: () => fetchProviderCatalog(serverId!, { limit: 6 }), enabled: manifest.data?.mode === 1 && Boolean(serverId) });
 
 
   if (manifest.isPending) return <AppScreen><div className="neko-skeleton" /><div className="neko-skeleton short" /></AppScreen>;
   if (manifest.isError) return <AppScreen><p role="alert" className="neko-error">Não foi possível carregar a configuração.</p><button className="neko-secondary-button" onClick={()=>void manifest.refetch()}>Tentar novamente</button></AppScreen>;
 
-  if (manifest.data.mode === 'news') {
+  if (manifest.data.mode === 2) {
     return (
       <AppScreen>
         <Eyebrow>Neko News</Eyebrow>

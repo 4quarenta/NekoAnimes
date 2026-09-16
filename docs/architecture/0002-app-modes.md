@@ -1,4 +1,4 @@
-# ADR 0002 — Modos Streaming e News
+# ADR 0002 — Perfis de experiência 1 e 2
 
 ## Objetivo
 

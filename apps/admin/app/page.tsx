@@ -19,7 +19,7 @@ export default function AdminHome() {
       <div style={{ display: 'grid', gap: 16, marginTop: 28 }}>
         <section style={sectionStyle}>
           <h2 style={{ marginTop: 0 }}>Aplicativo</h2>
-          <p style={{ color: '#a1a1aa' }}>Modo Streaming/Notícias e monetização versionada.</p>
+          <p style={{ color: '#a1a1aa' }}>Perfil de experiência e monetização versionados.</p>
           <a href="/configuracao" style={{ color: '#c4b5fd', fontWeight: 700 }}>Abrir configurações →</a>
         </section>
 

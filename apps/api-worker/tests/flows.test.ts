@@ -20,6 +20,7 @@ beforeEach(()=>{
   sqlite=new DatabaseSync(':memory:');
   sqlite.exec(readFileSync('migrations/0001_initial.sql','utf8'));
   sqlite.exec(readFileSync('migrations/0004_anime_metadata.sql','utf8'));
+  sqlite.exec(readFileSync('migrations/0005_numeric_app_mode.sql','utf8'));
   const prepare=(sql:string,values:unknown[]=[])=>({
     bind:(...args:unknown[])=>prepare(sql,args),
     first:async()=>sqlite.prepare(sql).get(...values as never[])??null,
@@ -346,13 +347,13 @@ test('ambiguous canonical references and malformed stored genres do not misident
 });
 
 test('generated manifest includes secondary continue route and Minha lista, independent of saved navigation payload',async()=>{
-  sqlite.prepare('INSERT INTO app_config(id,version,mode,payload) VALUES(1,2,?,?)').run('streaming',JSON.stringify({navigation:[{route:'/wrong'}]}));
+  sqlite.prepare('INSERT INTO app_config(id,version,mode,payload) VALUES(1,2,?,?)').run(1,JSON.stringify({navigation:[{route:'/wrong'}]}));
   const result=await request('/v1/app-manifest');
   assert.equal(result.status,200);
   assert.deepEqual(result.body.navigation.slice(0,3).map((item:{route:string})=>item.route),['/','/buscar','/categorias']);
   assert.equal(result.body.navigation.find((item:{route:string})=>item.route==='/lista').label,'Minha lista');
   assert.equal(result.body.navigation.filter((item:{route:string})=>item.route==='/continuar').length,1);
   assert.equal(result.body.navigation.length,7);
-  sqlite.prepare('UPDATE app_config SET mode=? WHERE id=1').run('news');
+  sqlite.prepare('UPDATE app_config SET mode=? WHERE id=1').run(2);
   assert.equal((await request('/v1/app-manifest')).body.navigation.some((item:{route:string})=>item.route==='/continuar'),false);
 });

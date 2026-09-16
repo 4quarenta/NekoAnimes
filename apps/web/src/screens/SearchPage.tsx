@@ -17,17 +17,17 @@ export function SearchPage() {
   const serverId = useServerPreference((state) => state.serverId);
   const normalized = debounced.trim();
   const manifest = useQuery({ queryKey: ['app-manifest'], queryFn: fetchManifest });
-  const newsMode = manifest.data?.mode === 'news';
+  const isModeTwo = manifest.data?.mode === 2;
 
   const catalogResults = useQuery({
     queryKey: ['provider-catalog-search', serverId, normalized],
     queryFn: ({signal}) => fetchProviderCatalog(serverId!, { query: normalized, limit: 50 },signal),
-    enabled: !newsMode && normalized.length >= 2 && Boolean(serverId)
+    enabled: !isModeTwo && normalized.length >= 2 && Boolean(serverId)
   });
   const newsResults = useQuery({
     queryKey: ['news-search', normalized],
     queryFn: () => fetchNews({ query: normalized, limit: 50 }),
-    enabled: newsMode && normalized.length >= 2
+    enabled: isModeTwo && normalized.length >= 2
   });
 
   if (manifest.isPending) return <AppScreen><div className="neko-skeleton" /></AppScreen>;
@@ -35,24 +35,24 @@ export function SearchPage() {
 
   return (
     <AppScreen>
-      <Eyebrow>{newsMode ? 'Neko News' : 'NekoAnimes'}</Eyebrow>
+      <Eyebrow>{isModeTwo ? 'Neko News' : 'NekoAnimes'}</Eyebrow>
       <ScreenHeader
         title="Buscar"
-        subtitle={newsMode ? 'Pesquise por título, resumo ou fonte.' : 'Nome, título em inglês ou título romanizado.'}
+        subtitle={isModeTwo ? 'Pesquise por título, resumo ou fonte.' : 'Nome, título em inglês ou título romanizado.'}
       />
       <label className="neko-search">
         <span>⌕</span>
         <input
           value={query}
           onChange={(event) => {const q=event.target.value;setQuery(q);void navigate({to:'/buscar',search:{q:q||undefined},replace:true,resetScroll:false});}}
-          placeholder={newsMode ? 'Buscar notícia...' : 'Buscar anime...'}
+          placeholder={isModeTwo ? 'Buscar notícia...' : 'Buscar anime...'}
           autoComplete="off"
           inputMode="search"
       />
       </label>
-      {(newsMode?newsResults:catalogResults).isError?<div role="alert"><p className="neko-error">Não foi possível consultar este servidor. Tente novamente ou troque a fonte.</p><button className="neko-secondary-button" onClick={()=>void (newsMode?newsResults:catalogResults).refetch()}>Tentar novamente</button>{!newsMode?<button className="neko-link" onClick={()=>void navigate({to:'/servidores'})}>Trocar servidor</button>:null}</div>:null}
+      {(isModeTwo?newsResults:catalogResults).isError?<div role="alert"><p className="neko-error">Não foi possível consultar este servidor. Tente novamente ou troque a fonte.</p><button className="neko-secondary-button" onClick={()=>void (isModeTwo?newsResults:catalogResults).refetch()}>Tentar novamente</button>{!isModeTwo?<button className="neko-link" onClick={()=>void navigate({to:'/servidores'})}>Trocar servidor</button>:null}</div>:null}
       {normalized.length < 2 ? <EmptyState title="Digite para pesquisar" description="A busca começa a partir de 2 caracteres." /> : null}
-      {newsMode ? (
+      {isModeTwo ? (
         <>
           {newsResults.isPending && normalized.length >= 2 ? <div className="neko-skeleton short" /> : null}
           {newsResults.data?.items.length ? (

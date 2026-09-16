@@ -21,7 +21,7 @@ export const AdConfigSchema = z.object({
 });
 
 export const AppConfigUpdateSchema = z.object({
-  mode: z.enum(['streaming', 'news']),
+  mode: z.union([z.literal(1), z.literal(2)]),
   ads: AdConfigSchema
 }).strict();
 

@@ -28,7 +28,7 @@ export class AppConfigRepository {
         .values({
           id: 1,
           version: 1,
-          mode: this.config.get<'streaming' | 'news'>('APP_MODE') ?? 'streaming',
+          mode: this.config.get<number>('APP_MODE') === 2 ? 2 : 1,
           payload: { ads: DEFAULT_AD_CONFIG }
         })
         .onConflictDoNothing();
@@ -78,7 +78,7 @@ export class AppConfigRepository {
 
     return {
       version: row.version,
-      mode: row.mode,
+      mode: row.mode === 2 ? 2 : 1,
       ads: adsResult.success ? adsResult.data : DEFAULT_AD_CONFIG,
       updatedAt: row.updatedAt.toISOString()
     };

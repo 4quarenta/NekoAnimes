@@ -42,14 +42,14 @@ export class AppConfigService {
 
   private buildManifest(settings: Awaited<ReturnType<AppConfigRepository['get']>>) {
     const account = { id: 'account', label: 'Conta', icon: 'account', route: '/conta' };
-    const streamingNavigation = [
+    const modeOneNavigation = [
       { id: 'home', label: 'Início', icon: 'home', route: '/' },
       { id: 'catalog', label: 'A–Z', icon: 'catalog', route: '/catalogo' },
       { id: 'search', label: 'Buscar', icon: 'search', route: '/buscar' },
       { id: 'library', label: 'Lista', icon: 'library', route: '/lista' },
       account
     ];
-    const newsNavigation = [
+    const modeTwoNavigation = [
       { id: 'home', label: 'Início', icon: 'home', route: '/' },
       { id: 'search', label: 'Buscar', icon: 'search', route: '/buscar' },
       { id: 'saved', label: 'Salvos', icon: 'bookmark', route: '/salvos' },
@@ -61,12 +61,12 @@ export class AppConfigService {
       configVersion: settings.version,
       mode: settings.mode,
       webAppUrl: this.config.getOrThrow<string>('WEB_APP_URL'),
-      navigation: settings.mode === 'news' ? newsNavigation : streamingNavigation,
+      navigation: settings.mode === 2 ? modeTwoNavigation : modeOneNavigation,
       features: {
-        player: settings.mode === 'streaming',
+        player: settings.mode === 1,
         downloads: false,
         notifications: true,
-        news: settings.mode === 'news'
+        news: settings.mode === 2
       },
       ads: settings.ads
     };

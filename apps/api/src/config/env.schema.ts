@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const EnvironmentSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   API_PORT: z.coerce.number().int().min(1).max(65535).default(3000),
-  APP_MODE: z.enum(['streaming', 'news']).default('streaming'),
+  APP_MODE: z.coerce.number().int().min(1).max(2).default(1),
   WEB_APP_URL: z.string().url().default('http://localhost:5173'),
   ADMIN_APP_URL: z.string().url().default('http://localhost:3001'),
   ADMIN_API_KEY: z.string().min(24),
