@@ -12,9 +12,15 @@ fun nekoUrl(property: String, fallback: String) = providers.gradleProperty(prope
 val maxTestMode = providers.gradleProperty("maxTestMode").map { it.toBoolean() }.orElse(false).get()
 val admobTestMode = providers.gradleProperty("admobTestMode").map { it.toBoolean() }.orElse(false).get()
 val maxTestDeviceAdvertisingId = providers.gradleProperty("maxTestDeviceAdvertisingId").orElse("").get()
+// The Google Mobile Ads provider validates this manifest value before the
+// application starts, even when all remote ad formats are disabled. Use the
+// official test application id until a real one is explicitly configured.
+// This fallback does not enable ads; the remote manifest flags still decide
+// whether any format is requested at runtime.
+val defaultAdMobAppId = "ca-app-pub-3940256099942544~3347511713"
 val googleAdMobAppId = providers.gradleProperty("googleAdMobAppId")
-    .map { it.takeIf(String::isNotBlank) ?: if (maxTestMode || admobTestMode) "ca-app-pub-3940256099942544~3347511713" else "" }
-    .orElse(if (maxTestMode || admobTestMode) "ca-app-pub-3940256099942544~3347511713" else "")
+    .map { it.takeIf(String::isNotBlank) ?: defaultAdMobAppId }
+    .orElse(defaultAdMobAppId)
     .get()
 
 android {
