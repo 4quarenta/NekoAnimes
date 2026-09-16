@@ -744,7 +744,7 @@ function constantTimeEqual(left: string, right: string): boolean {
 }
 function appConfigState(row: Row) {
   const payload = parseObject(row.payload);
-  return { version: Number(row.version ?? 1), mode: row.mode === 'news' ? 'news' : 'streaming', ads: isAdsConfig(payload.ads) ? payload.ads : defaultAds(), updatedAt: String(row.updated_at ?? new Date().toISOString()) };
+  return { version: Number(row.version ?? 1), mode: row.mode === 'news' ? 'news' : 'streaming', ads: normalizeAdsConfig(payload.ads), updatedAt: String(row.updated_at ?? new Date().toISOString()) };
 }
 function parseAdminAppConfig(value: unknown): { mode: 'streaming' | 'news'; ads: WorkerAdsConfig } | null {
   if (!value || typeof value !== 'object') return null;
@@ -778,6 +778,17 @@ function parseAdminAppConfig(value: unknown): { mode: 'streaming' | 'news'; ads:
 function boundedInt(value: unknown, min: number, max: number): number | null { return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max ? value : null; }
 function defaultAds(): WorkerAdsConfig { return { enabled: false, engine: 'max', banner: { enabled: false }, appOpen: { enabled: false, minIntervalMinutes: 60, skipFirstOpens: 3 }, interstitial: { enabled: false, minIntervalMinutes: 30, maxPerSession: 2, pageTransitionFrequency: 3, showOnEpisodeStart: true } }; }
 function isAdsConfig(value: unknown): value is WorkerAdsConfig { return Boolean(value && typeof value === 'object' && 'enabled' in value && 'banner' in value && 'appOpen' in value && 'interstitial' in value); }
+function normalizeAdsConfig(value: unknown): WorkerAdsConfig {
+  const defaults = defaultAds();
+  if (!isAdsConfig(value)) return defaults;
+  return {
+    ...defaults,
+    ...value,
+    banner: { ...defaults.banner, ...value.banner },
+    appOpen: { ...defaults.appOpen, ...value.appOpen },
+    interstitial: { ...defaults.interstitial, ...value.interstitial }
+  };
+}
 // Android classifies drawer items by route; /continuar belongs to that secondary group.
 function streamingNavigation() { return [{ id: 'home', label: 'Início', icon: 'home', route: '/' }, { id: 'search', label: 'Buscar', icon: 'search', route: '/buscar' }, { id: 'categories', label: 'Categorias', icon: 'category', route: '/categorias' }, { id: 'library', label: 'Minha lista', icon: 'library', route: '/lista' }, { id: 'continue', label: 'Continuar assistindo', icon: 'library', route: '/continuar' }, { id: 'account', label: 'Conta', icon: 'profile', route: '/conta' }, { id: 'servers', label: 'Servidores', icon: 'server', route: '/servidores' }]; }
 function newsNavigation() { return [{ id: 'home', label: 'Início', icon: 'home', route: '/' }, { id: 'search', label: 'Buscar', icon: 'search', route: '/buscar' }, { id: 'saved', label: 'Salvos', icon: 'bookmark', route: '/salvos' }, { id: 'account', label: 'Conta', icon: 'profile', route: '/conta' }]; }
