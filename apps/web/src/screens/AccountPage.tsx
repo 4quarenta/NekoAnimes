@@ -10,6 +10,7 @@ import { readLocalProgressItems } from '../lib/local-progress';
 import { syncPendingProgress } from '../lib/progress-sync';
 
 export function AccountPage() {
+  const navigate = useNavigate();
   const [session, setSession] = useState<AuthSession | null>(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -58,6 +59,7 @@ export function AccountPage() {
       <Eyebrow>NekoAnimes</Eyebrow>
       <ScreenHeader title="Sua conta" subtitle={session.user.email ?? 'Conta conectada'} />
       <AccountOverview key={session.user.id} userId={session.user.id} />
+      <button className="neko-secondary-button" type="button" onClick={() => void navigate({ to: '/reportar' })}>Relatar um problema</button>
       <button className="neko-danger-button" type="button" onClick={() => void auth.signOut()}>Sair da conta</button>
     </AppScreen>
   );

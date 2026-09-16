@@ -9,6 +9,7 @@ import { AccountPage } from './screens/AccountPage';
 import { CategoriesPage, CategoryDetailPage } from './screens/CategoriesPage';
 import { ServersPage } from './screens/ServersPage';
 import { ContinueWatchingPage } from './screens/ContinueWatchingPage';
+import { ReportPage } from './screens/ReportPage';
 
 const rootRoute = createRootRoute({ component: () => <Outlet /> });
 const homeRoute = createRoute({ getParentRoute: () => rootRoute, path: '/', component: HomePage });
@@ -30,8 +31,9 @@ const animeDetailRoute = createRoute({
   component: AnimeDetailPage
 });
 const newsArticleRoute = createRoute({ getParentRoute: () => rootRoute, path: '/noticias/$slug', component: NewsArticlePage });
+const reportRoute = createRoute({ getParentRoute: () => rootRoute, path: '/reportar', component: ReportPage });
 
-const routeTree = rootRoute.addChildren([homeRoute, searchRoute, libraryRoute, continueRoute, savedRoute, accountRoute, categoriesRoute, categoryDetailRoute, serversRoute, animeDetailRoute, newsArticleRoute]);
+const routeTree = rootRoute.addChildren([homeRoute, searchRoute, libraryRoute, continueRoute, savedRoute, accountRoute, categoriesRoute, categoryDetailRoute, serversRoute, animeDetailRoute, newsArticleRoute, reportRoute]);
 export const router = createRouter({ routeTree, scrollRestoration:true });
 
 declare module '@tanstack/react-router' {

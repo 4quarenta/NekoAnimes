@@ -47,10 +47,20 @@ ela é usada somente na sessão do navegador e nunca é enviada ao bundle públi
 O painel lê e grava a configuração por um endpoint protegido no Worker da API,
 usando um Service Binding interno entre os dois Workers.
 
-A configuração atual mantém `ads.enabled=false`, `banner.enabled=false`,
-`appOpen.enabled=false` e `interstitial.enabled=false`. Os SDKs Android de
-anúncios continuam instalados para testes futuros, mas a primeira versão da loja
-não exibe anúncios.
+A configuração atual mantém `ads.enabled=false`, portanto nenhum formato é
+solicitado mesmo quando o APK é compilado com os IDs de teste. Os SDKs Android
+de anúncios continuam instalados para testes futuros, mas a primeira versão da
+loja não exibe anúncios. Os IDs/chaves da aba Anúncios são protegidos no
+painel/API e entram em builds futuros; não são publicados no manifesto público.
+
+As abas operacionais do painel são:
+
+- **Anúncios**: liga/desliga global, formatos, frequência e identificadores MAX/AdMob.
+- **Servidores**: habilita/desabilita BR1, BR2 e BR3; endpoints desativados não
+  são usados pela API.
+- **Reports**: recebe relatos em `/reportar` e permite acompanhar o status.
+- **Atualizações**: escolhe APK direto com SHA-256 ou Play Store, informa
+  versão/link e marca atualização obrigatória.
 
 Para validar providers e sources do episódio de teste:
 
@@ -72,6 +82,7 @@ As migrations autoritativas de staging são:
 1. `apps/api-worker/migrations/0001_initial.sql`
 2. `apps/api-worker/migrations/0002_staging_seed.sql`
 3. `apps/api-worker/migrations/0003_staging_test_video.sql`
+4. `apps/api-worker/migrations/0004_admin_reports.sql`
 
 O seed contém 5 animes, 6 temporadas, 23 episódios e 3 notícias. O catálogo
 não contém links de streaming piratas. O primeiro episódio do catálogo possui
@@ -107,17 +118,17 @@ O workflow `Android staging` é manual e usa a variável de repositório
 - `WEB_APP_ORIGIN=https://nekoanimes-staging.pages.dev`
 - `API_BASE_URL=https://nekoanimes-api-staging.john-alleff01.workers.dev`
 
-Publicação atual:
+Publicação atual mantida pelo workflow:
 
 ```text
-android/v1.0.7/NekoAnimes-v1.0.7.apk
-android/v1.0.7/NekoAnimes-v1.0.7.apk.sha256
+android/v1.0.36/NekoAnimes-v1.0.36.apk
+android/v1.0.36/NekoAnimes-v1.0.36.apk.sha256
 ```
 
 O workflow guarda o APK como artifact e cria a prerelease GitHub
-`v1.0.7-staging`; não é release de produção. A URL pública do novo APK será:
+`v1.0.36-staging`; não é release de produção. A URL pública do APK é:
 
-<https://pub-d7e4841d19c54db9bbeedcdc3af062c1.r2.dev/android/v1.0.7/NekoAnimes-v1.0.7.apk>
+<https://pub-d7e4841d19c54db9bbeedcdc3af062c1.r2.dev/android/v1.0.36/NekoAnimes-v1.0.36.apk>
 
 O Android baixa o manifesto de atualização, compara `versionCode`, baixa o
 APK, valida SHA-256 e abre o instalador. A instalação de APK direto exige
@@ -127,6 +138,12 @@ voltar. O player nativo abre sempre em paisagem e oculta as barras/botões de
 ação do sistema enquanto está ativo. O WebView também oferece pull-to-refresh;
 o botão voltar percorre o histórico da página e, na raiz, dois toques rápidos
 abrem a confirmação de saída.
+
+O flavor `play` usa a biblioteca oficial de in-app reviews e solicita o fluxo
+nativo depois de uso significativo, com intervalo mínimo entre solicitações.
+A Play Store decide se o cartão aparece e se a avaliação será registrada; não
+é possível exigir ou garantir cinco estrelas por código. O flavor `direct` não
+solicita review da Play Store.
 
 ## Mapeamento de identidade e sources
 

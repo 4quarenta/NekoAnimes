@@ -41,10 +41,23 @@ type Row = Record<string, unknown>;
 type WorkerAdsConfig = {
   enabled: boolean;
   engine: 'max' | 'admob' | 'levelplay';
+  credentials: {
+    maxSdkKey: string;
+    maxBannerAdUnitId: string;
+    maxAppOpenAdUnitId: string;
+    maxInterstitialAdUnitId: string;
+    admobAppId: string;
+    admobBannerAdUnitId: string;
+    admobAppOpenAdUnitId: string;
+    admobInterstitialAdUnitId: string;
+  };
   banner: { enabled: boolean };
   appOpen: { enabled: boolean; minIntervalMinutes: number; skipFirstOpens: number };
   interstitial: { enabled: boolean; minIntervalMinutes: number; maxPerSession: number; pageTransitionFrequency: number; showOnEpisodeStart: boolean };
 };
+type WorkerServerConfig = { id: string; enabled: boolean; recommended: boolean };
+type WorkerUpdateConfig = { enabled: boolean; mode: 'direct' | 'play_store'; versionCode: number; versionName: string; apkUrl: string; sha256: string; required: boolean; storeUrl: string };
+type WorkerAppConfig = { mode: 'streaming' | 'news'; ads: WorkerAdsConfig; servers: WorkerServerConfig[]; updates: WorkerUpdateConfig };
 const MEDIA_PROXY_HOSTS = new Set(['cdn.imagesskill.com', 'goyabu.io', 'animesonlinecc.to', 'animesdigital.org']);
 
 const app: App = new Hono();
@@ -83,7 +96,8 @@ app.get('/v1/app-manifest', async (c) => {
     webAppUrl: c.env.WEB_APP_URL,
     navigation: mode === 'news' ? newsNavigation() : streamingNavigation(),
     features: { player: mode === 'streaming', downloads: false, notifications: true, news: mode === 'news' },
-    ads: isAdsConfig(payload.ads) ? payload.ads : defaultAds()
+    ads: publicAdsConfig(normalizeAdsConfig(payload.ads)),
+    servers: await enabledServerDescriptors(c.env.DB)
   }, 200, { 'Cache-Control': 'no-store' });
 });
 
@@ -100,7 +114,7 @@ app.put('/v1/admin/app-config', requireAdmin, async (c) => {
 
   await c.env.DB.prepare(
     `UPDATE app_config SET mode = ?, payload = ?, version = version + 1, updated_at = CURRENT_TIMESTAMP WHERE id = 1`
-  ).bind(input.mode, JSON.stringify({ ads: input.ads })).run();
+  ).bind(input.mode, JSON.stringify({ ads: input.ads, servers: input.servers, updates: input.updates })).run();
 
   const row = await first<Row>(c.env.DB, 'SELECT version, mode, payload, updated_at FROM app_config WHERE id = 1');
   if (!row) throw new HTTPException(404, { message: 'Configuração do aplicativo não encontrada' });
@@ -108,14 +122,24 @@ app.put('/v1/admin/app-config', requireAdmin, async (c) => {
 });
 
 app.get('/v1/app-update/android', (c) => {
-  const versionCode = Number(c.env.ANDROID_LATEST_VERSION_CODE);
-  const versionName = c.env.ANDROID_LATEST_VERSION_NAME;
-  const apkUrl = c.env.ANDROID_APK_URL;
-  const sha256 = c.env.ANDROID_APK_SHA256?.toLowerCase();
-  if (!Number.isInteger(versionCode) || versionCode < 1 || !versionName || !apkUrl || !sha256 || !/^[a-f0-9]{64}$/.test(sha256)) {
-    return c.json({ message: 'Canal de atualização Android ainda não publicado' }, 503);
-  }
-  return c.json({ platform: 'android', channel: 'direct', versionCode, versionName, apkUrl, sha256, required: c.env.ANDROID_UPDATE_REQUIRED === 'true' }, 200, { 'Cache-Control': 'no-store' });
+  const row = c.env.DB.prepare('SELECT payload FROM app_config WHERE id = 1').first<Row>();
+  return row.then((configRow) => {
+    const payload = parseObject(configRow?.payload);
+    const configured = parseUpdateConfig(payload.updates);
+    const versionCode = configured?.enabled ? configured.versionCode : Number(c.env.ANDROID_LATEST_VERSION_CODE);
+    const versionName = configured?.enabled ? configured.versionName : c.env.ANDROID_LATEST_VERSION_NAME;
+    const apkUrl = configured?.enabled && configured.mode === 'direct' ? configured.apkUrl : c.env.ANDROID_APK_URL;
+    const sha256 = configured?.enabled && configured.mode === 'direct' ? configured.sha256.toLowerCase() : c.env.ANDROID_APK_SHA256?.toLowerCase();
+    const mode = configured?.enabled ? configured.mode : 'direct';
+    const storeUrl = configured?.enabled ? configured.storeUrl : '';
+    if (mode === 'play_store' && (!Number.isInteger(versionCode) || versionCode < 1 || !versionName || !storeUrl.startsWith('https://play.google.com/'))) {
+      return c.json({ message: 'Canal de atualização da Play Store ainda não configurado' }, 503);
+    }
+    if (mode === 'direct' && (!Number.isInteger(versionCode) || versionCode < 1 || !versionName || !apkUrl || !sha256 || !/^[a-f0-9]{64}$/.test(sha256))) {
+      return c.json({ message: 'Canal de atualização Android ainda não publicado' }, 503);
+    }
+    return c.json({ platform: 'android', channel: 'direct', updateMode: mode, versionCode, versionName, apkUrl: mode === 'direct' ? apkUrl : '', sha256: mode === 'direct' ? sha256 : '', storeUrl, required: configured?.enabled ? configured.required : c.env.ANDROID_UPDATE_REQUIRED === 'true' }, 200, { 'Cache-Control': 'no-store' });
+  });
 });
 
 app.get('/v1/media/proxy', async (c) => {
@@ -272,15 +296,43 @@ app.get('/v1/catalog/episodes/:episodeId/playback', async (c) => {
   return c.json({ episode: { id: item.id, number: item.number, title: item.title, durationSeconds: item.duration_seconds }, sources: rows.map(source) });
 });
 
-app.get('/v1/servers', (c) => c.json({ servers: listServerDescriptors() }));
+app.get('/v1/servers', async (c) => c.json({ servers: await enabledServerDescriptors(c.env.DB) }));
 
-app.get('/v1/servers/health', async (c) => c.json({ servers: await Promise.all(listServerDescriptors().map((server) => checkProviderHealth(server.id))), checkedAt: new Date().toISOString() }));
+app.post('/v1/reports', async (c) => {
+  const body = await c.req.json<{ email?: string; category?: string; message?: string; route?: string; appVersion?: string }>().catch(() => ({} as { email?: string; category?: string; message?: string; route?: string; appVersion?: string }));
+  const message = body.message?.trim() ?? '';
+  if (message.length < 10 || message.length > 5_000) throw new HTTPException(400, { message: 'O relato deve ter entre 10 e 5.000 caracteres' });
+  const category = body.category && ['bug', 'playback', 'account', 'content', 'other'].includes(body.category) ? body.category : 'bug';
+  const email = body.email?.trim().toLowerCase() || null;
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HTTPException(400, { message: 'E-mail inválido' });
+  await c.env.DB.prepare('INSERT INTO reports(id, email, category, message, route, app_version) VALUES(?, ?, ?, ?, ?, ?)').bind(crypto.randomUUID(), email, category, message, body.route?.trim().slice(0, 200) || null, body.appVersion?.trim().slice(0, 40) || null).run();
+  return c.json({ ok: true }, 201);
+});
+
+app.get('/v1/admin/reports', requireAdmin, async (c) => {
+  const status = c.req.query('status');
+  const rows = status && ['open', 'in_progress', 'resolved', 'dismissed'].includes(status)
+    ? await all<Row>(c.env.DB, 'SELECT id, user_id, email, category, message, route, app_version, status, created_at, updated_at FROM reports WHERE status = ? ORDER BY created_at DESC LIMIT 200', status)
+    : await all<Row>(c.env.DB, 'SELECT id, user_id, email, category, message, route, app_version, status, created_at, updated_at FROM reports ORDER BY created_at DESC LIMIT 200');
+  return c.json(rows.map(report));
+});
+
+app.put('/v1/admin/reports/:id', requireAdmin, async (c) => {
+  const body = await c.req.json<{ status?: string }>().catch(() => ({} as { status?: string }));
+  if (!body.status || !['open', 'in_progress', 'resolved', 'dismissed'].includes(body.status)) throw new HTTPException(400, { message: 'Status de report inválido' });
+  const result = await c.env.DB.prepare("UPDATE reports SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(body.status, c.req.param('id')).run();
+  if (!result.meta.changes) throw new HTTPException(404, { message: 'Report não encontrado' });
+  const row = await first<Row>(c.env.DB, 'SELECT id, user_id, email, category, message, route, app_version, status, created_at, updated_at FROM reports WHERE id = ?', c.req.param('id'));
+  return c.json(row ? report(row) : { ok: true });
+});
+
+app.get('/v1/servers/health', async (c) => c.json({ servers: await Promise.all((await enabledServerDescriptors(c.env.DB)).map((server) => checkProviderHealth(server.id))), checkedAt: new Date().toISOString() }));
 
 app.get('/v1/servers/search', async (c) => {
   const query = c.req.query('q')?.trim() ?? '';
   validateProviderQuery(query);
   try {
-    const servers = await Promise.all(listServerDescriptors().map(async (server) => {
+    const servers = await Promise.all((await enabledServerDescriptors(c.env.DB)).map(async (server) => {
       try {
         const matches = await searchProvider(server.id, query);
         return { server, status: matches.length ? 'ok' as const : 'unavailable' as const, matches };
@@ -298,14 +350,14 @@ app.get('/v1/servers/search', async (c) => {
 // source consulted for this request; results are never merged with MAL or
 // another provider.
 app.get('/v1/servers/:serverId/categories', async (c) => {
-  assertServerId(c.req.param('serverId'));
+  await assertEnabledServer(c.env.DB, c.req.param('serverId'));
   try { return c.json({ items: await getProviderCategories(c.req.param('serverId')), source: 'provider' }, 200, { 'Cache-Control': 'public, max-age=900' }); }
   catch (error) { throw providerHttpException(error); }
 });
 
 app.get('/v1/servers/:serverId/catalog', async (c) => {
   const serverId = c.req.param('serverId');
-  assertServerId(serverId);
+  await assertEnabledServer(c.env.DB, serverId);
   const query = c.req.query('q')?.trim();
   const letter = c.req.query('letter')?.trim();
   const genre = c.req.query('genre')?.trim();
@@ -316,7 +368,7 @@ app.get('/v1/servers/:serverId/catalog', async (c) => {
   if (genre && (genre.length < 2 || genre.length > 80)) throw new HTTPException(400, { message: 'Gênero inválido' });
   try {
     const browse = query ? { items: await searchProvider(serverId, query), hasNextPage: false } : await browseProvider(serverId, { letter: letter?.toUpperCase(), genre, page, limit });
-    const server = listServerDescriptors().find((item) => item.id === serverId)!;
+    const server = (await enabledServerDescriptors(c.env.DB)).find((item) => item.id === serverId)!;
     const items = await enrichProviderCatalog(c.env.DB, serverId, genre ? browse.items : browse.items.slice(0, limit));
     return c.json({ server, items, count: items.length, page, pageSize: items.length, hasNextPage: browse.hasNextPage, source: 'provider', fetchedAt: new Date().toISOString() }, 200, { 'Cache-Control': 'public, max-age=120' });
   } catch (error) {
@@ -330,7 +382,7 @@ app.get('/v1/servers/:serverId/catalog', async (c) => {
 app.get('/v1/servers/resolve/:query', async (c) => {
   const query = decodeURIComponent(c.req.param('query')).trim();
   validateProviderQuery(query);
-  const search = await Promise.all(listServerDescriptors().map(async (server) => {
+  const search = await Promise.all((await enabledServerDescriptors(c.env.DB)).map(async (server) => {
     try {
       const matches = await searchProvider(server.id, query);
       return { server, status: matches.length ? 'ok' as const : 'unavailable' as const, matches };
@@ -358,7 +410,7 @@ app.get('/v1/servers/resolve/:query/:season/:episode', async (c) => {
   const episodeNumber = positiveProviderInt(c.req.param('episode'), 'Episódio inválido');
   let search;
   try {
-    search = await Promise.all(listServerDescriptors().map(async (server) => {
+    search = await Promise.all((await enabledServerDescriptors(c.env.DB)).map(async (server) => {
       try {
         const matches = await searchProvider(server.id, query);
         return { server, status: matches.length ? 'ok' as const : 'unavailable' as const, matches };
@@ -388,7 +440,7 @@ app.get('/v1/servers/resolve/:query/:season/:episode', async (c) => {
 // optional ref comes directly from /servers/search and avoids searching again.
 app.get('/v1/servers/:serverId/resolve/:query', async (c) => {
   const serverId = c.req.param('serverId');
-  assertServerId(serverId);
+  await assertEnabledServer(c.env.DB, serverId);
   const query = decodeURIComponent(c.req.param('query')).trim();
   validateProviderQuery(query);
   const requestedReference = c.req.query('ref')?.trim();
@@ -412,7 +464,7 @@ app.get('/v1/servers/:serverId/resolve/:query', async (c) => {
 
 app.get('/v1/servers/:serverId/resolve/:query/:season/:episode', async (c) => {
   const serverId = c.req.param('serverId');
-  assertServerId(serverId);
+  await assertEnabledServer(c.env.DB, serverId);
   const query = decodeURIComponent(c.req.param('query')).trim();
   validateProviderQuery(query);
   const seasonNumber = positiveProviderInt(c.req.param('season'), 'Temporada inválida');
@@ -458,7 +510,7 @@ app.get('/v1/servers/:serverId/resolve/:query/:season/:episode', async (c) => {
 });
 
 app.get('/v1/servers/:serverId/recovery', async (c) => {
-  assertServerId(c.req.param('serverId'));
+  await assertEnabledServer(c.env.DB, c.req.param('serverId'));
   const slug = c.req.query('slug');
   if (!slug || slug.length > 1500) throw new HTTPException(400, { message: 'Obra inválida.' });
   c.header('Cache-Control', 'no-store');
@@ -466,7 +518,7 @@ app.get('/v1/servers/:serverId/recovery', async (c) => {
 });
 
 app.get('/v1/servers/:serverId/anime', async (c) => {
-  assertServerId(c.req.param('serverId'));
+  await assertEnabledServer(c.env.DB, c.req.param('serverId'));
   const slug = c.req.query('slug');
   if (slug) {
     if (slug.length > 1500) throw new HTTPException(400, { message: 'Obra inválida' });
@@ -490,7 +542,7 @@ app.get('/v1/servers/:serverId/anime', async (c) => {
 });
 
 app.get('/v1/servers/:serverId/episode', async (c) => {
-  assertServerId(c.req.param('serverId'));
+  await assertEnabledServer(c.env.DB, c.req.param('serverId'));
   const reference = c.req.query('ref')?.trim() ?? '';
   if (!reference || reference.length > 1000 || !reference.startsWith('/')) throw new HTTPException(400, { message: 'Referência inválida' });
   try {
@@ -564,7 +616,7 @@ app.post('/v1/catalog/provider-data', async (c) => {
   const body = await c.req.json<{ serverId?: string; reference?: string; metadata?: unknown }>();
   const serverId = body.serverId?.trim() ?? '';
   const reference = body.reference?.trim() ?? '';
-  assertServerId(serverId);
+  await assertEnabledServer(c.env.DB, serverId);
   if (!reference || reference.length > 1000 || !reference.startsWith('/')) throw new HTTPException(400, { message: 'Referência do anime inválida' });
   try {
     const detail = await getProviderAnime(serverId, reference);
@@ -744,51 +796,63 @@ function constantTimeEqual(left: string, right: string): boolean {
 }
 function appConfigState(row: Row) {
   const payload = parseObject(row.payload);
-  return { version: Number(row.version ?? 1), mode: row.mode === 'news' ? 'news' : 'streaming', ads: normalizeAdsConfig(payload.ads), updatedAt: String(row.updated_at ?? new Date().toISOString()) };
+  return { version: Number(row.version ?? 1), mode: row.mode === 'news' ? 'news' : 'streaming', ads: normalizeAdsConfig(payload.ads), servers: normalizeServerConfig(payload.servers), updates: normalizeUpdateConfig(payload.updates), updatedAt: String(row.updated_at ?? new Date().toISOString()) };
 }
-function parseAdminAppConfig(value: unknown): { mode: 'streaming' | 'news'; ads: WorkerAdsConfig } | null {
+function parseAdminAppConfig(value: unknown): WorkerAppConfig | null {
   if (!value || typeof value !== 'object') return null;
   const input = value as Record<string, unknown>;
-  const rawAds = input.ads;
-  if (!rawAds || typeof rawAds !== 'object') return null;
-  const ads = rawAds as Record<string, unknown>;
-  const banner = ads.banner && typeof ads.banner === 'object' ? ads.banner as Record<string, unknown> : {};
-  const appOpen = ads.appOpen && typeof ads.appOpen === 'object' ? ads.appOpen as Record<string, unknown> : {};
-  const interstitial = ads.interstitial && typeof ads.interstitial === 'object' ? ads.interstitial as Record<string, unknown> : {};
-  const engine = ads.engine === 'admob' || ads.engine === 'levelplay' || ads.engine === 'max' ? ads.engine : null;
   if (input.mode !== 'streaming' && input.mode !== 'news') return null;
-  if (typeof ads.enabled !== 'boolean' || !engine || typeof banner.enabled !== 'boolean' || typeof appOpen.enabled !== 'boolean' || typeof interstitial.enabled !== 'boolean') return null;
-  const minAppOpen = boundedInt(appOpen.minIntervalMinutes, 0, 1440);
-  const skipFirstOpens = boundedInt(appOpen.skipFirstOpens, 0, 20);
-  const minInterstitial = boundedInt(interstitial.minIntervalMinutes, 0, 1440);
-  const maxPerSession = boundedInt(interstitial.maxPerSession, 0, 20);
-  const pageTransitionFrequency = boundedInt(interstitial.pageTransitionFrequency ?? 3, 0, 20);
-  if ([minAppOpen, skipFirstOpens, minInterstitial, maxPerSession, pageTransitionFrequency].some(value => value === null)) return null;
-  return {
-    mode: input.mode,
-    ads: {
-      enabled: ads.enabled,
-      engine,
-      banner: { enabled: banner.enabled },
-      appOpen: { enabled: appOpen.enabled, minIntervalMinutes: minAppOpen!, skipFirstOpens: skipFirstOpens! },
-      interstitial: { enabled: interstitial.enabled, minIntervalMinutes: minInterstitial!, maxPerSession: maxPerSession!, pageTransitionFrequency: pageTransitionFrequency!, showOnEpisodeStart: typeof interstitial.showOnEpisodeStart === 'boolean' ? interstitial.showOnEpisodeStart : true }
-    }
-  };
+  return { mode: input.mode, ads: normalizeAdsConfig(input.ads), servers: normalizeServerConfig(input.servers), updates: normalizeUpdateConfig(input.updates) };
 }
 function boundedInt(value: unknown, min: number, max: number): number | null { return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max ? value : null; }
-function defaultAds(): WorkerAdsConfig { return { enabled: false, engine: 'max', banner: { enabled: false }, appOpen: { enabled: false, minIntervalMinutes: 60, skipFirstOpens: 3 }, interstitial: { enabled: false, minIntervalMinutes: 30, maxPerSession: 2, pageTransitionFrequency: 3, showOnEpisodeStart: true } }; }
+function defaultAds(): WorkerAdsConfig { return { enabled: false, engine: 'max', credentials: { maxSdkKey: '', maxBannerAdUnitId: '', maxAppOpenAdUnitId: '', maxInterstitialAdUnitId: '', admobAppId: '', admobBannerAdUnitId: '', admobAppOpenAdUnitId: '', admobInterstitialAdUnitId: '' }, banner: { enabled: false }, appOpen: { enabled: false, minIntervalMinutes: 60, skipFirstOpens: 3 }, interstitial: { enabled: false, minIntervalMinutes: 30, maxPerSession: 2, pageTransitionFrequency: 3, showOnEpisodeStart: true } }; }
 function isAdsConfig(value: unknown): value is WorkerAdsConfig { return Boolean(value && typeof value === 'object' && 'enabled' in value && 'banner' in value && 'appOpen' in value && 'interstitial' in value); }
 function normalizeAdsConfig(value: unknown): WorkerAdsConfig {
   const defaults = defaultAds();
   if (!isAdsConfig(value)) return defaults;
+  const input = value as Partial<WorkerAdsConfig>;
+  const credentials = input.credentials && typeof input.credentials === 'object' ? input.credentials as Partial<WorkerAdsConfig['credentials']> : {};
   return {
     ...defaults,
     ...value,
+    credentials: { ...defaults.credentials, ...credentials },
     banner: { ...defaults.banner, ...value.banner },
     appOpen: { ...defaults.appOpen, ...value.appOpen },
     interstitial: { ...defaults.interstitial, ...value.interstitial }
   };
 }
+function publicAdsConfig(value: WorkerAdsConfig) {
+  const { credentials: _credentials, ...publicConfig } = value;
+  return publicConfig;
+}
+function defaultServerConfig(): WorkerServerConfig[] {
+  return listServerDescriptors().map((server) => ({ id: server.id, enabled: true, recommended: server.id === 'goyabu' }));
+}
+function normalizeServerConfig(value: unknown): WorkerServerConfig[] {
+  const defaults = defaultServerConfig();
+  if (!Array.isArray(value)) return defaults;
+  const input = new Map(value.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object')).map((item) => [String(item.id), item]));
+  return defaults.map((server) => ({ id: server.id, enabled: typeof input.get(server.id)?.enabled === 'boolean' ? Boolean(input.get(server.id)?.enabled) : server.enabled, recommended: typeof input.get(server.id)?.recommended === 'boolean' ? Boolean(input.get(server.id)?.recommended) : server.recommended }));
+}
+async function enabledServerDescriptors(db: D1Database) {
+  const row = await first<Row>(db, 'SELECT payload FROM app_config WHERE id = 1');
+  const configured = normalizeServerConfig(parseObject(row?.payload).servers);
+  const enabled = new Set(configured.filter((server) => server.enabled).map((server) => server.id));
+  return listServerDescriptors().filter((server) => enabled.has(server.id));
+}
+async function assertEnabledServer(db: D1Database, value: string) {
+  assertServerId(value);
+  if (!(await enabledServerDescriptors(db)).some((server) => server.id === value)) throw new HTTPException(404, { message: 'Servidor desativado no momento' });
+}
+function defaultUpdateConfig(): WorkerUpdateConfig { return { enabled: false, mode: 'direct', versionCode: 0, versionName: '', apkUrl: '', sha256: '', required: false, storeUrl: 'https://play.google.com/store/apps/details?id=com.nekoanimes.app' }; }
+function normalizeUpdateConfig(value: unknown): WorkerUpdateConfig {
+  const defaults = defaultUpdateConfig();
+  if (!value || typeof value !== 'object') return defaults;
+  const input = value as Record<string, unknown>;
+  return { enabled: typeof input.enabled === 'boolean' ? input.enabled : defaults.enabled, mode: input.mode === 'play_store' ? 'play_store' : 'direct', versionCode: boundedInt(input.versionCode, 0, 2_000_000_000) ?? defaults.versionCode, versionName: typeof input.versionName === 'string' ? input.versionName.slice(0, 64) : defaults.versionName, apkUrl: typeof input.apkUrl === 'string' ? input.apkUrl.slice(0, 2048) : defaults.apkUrl, sha256: typeof input.sha256 === 'string' ? input.sha256.toLowerCase().slice(0, 64) : defaults.sha256, required: typeof input.required === 'boolean' ? input.required : defaults.required, storeUrl: typeof input.storeUrl === 'string' ? input.storeUrl.slice(0, 2048) : defaults.storeUrl };
+}
+function parseUpdateConfig(value: unknown): WorkerUpdateConfig | null { const config = normalizeUpdateConfig(value); return config.enabled ? config : null; }
+function report(row: Row) { return { id: row.id, userId: row.user_id, email: row.email, category: row.category, message: row.message, route: row.route, appVersion: row.app_version, status: row.status, createdAt: row.created_at, updatedAt: row.updated_at }; }
 // Android classifies drawer items by route; /continuar belongs to that secondary group.
 function streamingNavigation() { return [{ id: 'home', label: 'Início', icon: 'home', route: '/' }, { id: 'search', label: 'Buscar', icon: 'search', route: '/buscar' }, { id: 'categories', label: 'Categorias', icon: 'category', route: '/categorias' }, { id: 'library', label: 'Minha lista', icon: 'library', route: '/lista' }, { id: 'continue', label: 'Continuar assistindo', icon: 'library', route: '/continuar' }, { id: 'account', label: 'Conta', icon: 'profile', route: '/conta' }, { id: 'servers', label: 'Servidores', icon: 'server', route: '/servidores' }]; }
 function newsNavigation() { return [{ id: 'home', label: 'Início', icon: 'home', route: '/' }, { id: 'search', label: 'Buscar', icon: 'search', route: '/buscar' }, { id: 'saved', label: 'Salvos', icon: 'bookmark', route: '/salvos' }, { id: 'account', label: 'Conta', icon: 'profile', route: '/conta' }]; }

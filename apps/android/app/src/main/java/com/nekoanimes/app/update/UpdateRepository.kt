@@ -8,11 +8,13 @@ import java.net.URL
 import java.security.MessageDigest
 
 internal data class UpdateDescriptor(
-    val versionCode: Int,
-    val versionName: String,
-    val apkUrl: String,
-    val sha256: String,
-    val required: Boolean
+  val versionCode: Int,
+  val versionName: String,
+  val apkUrl: String,
+  val sha256: String,
+  val required: Boolean,
+  val updateMode: String,
+  val storeUrl: String
 )
 
 internal class UpdateRepository(private val cacheDir: File) {
@@ -32,11 +34,16 @@ internal class UpdateRepository(private val cacheDir: File) {
                 versionName = root.getString("versionName"),
                 apkUrl = root.getString("apkUrl"),
                 sha256 = root.getString("sha256").lowercase(),
-                required = root.optBoolean("required", false)
+                required = root.optBoolean("required", false),
+                updateMode = root.optString("updateMode", "direct"),
+                storeUrl = root.optString("storeUrl", "")
             )
             if (descriptor.versionCode <= BuildConfig.VERSION_CODE) return null
-            if (!BuildConfig.DEBUG && !descriptor.apkUrl.startsWith("https://")) return null
-            if (!descriptor.sha256.matches(Regex("^[a-f0-9]{64}$"))) return null
+            require(descriptor.updateMode == "direct" || descriptor.updateMode == "play_store")
+            if (descriptor.updateMode == "direct") {
+                if (!BuildConfig.DEBUG && !descriptor.apkUrl.startsWith("https://")) return null
+                if (!descriptor.sha256.matches(Regex("^[a-f0-9]{64}$"))) return null
+            } else if (!descriptor.storeUrl.startsWith("https://play.google.com/")) return null
             return descriptor
         } finally {
             connection.disconnect()
@@ -44,6 +51,7 @@ internal class UpdateRepository(private val cacheDir: File) {
     }
 
     fun download(descriptor: UpdateDescriptor): File {
+        require(descriptor.updateMode == "direct") { "Esta atualização deve ser feita pela Google Play" }
         val directory = File(cacheDir, "updates").apply { mkdirs() }
         val target = File(directory, "NekoAnimes-${descriptor.versionName}.apk")
         val connection = URL(descriptor.apkUrl).openConnection() as HttpURLConnection

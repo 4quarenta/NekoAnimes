@@ -24,9 +24,9 @@ export default function AdminHome() {
         </section>
 
         <section style={sectionStyle}>
-          <h2 style={{ marginTop: 0 }}>Próximos módulos</h2>
+          <h2 style={{ marginTop: 0 }}>Operação disponível</h2>
           <p style={{ color: '#a1a1aa', marginBottom: 0 }}>
-            Catálogo, providers, notícias, usuários e métricas entram nas etapas seguintes.
+            A configuração reúne abas separadas para anúncios, servidores, reports de usuários e atualizações Android.
           </p>
         </section>
       </div>

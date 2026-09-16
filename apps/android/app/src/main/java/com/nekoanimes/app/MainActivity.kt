@@ -51,11 +51,9 @@ import com.nekoanimes.app.bridge.PlayerSourceOverride
 import com.nekoanimes.app.data.AppManifestRepository
 import com.nekoanimes.app.model.AppManifest
 import com.nekoanimes.app.model.AdsConfig
-import com.nekoanimes.app.model.AppOpenAdConfig
-import com.nekoanimes.app.model.BannerAdConfig
-import com.nekoanimes.app.model.InterstitialAdConfig
 import com.nekoanimes.app.model.NavigationItem
 import com.nekoanimes.app.player.NekoPlayerScreen
+import com.nekoanimes.app.review.NekoReviewRequester
 import com.nekoanimes.app.ui.NekoNavigationBar
 import com.nekoanimes.app.ui.NekoNavigationDrawer
 import com.nekoanimes.app.ui.NekoTheme
@@ -149,6 +147,7 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
     val currentWebRouteState by rememberUpdatedState(currentWebRoute)
     val currentNetworkAccess by rememberUpdatedState(networkAccess)
     val adsConfig = remember(manifest.configVersion) { adsConfigForBuild(manifest) }
+    val reviewRequester = remember { NekoReviewRequester(activity) }
 
     val ads = remember(manifest.configVersion) { NekoAdOrchestrator(activity, adsConfig) }
     DisposableEffect(activity, ads) {
@@ -167,6 +166,7 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
         instance = NekoBridge(
             onRouteChanged = { route ->
                 ads.onPageTransition(route)
+                reviewRequester.onRouteChanged(route)
                 currentWebRoute = route
                 selectedRoute = route
             },
@@ -379,23 +379,11 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
     }
 }
 
-private fun adsConfigForBuild(manifest: AppManifest): AdsConfig = if (!BuildConfig.ADMOB_TEST_MODE) {
-    manifest.ads
-} else {
-    AdsConfig(
-        enabled = true,
-        engine = "admob",
-        banner = BannerAdConfig(enabled = true),
-        appOpen = AppOpenAdConfig(enabled = true, minIntervalMinutes = 0, skipFirstOpens = 0),
-        interstitial = InterstitialAdConfig(
-            enabled = true,
-            minIntervalMinutes = 0,
-            maxPerSession = 3,
-            pageTransitionFrequency = 3,
-            showOnEpisodeStart = true
-        )
-    )
-}
+private fun adsConfigForBuild(manifest: AppManifest): AdsConfig = if (BuildConfig.ADMOB_TEST_MODE) {
+    // Test IDs are only a transport substitute. The remote feature flags still
+    // control whether any format may be shown, including on debug builds.
+    manifest.ads.copy(engine = "admob")
+} else manifest.ads
 
 private data class PlayerRequest(
     val episodeId: String,

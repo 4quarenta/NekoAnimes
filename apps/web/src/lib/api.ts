@@ -22,6 +22,12 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+async function publicJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await fetch(`${API_URL}${path}`, { ...init, cache: 'no-store', signal: init.signal ?? AbortSignal.timeout(30000) });
+  if (!response.ok) throw await responseError(response);
+  return response.json() as Promise<T>;
+}
+
 async function authJson<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getAccessToken();
   if (!token) throw new Error('AUTH_REQUIRED');
@@ -146,3 +152,4 @@ export function confirmProviderMatch(workSlug: string, serverId: string, referen
 }
 export function saveProviderLibrary(serverId: string, reference: string, workSlug?: string) { return authJson<{animeId:string;slug:string}>('/v1/me/provider-library',{method:'PUT',body:JSON.stringify({serverId,reference,workSlug})}); }
 export function saveProviderProgress(data: {serverId:string;reference:string;workSlug?:string;episodeReference:string;seasonNumber:number;episodeNumber:number;positionSeconds:number;durationSeconds:number}) { return authJson<{animeId:string;slug:string;episodeId:string}>('/v1/me/provider-progress',{method:'PUT',body:JSON.stringify(data)}); }
+export function submitReport(data: { category: 'bug' | 'playback' | 'account' | 'content' | 'other'; message: string; email?: string; route?: string; appVersion?: string }) { return publicJson<{ ok: true }>('/v1/reports', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) }); }

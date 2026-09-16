@@ -15,6 +15,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import com.nekoanimes.app.BuildConfig
 import androidx.activity.ComponentActivity
+import android.content.Intent
+import android.net.Uri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.Dispatchers
@@ -76,6 +78,10 @@ internal fun NekoUpdatePrompt(activity: ComponentActivity) {
                 enabled = !busy,
                 onClick = {
                     error = null
+                    if (descriptor.updateMode == "play_store") {
+                        activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(descriptor.storeUrl)))
+                        return@Button
+                    }
                     if (!installer.canInstallPackages()) {
                         waitingForInstallPermission = true
                         installer.openInstallPermissionSettings()

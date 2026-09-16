@@ -9,7 +9,7 @@ import { recordLocalProgress } from './lib/local-progress';
 import { useServerPreference } from './lib/server-preference';
 import { router } from './router';
 
-const NATIVE_ROUTES = ['/', '/buscar', '/categorias', '/lista', '/continuar', '/salvos', '/conta', '/servidores'] as const;
+const NATIVE_ROUTES = ['/', '/buscar', '/categorias', '/lista', '/continuar', '/salvos', '/conta', '/servidores', '/reportar'] as const;
 type NativeRoute = (typeof NATIVE_ROUTES)[number];
 type NavigableRoute = NativeRoute | `/anime/${string}` | `/noticias/${string}` | `/categorias/${string}`;
 function isNativeRoute(route: string): route is NativeRoute { return (NATIVE_ROUTES as readonly string[]).includes(route); }
