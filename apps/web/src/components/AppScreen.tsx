@@ -8,7 +8,7 @@ import { releaseLabelForTitle } from '@neko/contracts';
 export function AppScreen({ children }: PropsWithChildren) {
   const navigate=useNavigate();
   const [open,setOpen]=useState(false);
-  return <main className="neko-screen"><button className="neko-menu-launcher" aria-label="Abrir menu lateral" aria-expanded={open} onClick={()=>{if(NekoNative.isAvailable())NekoNative.appEvent('menu_open');else setOpen(value=>!value);}}>☰</button>
+  return <main className="neko-screen"><div className="neko-brand"><img src="/brand/nekoanimes-logo.png" alt="NekoAnimes" /></div><button className="neko-menu-launcher" aria-label="Abrir menu lateral" aria-expanded={open} onClick={()=>{if(NekoNative.isAvailable())NekoNative.appEvent('menu_open');else setOpen(value=>!value);}}>☰</button>
     {open?<nav className="neko-web-shortcuts" aria-label="Navegação">{([['/','Início'],['/buscar','Buscar'],['/categorias','Categorias'],['/continuar','Continuar assistindo'],['/lista','Minha lista'],['/servidores','Servidores'],['/conta','Conta'],['/reportar','Relatar problema']] as const).map(([to,label])=><button key={to} onClick={()=>{setOpen(false);void navigate({to});}}>{label}</button>)}</nav>:null}{children}</main>;
 }
 
