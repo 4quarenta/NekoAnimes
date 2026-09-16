@@ -179,6 +179,7 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
                     }
                 } else if (playerRequest == null && !playerOpening) {
                     playerOpening = true
+                    reviewRequester.onPlayerOpened()
                     ads.onEpisodeStarted()
                     // The SPA route is authoritative because WebView.url can
                     // still point at the shell after a history.pushState.
@@ -340,6 +341,7 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
                         drawerScope.launch {
                             drawerState.close()
                             playerRequest = null
+                            reviewRequester.onPlayerClosed()
                             playerReturnRoute = null
                             webView?.let {
                                 bridge.sendPlayerClosed(it, playing.episodeId, positionSeconds, durationSeconds, playbackReady)
@@ -355,6 +357,7 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
                         drawerScope.launch {
                             drawerState.close()
                             playerRequest = null
+                            reviewRequester.onPlayerClosed()
                             playerReturnRoute = null
                             ads.onAppEvent("episode_navigate", direction)
                             webView?.let {
