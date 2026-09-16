@@ -50,6 +50,11 @@ class NekoAdOrchestrator(
     private var orientationBeforeFullscreenAd: Int? = null
 
     fun initialize(onReady: () -> Unit = {}) {
+        if (!config.enabled) {
+            Log.i(TAG, "Ads disabled by remote configuration")
+            onReady()
+            return
+        }
         if (BuildConfig.ADMOB_TEST_MODE) {
             initializeAdMobTest(onReady)
             return
@@ -117,6 +122,7 @@ class NekoAdOrchestrator(
     }
 
     fun showAppOpenIfEligible() {
+        if (!config.enabled) return
         if (appOpenRequestedGeneration == appOpenForegroundGeneration) return
         appOpenRequestedGeneration = appOpenForegroundGeneration
         if (!initialized) {
@@ -129,6 +135,10 @@ class NekoAdOrchestrator(
     }
 
     private fun showAppOpenNowIfEligible() {
+        if (!config.enabled) {
+            appOpenGateActive = false
+            return
+        }
         if (BuildConfig.ADMOB_TEST_MODE) {
             showAdMobTestAppOpenIfEligible()
             return
@@ -165,6 +175,7 @@ class NekoAdOrchestrator(
     }
 
     private fun showInterstitialIfEligible(placement: String, queueIfNotReady: Boolean = false) {
+        if (!config.enabled) return
         if (appOpenGateActive) return
         if (BuildConfig.ADMOB_TEST_MODE) {
             showAdMobTestInterstitialIfEligible(placement)

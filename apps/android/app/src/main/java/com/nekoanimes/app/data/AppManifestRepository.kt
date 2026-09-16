@@ -22,7 +22,7 @@ class AppManifestRepository(context: Context) {
         runCatching { fetchRemote() }.recoverCatching { error ->
             val cached = preferences.getString(CACHE_KEY, null)
                 ?: throw IllegalStateException("Configuração remota indisponível e nenhum cache válido foi encontrado", error)
-            parse(cached)
+            parse(cached).withoutAds()
         }
     }
 
@@ -84,8 +84,21 @@ class AppManifestRepository(context: Context) {
             )
         )
 
-        return AppManifest(schemaVersion, json.getInt("configVersion"), mode, webAppUrl, navigation, ads)
+        return AppManifest(schemaVersion, json.getInt("configVersion"), mode, webAppUrl, navigation, ads.withoutAdsWhenDisabled())
     }
+
+    private fun AdsConfig.withoutAdsWhenDisabled(): AdsConfig = if (enabled) this else copy(
+        banner = banner.copy(enabled = false),
+        appOpen = appOpen.copy(enabled = false),
+        interstitial = interstitial.copy(enabled = false)
+    )
+
+    private fun AppManifest.withoutAds(): AppManifest = copy(ads = ads.copy(
+        enabled = false,
+        banner = ads.banner.copy(enabled = false),
+        appOpen = ads.appOpen.copy(enabled = false),
+        interstitial = ads.interstitial.copy(enabled = false)
+    ))
 
     private fun isTrustedWebAppUrl(url: String): Boolean {
         val candidate = Uri.parse(url)

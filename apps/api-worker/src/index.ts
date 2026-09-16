@@ -813,13 +813,19 @@ function normalizeAdsConfig(value: unknown): WorkerAdsConfig {
   if (!isAdsConfig(value)) return defaults;
   const input = value as Partial<WorkerAdsConfig>;
   const credentials = input.credentials && typeof input.credentials === 'object' ? input.credentials as Partial<WorkerAdsConfig['credentials']> : {};
-  return {
+  const normalized = {
     ...defaults,
     ...value,
     credentials: { ...defaults.credentials, ...credentials },
     banner: { ...defaults.banner, ...value.banner },
     appOpen: { ...defaults.appOpen, ...value.appOpen },
     interstitial: { ...defaults.interstitial, ...value.interstitial }
+  };
+  return normalized.enabled ? normalized : {
+    ...normalized,
+    banner: { ...normalized.banner, enabled: false },
+    appOpen: { ...normalized.appOpen, enabled: false },
+    interstitial: { ...normalized.interstitial, enabled: false }
   };
 }
 function publicAdsConfig(value: WorkerAdsConfig) {
