@@ -3,7 +3,6 @@ package com.nekoanimes.app.review
 import android.util.Log
 import androidx.activity.ComponentActivity
 import com.google.android.play.core.review.ReviewManagerFactory
-import com.nekoanimes.app.BuildConfig
 
 /** Requests the Play in-app review flow only after meaningful use. */
 class NekoReviewRequester(private val activity: ComponentActivity) {
@@ -11,11 +10,19 @@ class NekoReviewRequester(private val activity: ComponentActivity) {
     private var lastRoute: String? = null
 
     fun onRouteChanged(route: String) {
-        if (BuildConfig.DISTRIBUTION_CHANNEL != "play" || route == lastRoute) return
+        if (route == lastRoute) return
         lastRoute = route
         val transitions = preferences.getInt(KEY_TRANSITIONS, 0) + 1
         preferences.edit().putInt(KEY_TRANSITIONS, transitions).apply()
         if (transitions < MIN_TRANSITIONS || System.currentTimeMillis() - preferences.getLong(KEY_LAST_REQUEST, 0L) < COOLDOWN_MS) return
+        requestReview()
+    }
+
+    fun requestNow() {
+        requestReview()
+    }
+
+    private fun requestReview() {
         preferences.edit().putLong(KEY_LAST_REQUEST, System.currentTimeMillis()).apply()
 
         val manager = ReviewManagerFactory.create(activity)

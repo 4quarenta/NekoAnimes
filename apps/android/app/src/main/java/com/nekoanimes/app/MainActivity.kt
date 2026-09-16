@@ -197,6 +197,8 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
                     if (playerRequest == null && !playerOpening && currentNetworkAccess == NetworkAccessState.Online) {
                         drawerScope.launch { drawerState.open() }
                     }
+                } else if (name == "review_request") {
+                    reviewRequester.requestNow()
                 } else ads.onAppEvent(name, placement)
             }
         )

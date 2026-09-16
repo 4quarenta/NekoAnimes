@@ -69,6 +69,8 @@
 .neko-spinner { width:34px; height:34px; border:3px solid #33284a; border-top-color:var(--neko-accent); border-radius:50%; animation:neko-spin .8s linear infinite; }
 .neko-category-loading { display:flex; align-items:center; justify-content:center; gap:10px; min-height:88px; margin-top:14px; color:var(--neko-muted); font-size:12px; }
 .neko-category-loading .neko-spinner { width:24px; height:24px; border-width:2px; }
+.neko-inline-loading { display:flex; align-items:center; justify-content:center; gap:10px; min-height:72px; color:var(--neko-muted); font-size:12px; }
+.neko-inline-loading .neko-spinner { width:24px; height:24px; border-width:2px; }
 @keyframes neko-spin { to { transform:rotate(360deg); } }
 .neko-category-link { flex:none; padding:7px 10px; border:1px solid var(--neko-line); border-radius:999px; background:#101014; color:#b9b9c4; font-size:11px; font-weight:700; text-decoration:none; cursor:pointer; }
 .neko-category-link:hover,.neko-category-link:focus-visible { border-color:var(--neko-accent); background:#211a33; color:#d9ccff; outline:0; }

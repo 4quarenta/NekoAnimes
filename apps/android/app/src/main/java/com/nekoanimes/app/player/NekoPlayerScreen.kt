@@ -45,12 +45,12 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.ForwardingPlayer
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.ui.PlayerView
-import androidx.media3.ui.PlayerControlView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -173,6 +173,8 @@ internal fun NekoPlayerScreen(
         onNavigate(direction, saved?.positionSeconds ?: 0, saved?.durationSeconds ?: 0, saved != null)
     }
 
+    val navigateToEpisodeCallback = rememberUpdatedState<(String) -> Unit> { direction -> navigateToEpisode(direction) }
+
     fun retry() {
         resumePosition = progress.lastCheckpoint?.positionSeconds ?: resumePosition
         activePlayer?.pause()
@@ -200,7 +202,20 @@ internal fun NekoPlayerScreen(
 
     when (val current = state) {
         PlayerState.Loading -> Box(modifier = Modifier.fillMaxSize().background(Color.Black), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-        is PlayerState.Error -> PlayerMessage(current.message, "Tentar novamente", !playbackBlocked && foreground, ::retry, ::closeWithProgress)
+        is PlayerState.Error -> {
+            val bloggerError = isBloggerResolverError(current.message)
+            val message = if (bloggerError) {
+                if (attempt > 0) "Não foi possível preparar este vídeo. Tente trocar o servidor para buscar outra fonte."
+                else "Não foi possível preparar este vídeo. Tente novamente."
+            } else current.message
+            PlayerMessage(
+                message = message,
+                action = if (bloggerError && attempt > 0) null else "Tentar novamente",
+                enabled = !playbackBlocked && foreground,
+                onAction = ::retry,
+                onBack = ::closeWithProgress
+            )
+        }
         is PlayerState.Ready -> {
             val descriptor = current.descriptor
             val player = remember(descriptor.episodeId, descriptor.source.url, attempt) {
@@ -233,6 +248,11 @@ internal fun NekoPlayerScreen(
                             setMediaSource(DefaultMediaSourceFactory(httpFactory).createMediaSource(mediaItem))
                         }
                     }
+            }
+            val navigationPlayer = remember(player, hasPreviousEpisode, hasNextEpisode) {
+                EpisodeNavigationPlayer(player, hasPreviousEpisode, hasNextEpisode) { direction ->
+                    navigateToEpisodeCallback.value(direction)
+                }
             }
             activePlayer = player
             var buffering by remember(player) { mutableStateOf(player.playbackState == Player.STATE_BUFFERING || player.playbackState == Player.STATE_IDLE) }
@@ -278,22 +298,18 @@ internal fun NekoPlayerScreen(
                     modifier = Modifier.fillMaxSize(),
                     factory = { viewContext ->
                         PlayerView(viewContext).apply {
-                            this.player = player
+                            this.player = navigationPlayer
                             useController = true
                             setControllerVisibilityListener(object : PlayerView.ControllerVisibilityListener {
                                 override fun onVisibilityChanged(visibility: Int) {
                                     controlsVisible = visibility == View.VISIBLE
                                 }
                             })
-                            findViewById<PlayerControlView>(androidx.media3.ui.R.id.exo_controller)?.apply {
-                                setShowPreviousButton(hasPreviousEpisode)
-                                setShowNextButton(hasNextEpisode)
-                            }
-                            findViewById<View>(androidx.media3.ui.R.id.exo_prev)?.setOnClickListener { navigateToEpisode("previous") }
-                            findViewById<View>(androidx.media3.ui.R.id.exo_next)?.setOnClickListener { navigateToEpisode("next") }
+                            setShowPreviousButton(hasPreviousEpisode)
+                            setShowNextButton(hasNextEpisode)
                         }
                     },
-                    update = { it.player = player; it.keepScreenOn = !playbackBlocked && foreground && !needsPlayIntent && playbackError == null }
+                    update = { it.player = navigationPlayer; it.keepScreenOn = !playbackBlocked && foreground && !needsPlayIntent && playbackError == null }
                 )
                 if (buffering && playbackError == null) {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = Color(0xFFA78BFA))
@@ -325,13 +341,42 @@ internal fun NekoPlayerScreen(
 }
 
 @Composable
-private fun PlayerMessage(message: String, action: String, enabled: Boolean, onAction: () -> Unit, onBack: () -> Unit) {
+private fun PlayerMessage(message: String, action: String?, enabled: Boolean, onAction: () -> Unit, onBack: () -> Unit) {
     Box(Modifier.fillMaxSize().background(Color.Black).clickable { }, contentAlignment = Alignment.Center) {
         Column(Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(message, color = Color.White)
-            Button(onClick = onAction, enabled = enabled) { Text(action) }
+            action?.let { Button(onClick = onAction, enabled = enabled) { Text(it) } }
             Button(onClick = onBack) { Text("Voltar") }
         }
+    }
+}
+
+private class EpisodeNavigationPlayer(
+    player: Player,
+    private val hasPreviousEpisode: Boolean,
+    private val hasNextEpisode: Boolean,
+    private val onNavigate: (String) -> Unit
+) : ForwardingPlayer(player) {
+    override fun isCommandAvailable(command: Int): Boolean = when (command) {
+        Player.COMMAND_SEEK_TO_PREVIOUS -> hasPreviousEpisode
+        Player.COMMAND_SEEK_TO_NEXT -> hasNextEpisode
+        else -> super.isCommandAvailable(command)
+    }
+
+    override fun getAvailableCommands(): Player.Commands = super.getAvailableCommands()
+        .buildUpon()
+        .remove(Player.COMMAND_SEEK_TO_PREVIOUS)
+        .remove(Player.COMMAND_SEEK_TO_NEXT)
+        .addIf(Player.COMMAND_SEEK_TO_PREVIOUS, hasPreviousEpisode)
+        .addIf(Player.COMMAND_SEEK_TO_NEXT, hasNextEpisode)
+        .build()
+
+    override fun seekToPrevious() {
+        if (hasPreviousEpisode) onNavigate("previous") else super.seekToPrevious()
+    }
+
+    override fun seekToNext() {
+        if (hasNextEpisode) onNavigate("next") else super.seekToNext()
     }
 }
 
@@ -343,6 +388,9 @@ private fun isGoogleVideoSource(url: String): Boolean {
     val host = uri.host?.lowercase() ?: return false
     return (host == "googlevideo.com" || host.endsWith(".googlevideo.com")) && uri.path == "/videoplayback"
 }
+
+private fun isBloggerResolverError(message: String): Boolean =
+    message.contains("Blogger não retornou um MP4 temporário", ignoreCase = true)
 
 private fun normalizeMime(value: String): String = when (value.lowercase()) {
     "hls", "application/x-mpegurl", "application/vnd.apple.mpegurl" -> MimeTypes.APPLICATION_M3U8

@@ -8,6 +8,7 @@ import { useServerPreference } from '../lib/server-preference';
 import { serverLabel } from '../lib/server-label';
 import { readLocalProgressItems } from '../lib/local-progress';
 import { syncPendingProgress } from '../lib/progress-sync';
+import { NekoNative } from '@neko/bridge-web';
 
 export function AccountPage() {
   const navigate = useNavigate();
@@ -17,6 +18,13 @@ export function AccountPage() {
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [registering, setRegistering] = useState(false);
+  const [reviewMessage, setReviewMessage] = useState<string | null>(null);
+
+  function requestReview() {
+    setReviewMessage(NekoNative.appEvent('review_request')
+      ? 'Abrindo a avaliação do aplicativo…'
+      : 'A avaliação está disponível no aplicativo Android pela Google Play.');
+  }
 
   useEffect(() => {
     void auth.getSession().then(({ data }) => setSession(data.session));
@@ -35,7 +43,7 @@ export function AccountPage() {
   }
 
   if (!hasAuth) {
-    return <AppScreen><Eyebrow>NekoAnimes</Eyebrow><ScreenHeader title="Conta" subtitle="A API de autenticação do ambiente ainda não foi configurada." /><div className="neko-account-notice">Conta indisponível neste ambiente de desenvolvimento.</div></AppScreen>;
+    return <AppScreen><Eyebrow>NekoAnimes</Eyebrow><ScreenHeader title="Conta" subtitle="A API de autenticação do ambiente ainda não foi configurada." /><div className="neko-account-notice">Conta indisponível neste ambiente de desenvolvimento.</div><button className="neko-secondary-button" type="button" onClick={requestReview}>Avaliar aplicativo</button>{reviewMessage ? <p className="neko-account-copy">{reviewMessage}</p> : null}</AppScreen>;
   }
 
   if (!session) {
@@ -60,6 +68,8 @@ export function AccountPage() {
       <ScreenHeader title="Sua conta" subtitle={session.user.email ?? 'Conta conectada'} />
       <AccountOverview key={session.user.id} userId={session.user.id} />
       <button className="neko-secondary-button" type="button" onClick={() => void navigate({ to: '/reportar' })}>Relatar um problema</button>
+      <button className="neko-secondary-button" type="button" onClick={requestReview}>Avaliar aplicativo</button>
+      {reviewMessage ? <p className="neko-account-copy">{reviewMessage}</p> : null}
       <button className="neko-danger-button" type="button" onClick={() => void auth.signOut()}>Sair da conta</button>
     </AppScreen>
   );
