@@ -2,6 +2,7 @@ package com.nekoanimes.app.ads
 
 import android.app.Activity
 import android.content.Context
+import android.content.pm.ActivityInfo
 import android.util.Log
 import com.google.android.gms.ads.AdError
 import com.google.android.gms.ads.AdRequest
@@ -46,6 +47,7 @@ class NekoAdOrchestrator(
     private var appOpenPending = false
     private var appOpenGateActive = false
     private var fullscreenAdShowing = false
+    private var orientationBeforeFullscreenAd: Int? = null
 
     fun initialize(onReady: () -> Unit = {}) {
         if (BuildConfig.ADMOB_TEST_MODE) {
@@ -153,6 +155,7 @@ class NekoAdOrchestrator(
         if (ad.isReady) {
             appOpenPending = false
             fullscreenAdShowing = true
+            enterPortraitForFullscreenAd()
             ad.showAd("app_open")
             prefs.edit().putLong(KEY_LAST_APP_OPEN, System.currentTimeMillis()).apply()
         } else {
@@ -174,6 +177,7 @@ class NekoAdOrchestrator(
         val ad = interstitial ?: return
         if (ad.isReady) {
             fullscreenAdShowing = true
+            enterPortraitForFullscreenAd()
             ad.showAd(placement)
             sessionInterstitials += 1
             prefs.edit().putLong(KEY_LAST_INTERSTITIAL, System.currentTimeMillis()).apply()
@@ -327,10 +331,22 @@ class NekoAdOrchestrator(
         admobAppOpen = null
         appOpenPending = false
         fullscreenAdShowing = true
+        enterPortraitForFullscreenAd()
         ad.fullScreenContentCallback = object : FullScreenContentCallback() {
             override fun onAdShowedFullScreenContent() { Log.i(TAG, "AdMob test ad displayed format=APP_OPEN") }
-            override fun onAdDismissedFullScreenContent() { fullscreenAdShowing = false; appOpenGateActive = false; loadAdMobTestAppOpen() }
-            override fun onAdFailedToShowFullScreenContent(error: AdError) { fullscreenAdShowing = false; appOpenGateActive = false; Log.w(TAG, "AdMob test ad display failed format=APP_OPEN code=${error.code}"); loadAdMobTestAppOpen() }
+            override fun onAdDismissedFullScreenContent() {
+                fullscreenAdShowing = false
+                appOpenGateActive = false
+                restoreOrientationAfterFullscreenAd()
+                loadAdMobTestAppOpen()
+            }
+            override fun onAdFailedToShowFullScreenContent(error: AdError) {
+                fullscreenAdShowing = false
+                appOpenGateActive = false
+                restoreOrientationAfterFullscreenAd()
+                Log.w(TAG, "AdMob test ad display failed format=APP_OPEN code=${error.code}")
+                loadAdMobTestAppOpen()
+            }
         }
         ad.show(activity)
         prefs.edit().putLong(KEY_LAST_APP_OPEN, System.currentTimeMillis()).apply()
@@ -348,15 +364,41 @@ class NekoAdOrchestrator(
         }
         admobInterstitial = null
         fullscreenAdShowing = true
+        enterPortraitForFullscreenAd()
         ad.fullScreenContentCallback = object : FullScreenContentCallback() {
             override fun onAdShowedFullScreenContent() { Log.i(TAG, "AdMob test ad displayed format=INTERSTITIAL placement=$placement") }
-            override fun onAdDismissedFullScreenContent() { fullscreenAdShowing = false; loadAdMobTestInterstitial() }
-            override fun onAdFailedToShowFullScreenContent(error: AdError) { fullscreenAdShowing = false; Log.w(TAG, "AdMob test ad display failed format=INTERSTITIAL code=${error.code}"); loadAdMobTestInterstitial() }
+            override fun onAdDismissedFullScreenContent() {
+                fullscreenAdShowing = false
+                restoreOrientationAfterFullscreenAd()
+                loadAdMobTestInterstitial()
+            }
+            override fun onAdFailedToShowFullScreenContent(error: AdError) {
+                fullscreenAdShowing = false
+                restoreOrientationAfterFullscreenAd()
+                Log.w(TAG, "AdMob test ad display failed format=INTERSTITIAL code=${error.code}")
+                loadAdMobTestInterstitial()
+            }
         }
         ad.show(activity)
         sessionInterstitials += 1
         prefs.edit().putLong(KEY_LAST_INTERSTITIAL, System.currentTimeMillis()).apply()
     }
+
+    private fun enterPortraitForFullscreenAd() {
+        if (orientationBeforeFullscreenAd == null) {
+            orientationBeforeFullscreenAd = activity.requestedOrientation
+        }
+        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+    }
+
+    private fun restoreOrientationAfterFullscreenAd() {
+        val previousOrientation = orientationBeforeFullscreenAd ?: return
+        orientationBeforeFullscreenAd = null
+        if (!activity.isFinishing) {
+            activity.requestedOrientation = previousOrientation
+        }
+    }
+
     override fun onAdDisplayed(ad: MaxAd) {
         fullscreenAdShowing = true
         Log.i(TAG, "Ad displayed format=${ad.format.label} network=${ad.networkName}")
@@ -364,6 +406,7 @@ class NekoAdOrchestrator(
     override fun onAdClicked(ad: MaxAd) = Unit
     override fun onAdHidden(ad: MaxAd) {
         fullscreenAdShowing = false
+        restoreOrientationAfterFullscreenAd()
         if (ad.adUnitId == BuildConfig.MAX_APP_OPEN_AD_UNIT_ID) appOpenGateActive = false
         if (ad.adUnitId == BuildConfig.MAX_INTERSTITIAL_AD_UNIT_ID) interstitial?.loadAd()
         if (ad.adUnitId == BuildConfig.MAX_APP_OPEN_AD_UNIT_ID) appOpen?.loadAd()
@@ -377,6 +420,7 @@ class NekoAdOrchestrator(
     }
     override fun onAdDisplayFailed(ad: MaxAd, error: MaxError) {
         fullscreenAdShowing = false
+        restoreOrientationAfterFullscreenAd()
         if (ad.adUnitId == BuildConfig.MAX_APP_OPEN_AD_UNIT_ID) appOpenGateActive = false
         Log.w(TAG, "Ad display failed: ${error.code}")
         if (ad.adUnitId == BuildConfig.MAX_INTERSTITIAL_AD_UNIT_ID) interstitial?.loadAd()
