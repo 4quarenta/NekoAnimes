@@ -79,9 +79,11 @@ android {
     buildTypes {
         debug {
             versionNameSuffix = "-debug"
-            buildConfigField("String", "WEB_APP_URL", "\"${nekoUrl("nekoWebAppUrl", "http://10.0.2.2:5173")}\"")
-            buildConfigField("String", "WEB_APP_ORIGIN", "\"${nekoUrl("nekoWebAppOrigin", "http://10.0.2.2:5173")}\"")
-            buildConfigField("String", "API_BASE_URL", "\"${nekoUrl("nekoApiBaseUrl", "http://10.0.2.2:3000")}\"")
+            // Direct Debug is the physical-device staging build by default.
+            // Local development can still override these with -Pneko* values.
+            buildConfigField("String", "WEB_APP_URL", "\"${nekoUrl("nekoWebAppUrl", "https://nekoanimes-staging.pages.dev")}\"")
+            buildConfigField("String", "WEB_APP_ORIGIN", "\"${nekoUrl("nekoWebAppOrigin", "https://nekoanimes-staging.pages.dev")}\"")
+            buildConfigField("String", "API_BASE_URL", "\"${nekoUrl("nekoApiBaseUrl", "https://nekoanimes-api-staging.john-alleff01.workers.dev")}\"")
         }
 
         release {
