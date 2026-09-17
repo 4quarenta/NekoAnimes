@@ -157,6 +157,7 @@ export function AnimeDetailPage() {
   const orderedEpisodes = [...episodes].sort((left, right) => (episodeNumber(left) - episodeNumber(right)) * (episodeOrder === 'asc' ? 1 : -1)).slice(0,visible);
   const totalEpisodes = providerMode ? (selectedProviderSeason?.episodes.length ?? 0) : (legacyEpisodeQuery.data?.total ?? 0);
   const backdropUrl = loadedMetadata?.backdropUrl ?? remoteMetadata.data?.backdropUrl ?? providerAnime.data?.identity?.backdropUrl;
+  const heroImageUrl = backdropUrl ?? currentItem.imageUrl;
 
   function openEpisode(episode: Episode | ServerEpisode, positionSeconds = 0) {
     setStartPosition(positionSeconds);
@@ -275,25 +276,26 @@ export function AnimeDetailPage() {
 
   return (
     <AppScreen>
-      {backdropUrl ? <div className="neko-anime-hero" style={{ backgroundImage: `linear-gradient(180deg, rgba(13, 10, 28, .18), var(--neko-bg) 92%), url(${backdropUrl})` }} aria-hidden="true" /> : null}
+      {heroImageUrl ? <div className="neko-anime-hero" style={{ backgroundImage: `linear-gradient(180deg, rgba(13, 10, 28, .05) 0%, rgba(13, 10, 28, .2) 46%, var(--neko-bg) 100%), url(${heroImageUrl})` }} aria-hidden="true" /> : null}
       {(selectedEpisode || playbackError) ? <PlaybackFeedback
         title={selectedEpisode ? `Episódio ${selectedEpisode.number}` : 'Reprodução'}
         error={playbackError ?? (providerResolution.isError ? providerResolution.error.message : null)}
         onClose={() => {setSelectedEpisode(null);setPlaybackError(null);}}
         onRetry={selectedEpisode ? () => {setPlaybackError(null);setPlayAttempt(value => value + 1);} : undefined}
       /> : null}
-      <div className="neko-anime-detail-content">
-        <Eyebrow>{contentTypeLabel(currentItem.type)} · {currentItem.year ?? providerAnime.data?.identity?.year ?? '—'}{providerMode ? ` · ${serverLabel(providerAnime.data!.server.id)}` : ''}</Eyebrow>
+      <div className={`neko-anime-detail-content${heroImageUrl ? ' has-backdrop' : ''}`}>
+        <button className="neko-anime-back" type="button" aria-label="Voltar" onClick={() => window.history.back()}>‹</button>
         <ScreenHeader title={currentItem.title} subtitle={currentItem.titleEnglish ?? currentItem.titleRomaji ?? undefined} />
-        {currentItem.imageUrl ? <PosterImage className="neko-anime-poster" src={currentItem.imageUrl} alt={`Capa de ${currentItem.title}`} /> : null}
-        {providerAnime.data?.identity ? <div className="neko-external-meta"><span>MAL {providerAnime.data.identity.malId ?? '—'}</span><span>AniList {providerAnime.data.identity.anilistId ?? '—'}</span></div> : null}
-        <div className="neko-chips"><span>{currentItem.status}</span>{currentItem.releaseLabel ? <span className="neko-release-badge">{currentItem.releaseLabel}</span> : null}{currentItem.genres.slice(0, 4).map((genre) => <span key={genre}>{genre}</span>)}{currentItem.scoreBasisPoints ? <span>★ {(currentItem.scoreBasisPoints / 100).toFixed(2)}</span> : null}</div>
+        <div className="neko-anime-facts"><span>{currentItem.year ?? providerAnime.data?.identity?.year ?? 'Ano desconhecido'}</span><span>{contentTypeLabel(currentItem.type)}</span><span>{currentItem.seasons.length} {currentItem.seasons.length === 1 ? 'temporada' : 'temporadas'}</span><span>{currentItem.seasons.reduce((total, season) => total + season.episodesCount, 0)} episódios</span></div>
+        {!heroImageUrl && currentItem.imageUrl ? <PosterImage className="neko-anime-poster" src={currentItem.imageUrl} alt={`Capa de ${currentItem.title}`} /> : null}
+        <div className="neko-chips">{providerMode ? <span>{serverLabel(providerAnime.data!.server.id)}</span> : null}{currentItem.releaseLabel ? <span className="neko-release-badge">{currentItem.releaseLabel}</span> : null}{currentItem.genres.slice(0, 4).map((genre) => <span key={genre}>{genre}</span>)}{currentItem.scoreBasisPoints ? <span>★ {(currentItem.scoreBasisPoints / 100).toFixed(2)}</span> : null}</div>
         <div className="neko-anime-actions">
           <button className="neko-primary-button neko-library-button" type="button" disabled={libraryState === 'saving'} onClick={() => void addToLibrary()}>{libraryState === 'saving' ? 'Adicionando...' : inLibrary ? '✓ Remover da minha lista' : '+ Adicionar à minha lista'}</button>
           <button className="neko-secondary-button neko-library-button" type="button" disabled={!providerMode || dataState === 'loading'} onClick={() => void loadAnimeData()}>{dataState === 'loading' ? 'Carregando...' : dataState === 'loaded' ? '✓ Dados salvos' : 'Carregar dados'}</button>
         </div>
         {libraryError ? <p className="neko-error">{libraryError}</p> : null}
         {dataMessage ? <p className={dataState === 'error' ? 'neko-error neko-data-message' : 'neko-data-message'}>{dataMessage}</p> : null}
+        {providerAnime.data?.identity ? <div className="neko-external-meta"><span>MAL {providerAnime.data.identity.malId ?? '—'}</span><span>AniList {providerAnime.data.identity.anilistId ?? '—'}</span></div> : null}
         {currentItem.synopsis ? <p className="neko-synopsis">{currentItem.synopsis}</p> : null}
         <Section title="Temporadas"><div className="neko-season-tabs">{currentItem.seasons.map((season) => <button type="button" key={season.id} className={season.id === selectedSeasonId ? 'is-active' : ''} onClick={() => { setSeasonId(season.id); setVisible(60); }}>{season.title ?? `Temporada ${season.number}`}</button>)}</div></Section>
         <Section title="Episódios" action={<select className="neko-episode-order" value={episodeOrder} onChange={(event) => setEpisodeOrder(event.target.value as EpisodeOrder)} aria-label="Ordem dos episódios"><option value="asc">Mais antigos</option><option value="desc">Mais recentes</option></select>}>

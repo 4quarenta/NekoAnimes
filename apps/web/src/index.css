@@ -73,3 +73,30 @@
 @keyframes neko-spin { to { transform:rotate(360deg); } }
 .neko-category-link { flex:none; padding:7px 10px; border:1px solid var(--neko-line); border-radius:999px; background:#101014; color:#b9b9c4; font-size:11px; font-weight:700; text-decoration:none; cursor:pointer; }
 .neko-category-link:hover,.neko-category-link:focus-visible { border-color:var(--neko-accent); background:#211a33; color:#d9ccff; outline:0; }
+
+/* Anime details: compact hierarchy inspired by the mobile reference layout. */
+.neko-topbar { position:relative; z-index:3; }
+.neko-anime-hero { z-index:0; height:270px; border-radius:0 0 24px 24px; background-position:center 28%; box-shadow:0 18px 42px rgb(0 0 0 / 24%); }
+.neko-anime-detail-content { padding:0 2px; }
+.neko-anime-detail-content.has-backdrop { margin-top:188px; }
+.neko-anime-back { display:grid; place-items:center; width:38px; height:38px; margin:0 0 16px -4px; padding:0 0 5px; border:1px solid rgb(255 255 255 / 14%); border-radius:50%; background:rgb(12 10 17 / 62%); color:#fff; font-family:Arial,sans-serif; font-size:34px; line-height:1; cursor:pointer; }
+.neko-anime-detail-content.has-backdrop .neko-anime-back { position:absolute; top:-170px; left:0; }
+.neko-anime-detail-content .neko-header h1 { max-width:100%; font-size:clamp(24px,7vw,34px); }
+.neko-anime-detail-content .neko-header p { margin-top:6px; font-size:12px; }
+.neko-anime-facts { display:flex; flex-wrap:wrap; gap:8px 16px; margin-top:14px; color:#d7d2df; font-size:11px; font-weight:700; }
+.neko-anime-facts span:not(:last-child)::after { content:'·'; margin-left:16px; color:#756c80; }
+.neko-anime-detail-content .neko-chips { margin-top:14px; }
+.neko-anime-detail-content .neko-chips span { padding:5px 8px; background:rgb(22 18 31 / 72%); }
+.neko-anime-detail-content .neko-anime-actions { margin-top:16px; }
+.neko-anime-detail-content .neko-section { margin-top:28px; }
+.neko-anime-detail-content .neko-section-title { margin-bottom:12px; }
+.neko-anime-detail-content .neko-section-title h2 { color:#f1edf5; font-size:15px; font-weight:800; }
+.neko-anime-detail-content .neko-season-tabs button { padding:8px 11px; }
+.neko-anime-detail-content .neko-episode-grid { grid-template-columns:repeat(6,minmax(0,1fr)); gap:7px; }
+.neko-anime-detail-content .neko-episode-box { min-height:42px; border-radius:10px; font-size:13px; }
+.neko-anime-detail-content .neko-synopsis { margin-top:18px; font-size:12px; line-height:1.6; }
+@media(max-width:360px) {
+  .neko-anime-detail-content .neko-episode-grid { grid-template-columns:repeat(5,minmax(0,1fr)); }
+  .neko-anime-facts { gap:6px 10px; }
+  .neko-anime-facts span:not(:last-child)::after { margin-left:10px; }
+}

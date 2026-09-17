@@ -63,6 +63,7 @@ try {
   await page.goto(`${base}/lista`);
   await page.getByRole('button',{name:/Contract Anime/}).click();
   await expect(page.getByRole('heading',{name:'Contract Anime',exact:true})).toBeVisible();
+  await page.screenshot({path:'test-results/anime-detail.png',fullPage:true});
   expect(requestedReference).toBe(true);
   await page.getByRole('combobox',{name:'Ordem dos episódios'}).selectOption('desc');
   await expect(page.locator('.neko-episode-box').first()).toHaveText('70');
