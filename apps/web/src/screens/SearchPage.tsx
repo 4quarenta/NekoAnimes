@@ -35,7 +35,7 @@ export function SearchPage() {
 
   return (
     <AppScreen>
-      <Eyebrow>{isModeTwo ? 'Neko News' : 'NekoAnimes'}</Eyebrow>
+      {isModeTwo ? <Eyebrow>Neko News</Eyebrow> : null}
       <ScreenHeader
         title="Buscar"
         subtitle={isModeTwo ? 'Pesquise por título, resumo ou fonte.' : 'Nome, título em inglês ou título romanizado.'}
