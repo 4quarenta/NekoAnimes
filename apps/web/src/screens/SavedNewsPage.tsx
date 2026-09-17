@@ -1,42 +1,24 @@
 import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { fetchSavedNews } from '../lib/api';
-import { auth, type AuthSession } from '../lib/auth';
 import { AppScreen, EmptyState, Eyebrow, ScreenHeader, TextRow } from '../components/AppScreen';
+import { readLocalSavedNews, subscribeToLocalSavedNews, type LocalSavedNewsItem } from '../lib/local-saved-news';
 
 export function SavedNewsPage() {
   const navigate = useNavigate();
-  const [session, setSession] = useState<AuthSession | null>(null);
+  const [saved, setSaved] = useState<LocalSavedNewsItem[]>(() => readLocalSavedNews());
 
-  useEffect(() => {
-    void auth.getSession().then(({ data }) => setSession(data.session));
-    const { data } = auth.onAuthStateChange((_event, next) => setSession(next));
-    return () => data.subscription.unsubscribe();
-  }, []);
-
-  const saved = useQuery({ queryKey: ['me-saved-news', session?.user.id], queryFn: fetchSavedNews, enabled: Boolean(session) });
-
-  if (!session) {
-    return (
-      <AppScreen>
-        <Eyebrow>Neko News</Eyebrow>
-        <ScreenHeader title="Salvos" subtitle="Entre na sua conta para sincronizar notícias salvas entre dispositivos." />
-        <button className="neko-primary-button" type="button" onClick={() => void navigate({ to: '/conta' })}>Entrar na conta</button>
-      </AppScreen>
-    );
-  }
+  useEffect(() => subscribeToLocalSavedNews(() => setSaved(readLocalSavedNews())), []);
 
   return (
     <AppScreen>
       <Eyebrow>Neko News</Eyebrow>
-      <ScreenHeader title="Salvos" subtitle="Notícias sincronizadas com sua conta." />
-      {saved.isPending ? <div className="neko-skeleton short" /> : null}
-      {saved.data?.length ? (
+      <ScreenHeader title="Salvos" subtitle="Notícias salvas neste dispositivo." />
+      <p className="neko-account-notice">Seus salvos funcionam sem cadastro e ficam armazenados localmente.</p>
+      {saved.length ? (
         <div className="neko-list neko-results">
-          {saved.data.map((item) => <TextRow key={item.id} title={item.title} meta={`${item.category} · ${item.sourceName}`} trailing="›" onClick={() => void navigate({ to: '/noticias/$slug', params: { slug: item.slug } })} />)}
+          {saved.map((item) => <TextRow key={item.id} title={item.title} meta={`${item.category} · ${item.sourceName}`} trailing="›" onClick={() => void navigate({ to: '/noticias/$slug', params: { slug: item.slug } })} />)}
         </div>
-      ) : saved.data ? <EmptyState title="Nada salvo ainda" description="Abra uma notícia e toque em Salvar para encontrá-la aqui." /> : null}
+      ) : <EmptyState title="Nada salvo ainda" description="Abra uma notícia e toque em Salvar para encontrá-la aqui." />}
     </AppScreen>
   );
 }

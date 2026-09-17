@@ -1,24 +1,31 @@
-import { FormEvent, useEffect, useState } from 'react';
-import { AppScreen, Eyebrow, ScreenHeader, Section, TextRow } from '../components/AppScreen';
-import { auth, hasAuth, type AuthSession } from '../lib/auth';
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { fetchMe, fetchLibrary, fetchContinueWatching, fetchSavedNews, fetchServers } from '../lib/api';
+import { NekoNative } from '@neko/bridge-web';
+import { AppScreen, Eyebrow, ScreenHeader, Section, TextRow } from '../components/AppScreen';
+import { readLocalLibrary, subscribeToLocalLibrary } from '../lib/local-library';
+import { readLocalProgressItems } from '../lib/local-progress';
 import { useServerPreference } from '../lib/server-preference';
 import { serverLabel } from '../lib/server-label';
-import { readLocalProgressItems } from '../lib/local-progress';
-import { syncPendingProgress } from '../lib/progress-sync';
-import { NekoNative } from '@neko/bridge-web';
 
 export function AccountPage() {
   const navigate = useNavigate();
-  const [session, setSession] = useState<AuthSession | null>(null);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [message, setMessage] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [registering, setRegistering] = useState(false);
+  const serverId = useServerPreference((state) => state.serverId);
+  const [libraryCount, setLibraryCount] = useState(() => readLocalLibrary().length);
+  const [continueCount, setContinueCount] = useState(() => readLocalProgressItems().filter((item) => !item.completed).length);
   const [reviewMessage, setReviewMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    const refresh = () => {
+      setLibraryCount(readLocalLibrary().length);
+      setContinueCount(readLocalProgressItems().filter((item) => !item.completed).length);
+    };
+    const unsubscribe = subscribeToLocalLibrary(refresh);
+    window.addEventListener('neko-progress-updated', refresh);
+    return () => {
+      unsubscribe();
+      window.removeEventListener('neko-progress-updated', refresh);
+    };
+  }, []);
 
   function requestReview() {
     setReviewMessage(NekoNative.appEvent('review_request')
@@ -26,85 +33,23 @@ export function AccountPage() {
       : 'A avaliação está disponível no aplicativo Android pela Google Play.');
   }
 
-  useEffect(() => {
-    void auth.getSession().then(({ data }) => setSession(data.session));
-    const { data } = auth.onAuthStateChange((_event, next) => setSession(next));
-    return () => data.subscription.unsubscribe();
-  }, []);
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    setBusy(true); setMessage('');
-    const { error } = registering
-      ? await auth.signUp({ email: email.trim(), password })
-      : await auth.signInWithPassword({ email: email.trim(), password });
-    setBusy(false);
-    setMessage(error ? (registering ? 'Não foi possível criar a conta.' : 'Não foi possível entrar. Confira e-mail e senha.') : (registering ? 'Conta criada.' : 'Sessão iniciada.'));
-  }
-
-  if (!hasAuth) {
-    return <AppScreen><Eyebrow>NekoAnimes</Eyebrow><ScreenHeader title="Conta" subtitle="A API de autenticação do ambiente ainda não foi configurada." /><div className="neko-account-notice">Conta indisponível neste ambiente de desenvolvimento.</div><button className="neko-secondary-button" type="button" onClick={requestReview}>Avaliar aplicativo</button>{reviewMessage ? <p className="neko-account-copy">{reviewMessage}</p> : null}</AppScreen>;
-  }
-
-  if (!session) {
-    return (
-      <AppScreen>
-        <Eyebrow>NekoAnimes</Eyebrow>
-        <ScreenHeader title={registering ? 'Criar conta' : 'Entrar'} subtitle="Sincronize sua lista, progresso e notícias salvas entre dispositivos." />
-        <form className="neko-account-form" onSubmit={submit}>
-          <label>E-mail<input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} /></label>
-          <label>Senha<input type="password" autoComplete={registering ? 'new-password' : 'current-password'} required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} /></label>
-          <button type="submit" disabled={busy}>{busy ? 'Aguarde...' : registering ? 'Criar conta' : 'Entrar'}</button>
-          {message ? <p>{message}</p> : null}
-          <button className="neko-link-button" type="button" onClick={() => { setRegistering((value) => !value); setMessage(''); }}>{registering ? 'Já tenho uma conta' : 'Criar uma conta de teste'}</button>
-        </form>
-      </AppScreen>
-    );
-  }
-
   return (
     <AppScreen>
       <Eyebrow>NekoAnimes</Eyebrow>
-      <ScreenHeader title="Sua conta" subtitle={session.user.email ?? 'Conta conectada'} />
-      <AccountOverview key={session.user.id} userId={session.user.id} />
-      <button className="neko-secondary-button" type="button" onClick={() => void navigate({ to: '/reportar' })}>Relatar um problema</button>
-      <button className="neko-secondary-button" type="button" onClick={requestReview}>Avaliar aplicativo</button>
-      {reviewMessage ? <p className="neko-account-copy">{reviewMessage}</p> : null}
-      <button className="neko-danger-button" type="button" onClick={() => void auth.signOut()}>Sair da conta</button>
+      <ScreenHeader title="Perfil" subtitle="Suas preferências e dados ficam neste dispositivo." />
+      <Section title="Sua atividade">
+        <div className="neko-list">
+          <TextRow title="Minha lista" meta={`${libraryCount} ${libraryCount === 1 ? 'obra salva' : 'obras salvas'}`} trailing="›" onClick={() => void navigate({ to: '/lista' })} />
+          <TextRow title="Continuar assistindo" meta={`${continueCount} ${continueCount === 1 ? 'episódio em andamento' : 'episódios em andamento'}`} trailing="›" onClick={() => void navigate({ to: '/continuar' })} />
+          <TextRow title="Servidor padrão" meta={serverId ? serverLabel(serverId) : 'Não selecionado'} trailing="›" onClick={() => void navigate({ to: '/servidores' })} />
+        </div>
+      </Section>
+      <Section title="Preferências">
+        <p className="neko-account-copy">Não é necessário criar uma conta para usar favoritos e continuar assistindo. Esses dados são armazenados localmente.</p>
+        <button className="neko-secondary-button" type="button" onClick={() => void navigate({ to: '/reportar' })}>Relatar um problema</button>
+        <button className="neko-secondary-button" type="button" onClick={requestReview}>Avaliar aplicativo</button>
+        {reviewMessage ? <p className="neko-account-copy">{reviewMessage}</p> : null}
+      </Section>
     </AppScreen>
   );
-}
-
-function AccountOverview({userId}:{userId:string}) {
-  const navigate=useNavigate();
-  const serverId=useServerPreference(state=>state.serverId);
-  const profile=useQuery({queryKey:['me-profile',userId],queryFn:fetchMe});
-  const library=useQuery({queryKey:['me-library',userId],queryFn:fetchLibrary});
-  const watching=useQuery({queryKey:['me-continue',userId],queryFn:fetchContinueWatching});
-  const news=useQuery({queryKey:['me-saved-news',userId],queryFn:fetchSavedNews});
-  const servers=useQuery({queryKey:['servers'],queryFn:fetchServers});
-  const [pending,setPending]=useState(()=>readLocalProgressItems().filter(item=>item.pendingSync).length);
-  const [syncing,setSyncing]=useState(false);
-  useEffect(()=>{
-    const update=()=>setPending(readLocalProgressItems().filter(item=>item.pendingSync).length);
-    window.addEventListener('neko-progress-synced',update);window.addEventListener('neko-progress-updated',update);
-    return()=>{window.removeEventListener('neko-progress-synced',update);window.removeEventListener('neko-progress-updated',update);};
-  },[]);
-  return <>
-    <Section title="Sua atividade">
-      {profile.isPending?<div className="neko-skeleton short"/>:null}
-      {profile.isError?<p className="neko-error">Não foi possível consultar sua conta. Seus dados não foram apagados.</p>:null}
-      <div className="neko-list">
-        <TextRow title="Minha lista" meta={library.data?`${library.data.length} obras salvas`:library.isError?'Não foi possível consultar favoritos':'Abrir favoritos'} trailing="›" onClick={()=>void navigate({to:'/lista'})}/>
-        <TextRow title="Continuar assistindo" meta={watching.data?`${watching.data.length} obras em andamento`:watching.isError?'Não foi possível consultar progresso':'Consultar progresso'} trailing="›" onClick={()=>void navigate({to:'/continuar'})}/>
-        <TextRow title="Notícias salvas" meta={news.data?`${news.data.length} notícias`:news.isError?'Não foi possível consultar notícias':'Abrir notícias salvas'} trailing="›" onClick={()=>void navigate({to:'/salvos'})}/>
-        <TextRow title="Servidor padrão" meta={serverId ? serverLabel(serverId) : 'Não selecionado'} trailing="›" onClick={()=>void navigate({to:'/servidores'})}/>
-      </div>
-    </Section>
-    <Section title="Sincronização">
-      <p className={pending?'neko-error':'neko-account-copy'}>{pending?`${pending} progresso(s) aguardando envio neste dispositivo.`:profile.data?'Conta consultada com sucesso. Nenhum envio local pendente.':'Aguardando confirmação da API.'}</p>
-      {profile.dataUpdatedAt?<p className="neko-account-copy">Última consulta: {new Date(profile.dataUpdatedAt).toLocaleTimeString('pt-BR')}</p>:null}
-      <button className="neko-secondary-button" disabled={syncing||profile.isFetching} onClick={()=>{setSyncing(true);void syncPendingProgress().then(()=>Promise.allSettled([profile.refetch(),library.refetch(),watching.refetch(),news.refetch()])).finally(()=>setSyncing(false));}}>{syncing?'Sincronizando…':'Sincronizar e atualizar'}</button>
-    </Section>
-  </>;
 }

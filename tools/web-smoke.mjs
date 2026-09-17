@@ -13,11 +13,12 @@ try {
   const pageErrors=[];page.on('pageerror',error=>pageErrors.push(error.message));
   await page.addInitScript(()=>{
     localStorage.setItem('nekoanimes.selected-server.v1','animesonlinecc');
+    localStorage.setItem('nekoanimes.local-library.v1',JSON.stringify([{animeId:'test:work',slug:'work-test',workSlug:'work-test',title:'Contract Anime',year:2025,type:'anime',genres:['Action'],scoreBasisPoints:850,imageUrl:null,releaseLabel:null,providerId:'animesonlinecc',reference:'/anime/test/',status:'watchlist',updatedAt:new Date().toISOString()}]));
     localStorage.setItem('nekoanimes.auth.session',JSON.stringify({access_token:'test-only',user:{id:'user-test',email:'test@example.invalid'},expires_in:3600,token_type:'bearer'}));
     window.testBridge=[];
     window.NekoNativeBridge={postMessage:message=>window.testBridge.push(JSON.parse(message))};
   });
-  let pendingResolve,resolveCount=0,requestedSlug=false;
+  let pendingResolve,resolveCount=0,requestedSlug=false,requestedReference=false;
   let recoveryMode=false,linked=false,linkWrites=0,recoverySearches=0,linkFailure=false,searchFailure=false;
   const fallbackServer={...server,id:'goyabu',name:'Goyabu',baseUrl:'https://goyabu.io'};
   await page.route('https://example.com/**',route=>route.fulfill({status:204}));
@@ -45,6 +46,7 @@ try {
     }
     else if(path.endsWith('/anime')) {
       requestedSlug=url.searchParams.has('slug');
+      requestedReference=url.searchParams.get('ref')==='/anime/test/';
       if(recoveryMode&&requestedSlug&&!linked&&path.includes('animesonlinecc')){await route.fulfill({status:404,json:{message:'Obra não encontrada neste servidor'}});return;}
       json=path.includes('goyabu')?{...detail,server:fallbackServer}:url.searchParams.get('ref')==='/anime/alias/'?{...detail,identity:{...identity,canonicalId:'candidate:work',canonicalTitle:'Contract Anime Alternative'},anime:{...detail.anime,title:'Contract Anime Alternative',reference:'/anime/alias/'}}:detail;
     }
@@ -61,7 +63,7 @@ try {
   await page.goto(`${base}/lista`);
   await page.getByRole('button',{name:/Contract Anime/}).click();
   await expect(page.getByRole('heading',{name:'Contract Anime',exact:true})).toBeVisible();
-  expect(requestedSlug).toBe(true);
+  expect(requestedReference).toBe(true);
   await page.getByRole('combobox',{name:'Ordem dos episódios'}).selectOption('desc');
   await expect(page.locator('.neko-episode-box').first()).toHaveText('70');
   await page.locator('.neko-episode-box').first().click();
@@ -83,8 +85,8 @@ try {
   await expect(page.getByText('Página 2',{exact:true})).toBeVisible();
   await expect(page.getByRole('button',{name:'Próxima ›'})).toBeDisabled();
   await page.goto(`${base}/conta`);
-  await expect(page.getByText('1 obras salvas',{exact:true})).toBeVisible();
-  await expect(page.getByRole('button',{name:'Sincronizar e atualizar'})).toBeVisible();
+  await expect(page.getByText('1 obra salva',{exact:true})).toBeVisible();
+  await expect(page.getByText(/Não é necessário criar uma conta/)).toBeVisible();
   await page.goto(`${base}/continuar`);
   await expect(page.getByRole('heading',{name:'Continuar assistindo',exact:true})).toBeVisible();
   await expect(page.getByRole('button',{name:/Abrir minha lista/})).toBeVisible();
@@ -114,7 +116,7 @@ try {
   await expect(page).toHaveURL(/ref=%2Fanime%2Falias%2F/);
   expect(linkWrites).toBe(0);
   await page.goto(`${base}/anime/work-test`);
-  await page.getByRole('button',{name:/Goyabu.*Trocar servidor/}).click();
+  await page.getByRole('button',{name:/BR1.*Trocar servidor/}).click();
   await expect(page).toHaveURL(/provider=goyabu/);
   expect(await page.evaluate(()=>localStorage.getItem('nekoanimes.selected-server.v1'))).toBe('goyabu');
   await expect(page.getByRole('heading',{name:'Contract Anime',exact:true})).toBeVisible();

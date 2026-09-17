@@ -2,13 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { NekoNative } from '@neko/bridge-web';
-import { fetchAnime, fetchLibrary, fetchContinueWatching, removeLibraryItem, fetchSavedServerAnime, saveProviderLibrary, fetchAniListMetadata, fetchEpisodes, fetchServerAnime, fetchServerProviderResolution, saveProviderAnimeData, setLibraryItem, type AnimeDetail, type Episode, type ProviderCatalogResponse, type RemoteAnimeMetadata, type ServerEpisode } from '../lib/api';
+import { fetchAnime, fetchSavedServerAnime, fetchAniListMetadata, fetchEpisodes, fetchServerAnime, fetchServerProviderResolution, saveProviderAnimeData, type AnimeDetail, type Episode, type ProviderCatalogResponse, type RemoteAnimeMetadata, type ServerEpisode } from '../lib/api';
 import { readLocalContinueWatching, rememberActivePlayback, type LocalContinueWatching } from '../lib/local-progress';
+import { readLocalLibrary, removeLocalLibraryItem, saveLocalLibraryItem, subscribeToLocalLibrary, type LocalLibraryItem } from '../lib/local-library';
 import { useServerPreference } from '../lib/server-preference';
 import { serverLabel } from '../lib/server-label';
 import { AppScreen, Eyebrow, LoadingState, PosterImage, ScreenHeader, Section } from '../components/AppScreen';
 
-import { auth, currentUserId, type AuthSession } from '../lib/auth';
+import { currentUserId } from '../lib/auth';
 import { PlaybackFeedback } from '../components/PlaybackFeedback';
 import { ProviderRecovery } from '../components/ProviderRecovery';
 import { episodeAtOrdinal, episodeOrdinal, releaseLabelForTitle } from '@neko/contracts';
@@ -20,14 +21,8 @@ export function AnimeDetailPage() {
   const search = useSearch({ from: '/anime/$slug' });
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [session, setSession] = useState<AuthSession | null>(null);
-  useEffect(() => {
-    void auth.getSession().then(({data}) => setSession(data.session));
-    const {data} = auth.onAuthStateChange((_event,value) => setSession(value));
-    return () => data.subscription.unsubscribe();
-  }, []);
-  const library = useQuery({queryKey:['me-library',session?.user.id],queryFn:fetchLibrary,enabled:Boolean(session)});
-  const savedProgress = useQuery({queryKey:['me-continue',session?.user.id],queryFn:fetchContinueWatching,enabled:Boolean(session)});
+  const [localLibrary, setLocalLibrary] = useState<LocalLibraryItem[]>(() => readLocalLibrary());
+  useEffect(() => subscribeToLocalLibrary(() => setLocalLibrary(readLocalLibrary())), []);
   const defaultServerId = useServerPreference((state) => state.serverId);
   const providerId = search.provider ?? defaultServerId;
   const providerReference = search.ref;
@@ -141,14 +136,12 @@ export function AnimeDetailPage() {
   useEffect(() => {
     if (!item) return;
     const sync = () => {
-      const local = readLocalContinueWatching(item.id);
-      const saved = savedProgress.data?.find(value => value.animeId === item.id);
-      setContinueWatching(local && (!saved || new Date(local.updatedAt) >= new Date(saved.updatedAt)) ? local : saved ? {...saved,imageUrl:saved.imageUrl ?? null} : null);
+      setContinueWatching(readLocalContinueWatching(item.id));
     };
     sync();
     window.addEventListener('neko-progress-updated', sync);
     return () => window.removeEventListener('neko-progress-updated', sync);
-  }, [item?.id, savedProgress.data]);
+  }, [item?.id]);
 
   const loading = providerId ? providerAnime.isPending : legacyAnime.isPending;
   const error = providerId ? providerAnime.isError : legacyAnime.isError;
@@ -157,7 +150,8 @@ export function AnimeDetailPage() {
     ? <ProviderRecovery key={`${providerId}:${slug}`} serverId={providerId} slug={slug} onRetry={() => void providerAnime.refetch()} />
     : <><ScreenHeader title="Não foi possível abrir esta obra" subtitle="O servidor pode estar indisponível temporariamente." /><p className="neko-error">{providerAnime.error?.message ?? legacyAnime.error?.message}</p><button className="neko-secondary-button" onClick={() => void (providerId ? providerAnime.refetch() : legacyAnime.refetch())}>Tentar novamente</button></>}</AppScreen>;
   const currentItem = item;
-  const savedLibraryItem = library.data?.find(value => value.animeId === (savedAnimeId ?? currentItem.id));
+  const savedLibraryItem = localLibrary.find((value) => value.animeId === (savedAnimeId ?? currentItem.id)
+    || (value.providerId === providerId && value.reference === providerAnime.data?.anime.reference));
   const inLibrary = Boolean(savedLibraryItem) || libraryState === 'saved';
   const episodes = providerMode ? (selectedProviderSeason?.episodes ?? []) : (legacyEpisodeQuery.data?.items ?? []);
   const orderedEpisodes = [...episodes].sort((left, right) => (episodeNumber(left) - episodeNumber(right)) * (episodeOrder === 'asc' ? 1 : -1)).slice(0,visible);
@@ -200,20 +194,29 @@ export function AnimeDetailPage() {
     setLibraryError(null);
     try {
       if (inLibrary) {
-        await removeLibraryItem(savedLibraryItem?.animeId ?? savedAnimeId ?? currentItem.id);
+        removeLocalLibraryItem(savedLibraryItem ?? { animeId: savedAnimeId ?? currentItem.id, providerId: providerId ?? undefined, reference: providerAnime.data?.anime.reference });
         setLibraryState('idle');
-      } else if (providerAnime.data && providerId) {
-        const saved = await saveProviderLibrary(providerId,providerAnime.data.anime.reference,providerAnime.data.workSlug);
-        setSavedWorkSlug(saved.slug);
-        setSavedAnimeId(saved.animeId);
-        void queryClient.invalidateQueries({queryKey:['provider-anime']});
+      } else {
+        saveLocalLibraryItem({
+          animeId: currentItem.id,
+          slug: currentItem.slug,
+          title: currentItem.title,
+          year: currentItem.year,
+          type: currentItem.type,
+          genres: currentItem.genres,
+          scoreBasisPoints: currentItem.scoreBasisPoints,
+          imageUrl: currentItem.imageUrl ?? null,
+          releaseLabel: currentItem.releaseLabel,
+          providerId: providerId ?? undefined,
+          reference: providerAnime.data?.anime.reference,
+          workSlug: providerAnime.data?.workSlug,
+        });
         setLibraryState('saved');
-      } else { await setLibraryItem(currentItem.id,'watchlist'); setLibraryState('saved'); }
-      await queryClient.invalidateQueries({queryKey:['me-library']});
+      }
+      setLocalLibrary(readLocalLibrary());
     } catch (saveError) {
       setLibraryState('idle');
-      if (saveError instanceof Error && saveError.message === 'AUTH_REQUIRED') void navigate({to:'/conta'});
-      else setLibraryError(saveError instanceof Error ? saveError.message : 'Não foi possível alterar sua lista.');
+      setLibraryError(saveError instanceof Error ? saveError.message : 'Não foi possível alterar sua lista.');
     }
   }
 
@@ -221,8 +224,8 @@ export function AnimeDetailPage() {
     if (!providerMode || !providerAnime.data || !providerId) return;
     setDataState('loading');
     setDataMessage(null);
+    const clientMetadata = await fetchAniListMetadata(providerAnime.data.anime.title).catch(() => null) ?? remoteMetadata.data ?? null;
     try {
-      const clientMetadata = await fetchAniListMetadata(providerAnime.data.anime.title).catch(() => null) ?? remoteMetadata.data ?? null;
       const result = await saveProviderAnimeData(providerId, providerAnime.data.anime.reference, clientMetadata);
       setLoadedMetadata(result.identity);
       setSavedWorkSlug(result.anime.slug);
@@ -250,13 +253,19 @@ export function AnimeDetailPage() {
         };
       });
       await queryClient.invalidateQueries({queryKey:['provider-anime'], refetchType:'all'});
-      await queryClient.invalidateQueries({queryKey:['me-library'], refetchType:'all'});
       await queryClient.invalidateQueries({predicate:query=>String(query.queryKey[0]).startsWith('provider-catalog'), refetchType:'all'});
       setDataState('loaded');
       setDataMessage('Dados sincronizados definitivamente e salvos. As listas serão atualizadas com esta informação.');
     } catch (loadError) {
       if (loadError instanceof Error && loadError.message === 'AUTH_REQUIRED') {
-        void navigate({ to: '/conta' });
+        if (clientMetadata) {
+          setLoadedMetadata(clientMetadata);
+          setDataState('loaded');
+          setDataMessage('Dados aplicados neste dispositivo. A sincronização global está desativada sem conta.');
+        } else {
+          setDataState('error');
+          setDataMessage('Não foi possível consultar os dados externos agora.');
+        }
         return;
       }
       setDataState('error');

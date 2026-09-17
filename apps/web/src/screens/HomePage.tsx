@@ -6,7 +6,7 @@ import { serverLabel } from '../lib/server-label';
 import { useContinueWatching } from '../lib/use-continue-watching';
 import { WatchingList } from '../components/WatchingList';
 import { providerSlug } from '../lib/provider-links';
-import { AnimeListRow, AppScreen, Eyebrow, EmptyState, ScreenHeader, Section, TextRow } from '../components/AppScreen';
+import { AnimeListRow, AppScreen, Eyebrow, EmptyState, ScreenHeader, Section } from '../components/AppScreen';
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(value));
@@ -14,7 +14,7 @@ function formatDate(value: string) {
 
 export function HomePage() {
   const navigate = useNavigate();
-  const {session,query:watching,items:progressItems,pending}=useContinueWatching();
+  const {items:progressItems}=useContinueWatching();
   const manifest = useQuery({ queryKey: ['app-manifest'], queryFn: fetchManifest });
   const serverId = useServerPreference((state) => state.serverId);
   const news = useQuery({ queryKey: ['news-home'], queryFn: () => fetchNews({ limit: 30 }), enabled: manifest.data?.mode === 2 });
@@ -62,12 +62,8 @@ export function HomePage() {
         <span>⌕</span><span>Buscar anime...</span>
       </button>
       <Section title="Continuar assistindo" action={<button className="neko-link" onClick={() => void navigate({ to: '/continuar' })}>Ver todos</button>}>
-        {!session ? <div className="neko-list"><TextRow title="Entre na conta para sincronizar" meta="Seu progresso aparecerá aqui" trailing="›" onClick={() => void navigate({ to: '/conta' })} /></div> : null}
-        {session && watching.isPending ? <div className="neko-inline-loading" role="status" aria-live="polite"><span className="neko-spinner" aria-hidden="true" /><span>Carregando seu progresso…</span></div> : null}
         {progressItems.length ? <WatchingList items={progressItems.slice(0,3)}/> : null}
-        {session && watching.data && !progressItems.length ? <EmptyState title="Nada em andamento" description="Seu progresso aparecerá aqui depois que começar a assistir." /> : null}
-        {session && pending ? <p className="neko-account-notice">Progresso salvo neste dispositivo; aguardando sincronização. Você pode tentar novamente na Conta.</p> : null}
-        {session && watching.isError ? <p className="neko-error">Não foi possível carregar seu progresso agora.</p> : null}
+        {!progressItems.length ? <EmptyState title="Nada em andamento" description="Seu progresso aparecerá aqui depois que começar a assistir." /> : null}
       </Section>
       <Section title="Catálogo em destaque" action={<button type="button" className="neko-link" onClick={() => void navigate({ to: '/categorias' })}>Ver mais</button>}>
         {catalog.isPending ? <div className="neko-inline-loading" role="status" aria-live="polite"><span className="neko-spinner" aria-hidden="true" /><span>Carregando catálogo…</span></div> : null}
