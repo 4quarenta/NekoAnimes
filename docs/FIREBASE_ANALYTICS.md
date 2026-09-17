@@ -2,6 +2,8 @@
 
 O app já contém a integração nativa com `firebase-analytics` e registra eventos sem enviar URLs, tokens, e-mails ou IDs de episódios.
 
+O projeto Android do NekoAnimes está associado ao projeto Firebase `nekoanimes-39529`, usando o pacote `com.nekoanimes.app`.
+
 ## Ativar o projeto NekoAnimes
 
 1. Abra o [Firebase Console](https://console.firebase.google.com/).
@@ -21,7 +23,7 @@ No PowerShell, gere o valor com:
 [Convert]::ToBase64String([IO.File]::ReadAllBytes("apps/android/app/google-services.json"))
 ```
 
-Sem esse arquivo, o app continua compilando e funcionando, mas o wrapper desativa os eventos com segurança porque não existe um FirebaseApp padrão configurado.
+O arquivo permanece fora do versionamento. Sem ele, o app continua compilando e funcionando, mas o wrapper desativa os eventos com segurança porque não existe um FirebaseApp padrão configurado.
 
 ## Eventos nativos
 

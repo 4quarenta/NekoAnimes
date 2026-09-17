@@ -1,14 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
-}
-
-// The real Firebase config is supplied per environment and is intentionally
-// not committed. Applying the plugin only when it exists keeps local builds
-// usable while still enabling the standard Google services processing in CI
-// or on a developer machine that has the NekoAnimes config.
-if (file("google-services.json").exists()) {
-    apply(plugin = "com.google.gms.google-services")
+    id("com.google.gms.google-services")
 }
 
 val releaseStoreFile = providers.environmentVariable("NEKO_RELEASE_STORE_FILE")
