@@ -47,6 +47,18 @@ jobs:
           test -n "$NEKO_RELEASE_KEYSTORE_BASE64"
           echo "$NEKO_RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/neko-release.jks"
 
+      - name: Configure Firebase Analytics when available
+        env:
+          FIREBASE_JSON_B64: ${{ secrets.NEKOANIMES_FIREBASE_JSON_B64 }}
+        run: |
+          set -euo pipefail
+          if [ -n "$FIREBASE_JSON_B64" ]; then
+            printf '%s' "$FIREBASE_JSON_B64" | base64 --decode > app/google-services.json
+            test -s app/google-services.json
+          else
+            echo "Firebase config not supplied; Analytics will remain disabled in this build."
+          fi
+
       - name: Build direct APK and Play AAB
         env:
           NEKO_RELEASE_STORE_FILE: ${{ runner.temp }}/neko-release.jks

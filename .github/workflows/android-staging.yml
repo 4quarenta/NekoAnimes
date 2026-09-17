@@ -59,6 +59,17 @@ jobs:
           chmod 600 "$HOME/.android/debug.keystore"
           test -s "$HOME/.android/debug.keystore"
           keytool -list -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey > /dev/null
+      - name: Configure Firebase Analytics when available
+        env:
+          FIREBASE_JSON_B64: ${{ secrets.NEKOANIMES_FIREBASE_JSON_B64 }}
+        run: |
+          set -euo pipefail
+          if [ -n "$FIREBASE_JSON_B64" ]; then
+            printf '%s' "$FIREBASE_JSON_B64" | base64 --decode > app/google-services.json
+            test -s app/google-services.json
+          else
+            echo "Firebase config not supplied; Analytics will remain disabled in this build."
+          fi
       - name: Build direct debug against staging
         run: |
           gradle --no-daemon :app:assembleDirectDebug \

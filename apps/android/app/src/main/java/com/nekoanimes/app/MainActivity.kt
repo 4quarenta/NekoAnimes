@@ -47,6 +47,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import com.nekoanimes.app.bridge.NekoBridge
 import com.nekoanimes.app.bridge.PlayerSourceOverride
+import com.nekoanimes.app.analytics.NekoAnalytics
 import com.nekoanimes.app.data.AppManifestRepository
 import com.nekoanimes.app.model.AppManifest
 import com.nekoanimes.app.model.NavigationItem
@@ -147,16 +148,23 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
     val currentWebRouteState by rememberUpdatedState(currentWebRoute)
     val currentNetworkAccess by rememberUpdatedState(networkAccess)
     val reviewRequester = remember { NekoReviewRequester(activity) }
+    val analytics = remember { NekoAnalytics(activity) }
+
+    LaunchedEffect(manifest.configVersion) {
+        analytics.appShellReady()
+    }
 
     val bridge = remember(manifest.configVersion) {
         lateinit var instance: NekoBridge
         instance = NekoBridge(
             onRouteChanged = { route ->
+                analytics.screenViewed(route)
                 reviewRequester.onRouteChanged(route)
                 currentWebRoute = route
                 selectedRoute = route
             },
             onOpenPlayer = { episodeId, source, startPositionSeconds, animeTitle, episodeNumber, hasPreviousEpisode, hasNextEpisode ->
+                analytics.playerOpened(episodeNumber, hasPreviousEpisode, hasNextEpisode)
                 if (currentNetworkAccess != NetworkAccessState.Online) {
                     webView?.let { bridgeView ->
                         // Complete the web request without claiming a valid playback checkpoint.
@@ -179,6 +187,7 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
                 }
             },
             onAppEvent = { name, placement ->
+                analytics.appEvent(name, placement)
                 if (name == "menu_open") {
                     if (playerRequest == null && !playerOpening && currentNetworkAccess == NetworkAccessState.Online) {
                         drawerScope.launch { drawerState.open() }
@@ -312,6 +321,7 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
                             drawerState.close()
                             playerRequest = null
                             reviewRequester.onPlayerClosed()
+                            analytics.playerClosed(playbackReady)
                             playerReturnRoute = null
                             webView?.let {
                                 bridge.sendPlayerClosed(it, playing.episodeId, positionSeconds, durationSeconds, playbackReady)
@@ -328,6 +338,8 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
                             drawerState.close()
                             playerRequest = null
                             reviewRequester.onPlayerClosed()
+                            analytics.playerClosed(playbackReady)
+                            analytics.playerNavigation(direction)
                             playerReturnRoute = null
                             webView?.let {
                                 bridge.sendPlayerClosed(it, playing.episodeId, positionSeconds, durationSeconds, playbackReady)

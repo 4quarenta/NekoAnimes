@@ -3,6 +3,14 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// The real Firebase config is supplied per environment and is intentionally
+// not committed. Applying the plugin only when it exists keeps local builds
+// usable while still enabling the standard Google services processing in CI
+// or on a developer machine that has the NekoAnimes config.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 val releaseStoreFile = providers.environmentVariable("NEKO_RELEASE_STORE_FILE")
 val releaseStorePassword = providers.environmentVariable("NEKO_RELEASE_STORE_PASSWORD")
 val releaseKeyAlias = providers.environmentVariable("NEKO_RELEASE_KEY_ALIAS")
@@ -100,6 +108,7 @@ android {
 dependencies {
     testImplementation("junit:junit:4.13.2")
     val composeBom = platform("androidx.compose:compose-bom:2026.06.00")
+    val firebaseBom = platform("com.google.firebase:firebase-bom:34.19.0")
 
     implementation(composeBom)
     androidTestImplementation(composeBom)
@@ -121,6 +130,9 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:1.11.0")
     implementation("androidx.media3:media3-exoplayer-dash:1.11.0")
     implementation("androidx.media3:media3-ui:1.11.0")
+
+    implementation(firebaseBom)
+    implementation("com.google.firebase:firebase-analytics")
 
     implementation("com.google.android.play:review:2.0.2")
     implementation("com.google.android.play:review-ktx:2.0.2")
