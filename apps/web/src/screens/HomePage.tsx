@@ -57,7 +57,6 @@ export function HomePage() {
 
   return (
     <AppScreen>
-      <Eyebrow>NekoAnimes</Eyebrow>
       <ScreenHeader title="O que você vai assistir?" subtitle="Rápido, direto e com listas organizadas para encontrar seu próximo anime." />
       <button className="neko-search-launcher" type="button" onClick={() => void navigate({ to: '/buscar',search:{q:undefined} })}>
         <span>⌕</span><span>Buscar anime...</span>
