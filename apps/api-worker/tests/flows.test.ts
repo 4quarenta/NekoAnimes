@@ -399,3 +399,38 @@ test('generated manifest includes secondary continue route and Minha lista, inde
   sqlite.prepare('UPDATE app_config SET mode=? WHERE id=1').run(2);
   assert.equal((await request('/v1/app-manifest')).body.navigation.some((item:{route:string})=>item.route==='/continuar'),false);
 });
+
+test('Android updates default to the current Play Store release without direct APK fields',async()=>{
+  sqlite.prepare('INSERT INTO app_config(id,version,mode,payload) VALUES(1,7,?,?)').run(1,JSON.stringify({servers:[{id:'goyabu',enabled:true,recommended:true}]}));
+  sqlite.exec(readFileSync('migrations/0008_play_store_update_defaults.sql','utf8'));
+
+  const saved=sqlite.prepare('SELECT version, mode, payload FROM app_config WHERE id=1').get() as {version:number;mode:number;payload:string};
+  const savedPayload=JSON.parse(saved.payload);
+  assert.equal(saved.version,8);
+  assert.equal(saved.mode,1);
+  assert.deepEqual(savedPayload.servers,[{id:'goyabu',enabled:true,recommended:true}]);
+  assert.deepEqual(savedPayload.updates,{
+    enabled:true,
+    mode:'play_store',
+    versionCode:10036,
+    versionName:'1.0.36',
+    apkUrl:'',
+    sha256:'',
+    required:false,
+    storeUrl:'https://play.google.com/store/apps/details?id=com.nekoanimes.app'
+  });
+
+  const result=await request('/v1/app-update/android');
+  assert.equal(result.status,200);
+  assert.deepEqual(result.body,{
+    platform:'android',
+    channel:'play',
+    updateMode:'play_store',
+    versionCode:10036,
+    versionName:'1.0.36',
+    apkUrl:'',
+    sha256:'',
+    storeUrl:'https://play.google.com/store/apps/details?id=com.nekoanimes.app',
+    required:false
+  });
+});

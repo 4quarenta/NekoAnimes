@@ -120,7 +120,7 @@ app.get('/v1/app-update/android', (c) => {
     if (mode === 'direct' && (!Number.isInteger(versionCode) || versionCode < 1 || !versionName || !apkUrl || !sha256 || !/^[a-f0-9]{64}$/.test(sha256))) {
       return c.json({ message: 'Canal de atualização Android ainda não publicado' }, 503);
     }
-    return c.json({ platform: 'android', channel: 'direct', updateMode: mode, versionCode, versionName, apkUrl: mode === 'direct' ? apkUrl : '', sha256: mode === 'direct' ? sha256 : '', storeUrl, required: configured?.enabled ? configured.required : c.env.ANDROID_UPDATE_REQUIRED === 'true' }, 200, { 'Cache-Control': 'no-store' });
+    return c.json({ platform: 'android', channel: mode === 'play_store' ? 'play' : 'direct', updateMode: mode, versionCode, versionName, apkUrl: mode === 'direct' ? apkUrl : '', sha256: mode === 'direct' ? sha256 : '', storeUrl, required: configured?.enabled ? configured.required : c.env.ANDROID_UPDATE_REQUIRED === 'true' }, 200, { 'Cache-Control': 'no-store' });
   });
 });
 
@@ -831,7 +831,7 @@ async function assertEnabledServer(db: D1Database, value: string) {
   assertServerId(value);
   if (!(await enabledServerDescriptors(db)).some((server) => server.id === value)) throw new HTTPException(404, { message: 'Servidor desativado no momento' });
 }
-function defaultUpdateConfig(): WorkerUpdateConfig { return { enabled: false, mode: 'direct', versionCode: 0, versionName: '', apkUrl: '', sha256: '', required: false, storeUrl: 'https://play.google.com/store/apps/details?id=com.nekoanimes.app' }; }
+function defaultUpdateConfig(): WorkerUpdateConfig { return { enabled: true, mode: 'play_store', versionCode: 10036, versionName: '1.0.36', apkUrl: '', sha256: '', required: false, storeUrl: 'https://play.google.com/store/apps/details?id=com.nekoanimes.app' }; }
 function normalizeUpdateConfig(value: unknown): WorkerUpdateConfig {
   const defaults = defaultUpdateConfig();
   if (!value || typeof value !== 'object') return defaults;
