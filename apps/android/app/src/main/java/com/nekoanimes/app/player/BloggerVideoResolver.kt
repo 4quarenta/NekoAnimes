@@ -10,6 +10,7 @@ import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.RenderProcessGoneDetail
 import android.widget.FrameLayout
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
@@ -83,6 +84,11 @@ internal class BloggerVideoResolver(private val activity: Activity) {
             }
 
             playerWebView.webViewClient = object : WebViewClient() {
+                override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                    finish(Result.failure(IllegalStateException("O reprodutor temporário foi encerrado pelo sistema")))
+                    return true
+                }
+
                 override fun onLoadResource(view: WebView, url: String?) {
                     findPlayableUrl(url)?.let { finish(Result.success(it)) }
                 }

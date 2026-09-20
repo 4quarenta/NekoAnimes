@@ -1,0 +1,15 @@
+{
+  "build": "PASS",
+  "lint": "WARNING",
+  "tests": "WARNING",
+  "security": "WARNING",
+  "privacy": "WARNING",
+  "data_safety": "MANUAL_REVIEW",
+  "permissions": "MANUAL_REVIEW",
+  "sdk": "WARNING",
+  "aab": "BLOCKED",
+  "accessibility": "MANUAL_REVIEW",
+  "performance": "MANUAL_REVIEW",
+  "play_policy": "BLOCKED",
+  "release_recommendation": "BLOCKED"
+}

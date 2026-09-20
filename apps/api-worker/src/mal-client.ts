@@ -140,7 +140,7 @@ export async function fetchMalEpisodes(c: Context, malId: number, page: number) 
   };
 }
 
-export function malSlug(malId: number) {
+function malSlug(malId: number) {
   return `mal-${malId}`;
 }
 

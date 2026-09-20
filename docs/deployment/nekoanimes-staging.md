@@ -52,6 +52,7 @@ As abas operacionais do painel são:
 - **Servidores**: habilita/desabilita BR1, BR2 e BR3; endpoints desativados não
   são usados pela API.
 - **Reports**: recebe relatos em `/reportar` e permite acompanhar o status.
+- **Retenção de reports**: ao marcar um report como `resolved` ou `dismissed`, o Worker grava `closed_at`; a rotina diária do Worker remove esses registros após 90 dias. Reports reabertos perdem a data de encerramento e deixam de entrar na limpeza até serem encerrados novamente.
 - **Atualizações**: escolhe APK direto com SHA-256 ou Play Store, informa
   versão/link e marca atualização obrigatória.
 

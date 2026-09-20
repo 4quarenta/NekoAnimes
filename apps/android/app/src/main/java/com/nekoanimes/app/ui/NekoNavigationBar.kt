@@ -3,12 +3,12 @@ package com.nekoanimes.app.ui
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.DrawerState
 import androidx.compose.material3.Icon
@@ -79,14 +79,14 @@ private fun isSelected(current: String, target: String): Boolean {
 private fun iconFor(icon: String) = when (icon) {
     "home" -> Icons.Default.Home
     "history" -> Icons.Default.History
-    "catalog" -> Icons.Default.List
+    "catalog" -> Icons.AutoMirrored.Filled.List
     "search" -> Icons.Default.Search
     "library" -> Icons.Default.Favorite
     "bookmark" -> Icons.Default.Bookmark
-    "category" -> Icons.Default.List
-    "server" -> Icons.Default.List
+    "category" -> Icons.AutoMirrored.Filled.List
+    "server" -> Icons.AutoMirrored.Filled.List
     "account", "profile" -> Icons.Default.AccountCircle
-    else -> Icons.Default.List
+    else -> Icons.AutoMirrored.Filled.List
 }
 
 private fun drawerLabel(item: NavigationItem): String = when (item.route) {

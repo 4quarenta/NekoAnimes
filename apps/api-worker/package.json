@@ -13,7 +13,8 @@
   "dependencies": {
     "@neko/contracts": "*",
     "@cloudflare/puppeteer": "^1.4.0",
-    "hono": "^4.13.7"
+    "hono": "^4.13.7",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "esbuild": "^0.25.12",

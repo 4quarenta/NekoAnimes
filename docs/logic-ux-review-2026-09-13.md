@@ -14,13 +14,12 @@ Com `npm run preview --workspace @neko/web -- --port 4173` em execução:
 npm run typecheck
 npm run test:contracts
 npm run test:web
-node tools/audit-logic.mjs
 ```
 
 - Typecheck passou em todos os workspaces.
 - Nove testes de contrato passaram.
 - Smoke web existente passou: favoritos, episódios em ordem decrescente, diálogo central, erro/retry, envio à bridge, categorias/paginação e perfil; sem erro JavaScript.
-- O diagnóstico novo reproduziu os nove cenários abaixo, em Chrome de 412 × 820 CSS pixels e módulos reais de progresso empacotados com esbuild.
+- O diagnóstico executado naquela rodada reproduziu os nove cenários abaixo em Chrome de 412 × 820 CSS pixels. O script temporário de reprodução foi removido depois que as regressões relevantes passaram a ser cobertas pelos testes mantidos no projeto.
 - A seção de defeitos registra **defeitos reproduzidos no commit anterior**. Os testes de regressão atuais usam contas, providers e mídia fictícios; somente o manifesto é consultado publicamente. Não escrevem no staging nem reproduzem conteúdo de terceiros.
 - Inspeção visual: `test-results/profile.png`, `test-results/player-loading.png`, `test-results/player-error.png`.
 

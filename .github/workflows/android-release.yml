@@ -52,12 +52,9 @@ jobs:
           FIREBASE_JSON_B64: ${{ secrets.NEKOANIMES_FIREBASE_JSON_B64 }}
         run: |
           set -euo pipefail
-          if [ -n "$FIREBASE_JSON_B64" ]; then
-            printf '%s' "$FIREBASE_JSON_B64" | base64 --decode > app/google-services.json
-            test -s app/google-services.json
-          else
-            echo "Firebase config not supplied; Analytics will remain disabled in this build."
-          fi
+          test -n "$FIREBASE_JSON_B64"
+          printf '%s' "$FIREBASE_JSON_B64" | base64 --decode > app/google-services.json
+          test -s app/google-services.json
 
       - name: Build direct APK and Play AAB
         env:
@@ -65,7 +62,14 @@ jobs:
           NEKO_RELEASE_STORE_PASSWORD: ${{ secrets.NEKO_RELEASE_STORE_PASSWORD }}
           NEKO_RELEASE_KEY_ALIAS: ${{ secrets.NEKO_RELEASE_KEY_ALIAS }}
           NEKO_RELEASE_KEY_PASSWORD: ${{ secrets.NEKO_RELEASE_KEY_PASSWORD }}
-        run: gradle --no-daemon :app:assembleDirectRelease :app:bundlePlayRelease
+        run: gradle --no-daemon :app:lintPlayRelease :app:testPlayDebugUnitTest :app:testDirectDebugUnitTest :app:assembleDirectRelease :app:bundlePlayRelease
+
+      - name: Validate Play AAB before release publication
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/bundletool.jar" 'https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar'
+          echo 'a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37dfd6d91028e29  '"$RUNNER_TEMP/bundletool.jar" | sha256sum -c -
+          java -jar "$RUNNER_TEMP/bundletool.jar" validate --bundle=app/build/outputs/bundle/playRelease/app-play-release.aab
 
       - name: Prepare named release files
         id: files

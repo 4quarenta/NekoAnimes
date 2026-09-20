@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { AnimeListRow, AppScreen, EmptyState, Eyebrow, ScreenHeader, Section } from '../components/AppScreen';
-import { fetchProviderCategories, fetchProviderCatalog, fetchServers } from '../lib/api';
+import { fetchProviderCategories, fetchProviderCatalog } from '../lib/api';
 import { useServerPreference } from '../lib/server-preference';
 import { serverLabel } from '../lib/server-label';
 import { providerSlug } from '../lib/provider-links';
@@ -10,7 +10,6 @@ export function CategoriesPage() {
   const navigate = useNavigate();
   const serverId = useServerPreference(state => state.serverId);
   const genres = useQuery({queryKey:['provider-categories',serverId],queryFn:()=>fetchProviderCategories(serverId!),enabled:Boolean(serverId),staleTime:15*60*1000});
-  const servers = useQuery({queryKey:['servers'],queryFn:fetchServers});
   return <AppScreen>
     <Eyebrow>{serverLabel(serverId)}</Eyebrow>
     <ScreenHeader title="Categorias" subtitle="Categorias publicadas pelo servidor atual." />

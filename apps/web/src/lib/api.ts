@@ -50,43 +50,49 @@ export async function fetchManifest(): Promise<AppManifest> {
   return AppManifestSchema.parse(await getJson<unknown>('/v1/app-manifest'));
 }
 
-export type CatalogAnime = { id: string; slug: string; title: string; year: number | null; type: string; status: string; genres: string[]; scoreBasisPoints: number | null; imageUrl?: string | null; releaseLabel?: ReleaseLabel | null };
-export type AnimeSeason = { id: string; animeId: string; number: number; title: string | null; episodesCount: number };
+type AndroidUpdate = {
+  platform: 'android';
+  channel: string;
+  updateMode: 'direct' | 'play_store';
+  versionCode: number;
+  versionName: string;
+  apkUrl: string;
+  sha256: string;
+  storeUrl: string;
+  required: boolean;
+};
+
+export function fetchAndroidUpdate() {
+  return publicJson<AndroidUpdate>('/v1/app-update/android');
+}
+
+type CatalogAnime = { id: string; slug: string; title: string; year: number | null; type: string; status: string; genres: string[]; scoreBasisPoints: number | null; imageUrl?: string | null; releaseLabel?: ReleaseLabel | null };
+type AnimeSeason = { id: string; animeId: string; number: number; title: string | null; episodesCount: number };
 export type Episode = { id: string; seasonId: string; number: number; title: string | null; durationSeconds: number | null; airedAt: string | null };
 export type AnimeDetail = CatalogAnime & { titleEnglish: string | null; titleRomaji: string | null; titleNative: string | null; synopsis: string | null; externalIds: Array<{ provider: string; externalId: string }>; seasons: AnimeSeason[] };
-export type NewsArticle = { id: string; slug: string; title: string; summary: string | null; category: string; sourceName: string; sourceUrl: string; imageUrl: string | null; imageAllowed: boolean; publishedAt: string };
-export type LibraryItem = { animeId: string; slug: string; title: string; year: number | null; type?: string | null; genres: string[]; scoreBasisPoints?: number | null; status: string; imageUrl?: string | null; updatedAt: string };
-export type ContinueWatchingItem = { animeId: string; slug: string; title: string; seasonNumber: number; episodeId: string; episodeNumber: number; episodeOrdinal?: number; episodeTitle: string | null; positionSeconds: number; durationSeconds: number; completed: boolean; type?: string | null; genres?: string[]; scoreBasisPoints?: number | null; imageUrl?: string | null; releaseLabel?: ReleaseLabel | null; updatedAt: string };
-export type SavedNewsItem = { id: string; slug: string; title: string; category: string; sourceName: string; publishedAt: string };
-export type CatalogGenre = { id: number; name: string; count: number };
+type NewsArticle = { id: string; slug: string; title: string; summary: string | null; category: string; sourceName: string; sourceUrl: string; imageUrl: string | null; imageAllowed: boolean; publishedAt: string };
 
-export type ServerCapabilities = { search: boolean; anime: boolean; episodes: boolean; playback: boolean };
-export type ServerDescriptor = { id: string; name: string; baseUrl: string; capabilities: ServerCapabilities };
-export type ProviderPostType = 'anime' | 'filme' | 'manga';
+type ServerCapabilities = { search: boolean; anime: boolean; episodes: boolean; playback: boolean };
+type ServerDescriptor = { id: string; name: string; baseUrl: string; capabilities: ServerCapabilities };
+type ProviderPostType = 'anime' | 'filme' | 'manga';
 export type ServerAnimeMatch = { serverId: string; serverName: string; title: string; reference: string; url: string; confidence: number; postType: ProviderPostType; workSlug?: string; imageUrl?: string | null; scoreBasisPoints?: number | null; genres?: string[]; releaseLabel?: ReleaseLabel | null };
-export type ServerSearchProviderResult = { server: ServerDescriptor; status: 'ok' | 'unavailable' | 'timeout' | 'error'; matches: ServerAnimeMatch[]; error?: 'provider_unavailable' | 'provider_timeout' };
-export type ServerSearchResponse = { query: string; servers: ServerSearchProviderResult[]; fetchedAt: string };
-export type ServerPlaybackSource = { id: string; url: string; playbackUrl?: string; mimeType?: string; label: string; headers: Record<string, string>; isDefault: boolean; kind: 'direct' | 'embed' };
+type ServerPlaybackSource = { id: string; url: string; playbackUrl?: string; mimeType?: string; label: string; headers: Record<string, string>; isDefault: boolean; kind: 'direct' | 'embed' };
 export type ServerEpisode = { id: string; title: string; number: number; seasonNumber: number; reference: string; url: string; releasedAt?: string; available: boolean; sources?: ServerPlaybackSource[] };
-export type ServerSeason = { id: string; number: number; title: string; episodes: ServerEpisode[] };
-export type ProviderIdentity = { canonicalId: string; canonicalTitle: string; malId: number | null; anilistId: number | null; postType: ProviderPostType; status?: string | null; synopsis: string | null; titleEnglish: string | null; titleRomaji: string | null; titleNative: string | null; year: number | null; genres: string[]; scoreBasisPoints: number | null; imageUrl: string | null; backdropUrl: string | null; source: 'myanimelist' | 'anilist' | 'mapping' | 'none' };
+type ServerSeason = { id: string; number: number; title: string; episodes: ServerEpisode[] };
+type ProviderIdentity = { canonicalId: string; canonicalTitle: string; malId: number | null; anilistId: number | null; postType: ProviderPostType; status?: string | null; synopsis: string | null; titleEnglish: string | null; titleRomaji: string | null; titleNative: string | null; year: number | null; genres: string[]; scoreBasisPoints: number | null; imageUrl: string | null; backdropUrl: string | null; source: 'myanimelist' | 'anilist' | 'mapping' | 'none' };
 export type RemoteAnimeMetadata = Pick<ProviderIdentity, 'canonicalTitle' | 'malId' | 'anilistId' | 'postType' | 'synopsis' | 'titleEnglish' | 'titleRomaji' | 'titleNative' | 'year' | 'genres' | 'scoreBasisPoints' | 'imageUrl' | 'backdropUrl'>;
-export type ServerAnimeDetail = { workSlug?: string; server: ServerDescriptor; anime: { title: string; reference: string; url: string; year?: number; imageUrl?: string | null; releaseLabel?: ReleaseLabel | null }; seasons: ServerSeason[]; postType: ProviderPostType; identity?: ProviderIdentity; fetchedAt: string };
-export type ServerResolution = { query: string; season: number; episode: number; servers: Array<{ server: ServerDescriptor; status: 'ok' | 'unavailable' | 'timeout' | 'error'; available: boolean; anime?: ServerAnimeMatch; episode?: ServerEpisode; sources?: ServerPlaybackSource[]; error?: 'provider_unavailable' | 'provider_timeout' }>; fetchedAt: string };
-export type ServerProviderResolution = { query: string; season: number; episodeNumber: number; server: ServerDescriptor; anime: ServerAnimeMatch; episode: ServerEpisode; sources: ServerPlaybackSource[]; fetchedAt: string };
+type ServerAnimeDetail = { workSlug?: string; server: ServerDescriptor; anime: { title: string; reference: string; url: string; year?: number; imageUrl?: string | null; releaseLabel?: ReleaseLabel | null }; seasons: ServerSeason[]; postType: ProviderPostType; identity?: ProviderIdentity; fetchedAt: string };
+type ServerProviderResolution = { query: string; season: number; episodeNumber: number; server: ServerDescriptor; anime: ServerAnimeMatch; episode: ServerEpisode; sources: ServerPlaybackSource[]; fetchedAt: string };
 export type ProviderCatalogResponse = { server: ServerDescriptor; items: ServerAnimeMatch[]; count: number; page: number; pageSize: number; hasNextPage: boolean; source: 'provider'; fetchedAt: string };
 
-export function fetchCatalog(params: { letter?: string; query?: string; genreId?: number; limit?: number } = {}) { const search = new URLSearchParams(); if (params.letter) search.set('letter', params.letter); if (params.query) search.set('q', params.query); if (params.genreId) search.set('genreId', String(params.genreId)); if (params.limit) search.set('limit', String(params.limit)); const suffix = search.size ? `?${search}` : ''; return getJson<{ items: CatalogAnime[]; count: number; source?: string; degraded?: boolean }>(`/v1/catalog/anime${suffix}`); }
-export function fetchGenres() { return getJson<{ items: CatalogGenre[]; source?: string }>('/v1/catalog/genres'); }
 export function fetchAnime(slug: string) { return getJson<AnimeDetail>(`/v1/catalog/anime/${encodeURIComponent(slug)}`); }
 export function fetchEpisodes(seasonId: string, offset = 0, limit = 10) { return getJson<{ season: AnimeSeason; items: Episode[]; offset: number; limit: number; total: number }>(`/v1/catalog/seasons/${encodeURIComponent(seasonId)}/episodes?offset=${offset}&limit=${limit}`); }
 export function fetchNews(params: { query?: string; category?: string; limit?: number } = {}) { const search = new URLSearchParams(); if (params.query) search.set('q', params.query); if (params.category) search.set('category', params.category); if (params.limit) search.set('limit', String(params.limit)); const suffix = search.size ? `?${search}` : ''; return getJson<{ items: NewsArticle[]; count: number }>(`/v1/news${suffix}`); }
 export function fetchNewsArticle(slug: string) { return getJson<NewsArticle>(`/v1/news/${encodeURIComponent(slug)}`); }
 export function fetchServers() { return getJson<{ servers: ServerDescriptor[] }>('/v1/servers'); }
-export type ServerHealth = { server: ServerDescriptor; status: 'ok' | 'unavailable'; latencyMs: number; checkedAt: string };
+type ServerHealth = { server: ServerDescriptor; status: 'ok' | 'unavailable'; latencyMs: number; checkedAt: string };
 export function fetchServerHealth() { return getJson<{ servers: ServerHealth[]; checkedAt: string }>('/v1/servers/health'); }
 export function fetchProviderCatalog(serverId: string, params: { letter?: string; query?: string; genre?: string; page?: number; limit?: number } = {}, signal?: AbortSignal) { const search = new URLSearchParams(); if (params.letter) search.set('letter', params.letter); if (params.query) search.set('q', params.query); if (params.genre) search.set('genre', params.genre); if (params.page) search.set('page', String(params.page)); if (params.limit) search.set('limit', String(params.limit)); const suffix = search.size ? `?${search}` : ''; return getJson<ProviderCatalogResponse>(`/v1/servers/${encodeURIComponent(serverId)}/catalog${suffix}`,signal); }
-export function fetchServerSearch(query: string) { return getJson<ServerSearchResponse>(`/v1/servers/search?q=${encodeURIComponent(query)}`); }
 export function fetchServerAnime(serverId: string, reference: string) { const search = new URLSearchParams({ ref: reference }); return getJson<ServerAnimeDetail>(`/v1/servers/${encodeURIComponent(serverId)}/anime?${search}`); }
 export async function fetchAniListMetadata(title: string): Promise<RemoteAnimeMetadata | null> {
   const query = `query($search:String){ Page(perPage:5){ media(search:$search,type:ANIME,sort:SEARCH_MATCH){ id idMal title { romaji english native } description format status seasonYear averageScore genres coverImage { large extraLarge } bannerImage } } }`;
@@ -95,7 +101,7 @@ export async function fetchAniListMetadata(title: string): Promise<RemoteAnimeMe
   const searchTitles = [normalizeAnimeTitle(title)];
   let media: Record<string, unknown> | undefined;
   for (const searchTitle of searchTitles) {
-    const response = await fetch('https://graphql.anilist.co', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ query, variables: { search: searchTitle } }), cache: 'force-cache' });
+    const response = await fetch('https://graphql.anilist.co', { method: 'POST', headers: { accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify({ query, variables: { search: searchTitle } }), cache: 'force-cache', signal: AbortSignal.timeout(30000) });
     if (!response.ok) throw new Error(`AniList respondeu ${response.status}`);
     const body = await response.json() as { data?: { Page?: { media?: Array<Record<string, unknown>> } } };
     const matches = body.data?.Page?.media?.filter(candidate => Object.values(candidate.title as Record<string, string> ?? {}).some(alias => alias && sameAnimeTitle(alias, title))) ?? [];
@@ -124,32 +130,19 @@ export async function fetchAniListMetadata(title: string): Promise<RemoteAnimeMe
     backdropUrl: typeof media.bannerImage === 'string' ? media.bannerImage : null
   };
 }
-export function fetchServerResolution(query: string, season: number, episode: number) { return getJson<ServerResolution>(`/v1/servers/resolve/${encodeURIComponent(query)}/${season}/${episode}`); }
 export function fetchServerProviderResolution(serverId: string, query: string, season: number, episode: number, animeReference?: string, episodeReference?: string) { const search = new URLSearchParams(); if (animeReference) search.set('ref', animeReference); if (episodeReference) search.set('episodeRef', episodeReference); const suffix = search.size ? `?${search}` : ''; return getJson<ServerProviderResolution>(`/v1/servers/${encodeURIComponent(serverId)}/resolve/${encodeURIComponent(query)}/${season}/${episode}${suffix}`); }
-export type SaveProviderAnimeDataResponse = { ok: true; saved: true; anime: { id: string; slug: string; title: string; imageUrl: string | null; backdropUrl: string | null }; identity: RemoteAnimeMetadata; sources: { myanimelist: boolean; anilist: boolean; anidb: boolean }; savedAt: string };
+type SaveProviderAnimeDataResponse = { ok: true; saved: true; anime: { id: string; slug: string; title: string; imageUrl: string | null; backdropUrl: string | null }; identity: RemoteAnimeMetadata; sources: { myanimelist: boolean; anilist: boolean; anidb: boolean }; savedAt: string };
 export function saveProviderAnimeData(serverId: string, reference: string, metadata?: RemoteAnimeMetadata | null) { return authJson<SaveProviderAnimeDataResponse>('/v1/catalog/provider-data', { method: 'POST', body: JSON.stringify({ serverId, reference, metadata: metadata ?? undefined }) }); }
-
-export function fetchMe() { return authJson<{ id: string; email: string | null }>('/v1/me'); }
-export function fetchLibrary() { return authJson<LibraryItem[]>('/v1/me/library'); }
-export function setLibraryItem(animeId: string, status = 'watchlist') { return authJson(`/v1/me/library/${encodeURIComponent(animeId)}`, { method: 'PUT', body: JSON.stringify({ status }) }); }
-export function removeLibraryItem(animeId: string) { return authJson(`/v1/me/library/${encodeURIComponent(animeId)}`, { method: 'DELETE' }); }
-export function fetchContinueWatching() { return authJson<ContinueWatchingItem[]>('/v1/me/continue-watching'); }
-export function saveEpisodeProgress(episodeId: string, positionSeconds: number, durationSeconds: number) { return authJson(`/v1/me/progress/${encodeURIComponent(episodeId)}`, { method: 'PUT', body: JSON.stringify({ positionSeconds, durationSeconds }) }); }
-export function fetchSavedNews() { return authJson<SavedNewsItem[]>('/v1/me/saved-news'); }
-export function saveNewsForUser(articleId: string) { return authJson(`/v1/me/saved-news/${encodeURIComponent(articleId)}`, { method: 'PUT', body: '{}' }); }
-export function removeSavedNewsForUser(articleId: string) { return authJson(`/v1/me/saved-news/${encodeURIComponent(articleId)}`, { method: 'DELETE' }); }
 
 async function responseError(response: Response) {
   const body = await response.json().catch(() => null) as { message?: string } | null;
   return new Error(body?.message ?? `API respondeu ${response.status}`);
 }
-export type ProviderCategory = { id: string; name: string; reference: string };
+type ProviderCategory = { id: string; name: string; reference: string };
 export function fetchProviderCategories(serverId: string) { return getJson<{items:ProviderCategory[]}>(`/v1/servers/${encodeURIComponent(serverId)}/categories`); }
 export function fetchSavedServerAnime(serverId: string, slug: string) { return getJson<ServerAnimeDetail>(`/v1/servers/${encodeURIComponent(serverId)}/anime?${new URLSearchParams({slug})}`); }
 export function fetchProviderRecovery(serverId: string, slug: string, signal?: AbortSignal) { return getJson<ProviderRecovery>(`/v1/servers/${encodeURIComponent(serverId)}/recovery?${new URLSearchParams({slug})}`, signal); }
 export function confirmProviderMatch(workSlug: string, serverId: string, reference: string, expectedTitle: string) {
   return authJson<ServerAnimeDetail>('/v1/me/provider-links', { method: 'POST', body: JSON.stringify({ workSlug, serverId, reference, expectedTitle, confirmed: true }) });
 }
-export function saveProviderLibrary(serverId: string, reference: string, workSlug?: string) { return authJson<{animeId:string;slug:string}>('/v1/me/provider-library',{method:'PUT',body:JSON.stringify({serverId,reference,workSlug})}); }
-export function saveProviderProgress(data: {serverId:string;reference:string;workSlug?:string;episodeReference:string;seasonNumber:number;episodeNumber:number;positionSeconds:number;durationSeconds:number}) { return authJson<{animeId:string;slug:string;episodeId:string}>('/v1/me/provider-progress',{method:'PUT',body:JSON.stringify(data)}); }
 export function submitReport(data: { category: 'bug' | 'playback' | 'account' | 'content' | 'other'; message: string; email?: string; route?: string; appVersion?: string }) { return publicJson<{ ok: true }>('/v1/reports', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(data) }); }

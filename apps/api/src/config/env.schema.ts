@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const EnvironmentSchema = z.object({
+const EnvironmentSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   API_PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   APP_MODE: z.coerce.number().int().min(1).max(2).default(1),
@@ -19,5 +19,5 @@ export const EnvironmentSchema = z.object({
   ANDROID_UPDATE_REQUIRED: z.enum(['true', 'false']).transform((value) => value === 'true').optional()
 });
 
-export type Environment = z.infer<typeof EnvironmentSchema>;
+type Environment = z.infer<typeof EnvironmentSchema>;
 export function validateEnvironment(config: Record<string, unknown>) { return EnvironmentSchema.parse(config); }

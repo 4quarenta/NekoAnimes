@@ -43,16 +43,6 @@ export function removeLocalLibraryItem(item: Pick<LocalLibraryItem, 'animeId' | 
   writeLocalLibrary(readLocalLibrary().filter((current) => !sameLibraryItem(current, item)));
 }
 
-export function isLocalLibraryItemSaved(item: Pick<LocalLibraryItem, 'animeId' | 'providerId' | 'reference'>): boolean {
-  return readLocalLibrary().some((current) => sameLibraryItem(current, item));
-}
-
-export function updateLocalLibraryMetadata(item: Omit<LocalLibraryItem, 'status' | 'updatedAt'>): void {
-  const current = readLocalLibrary().find((saved) => sameLibraryItem(saved, item));
-  if (!current) return;
-  saveLocalLibraryItem(item);
-}
-
 export function subscribeToLocalLibrary(listener: () => void): () => void {
   if (typeof window === 'undefined') return () => undefined;
   const refresh = () => listener();

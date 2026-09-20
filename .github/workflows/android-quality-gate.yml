@@ -1,0 +1,89 @@
+name: Android Quality Gate
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'apps/android/**'
+      - '.github/workflows/android-quality-gate.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  play-release-quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: apps/android
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0'
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '9.4.1'
+          cache-provider: basic
+
+      - name: Configure Firebase for the Play variant
+        env:
+          FIREBASE_JSON_B64: ${{ secrets.NEKOANIMES_FIREBASE_JSON_B64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "$FIREBASE_JSON_B64" ]; then
+            echo '::error::Configure NEKOANIMES_FIREBASE_JSON_B64 for the NekoAnimes Firebase project.'
+            exit 1
+          fi
+          printf '%s' "$FIREBASE_JSON_B64" | base64 --decode > app/google-services.json
+          python3 - <<'PY'
+          import json
+          with open('app/google-services.json', encoding='utf-8') as source:
+              config = json.load(source)
+          assert any(client.get('client_info', {}).get('android_client_info', {}).get('package_name') == 'com.nekoanimes.app' for client in config.get('client', [])), 'Firebase config does not match the Android package'
+          PY
+
+      - name: Create ephemeral signing key for bundle validation
+        run: |
+          set -euo pipefail
+          keytool -genkeypair -noprompt \
+            -keystore "$RUNNER_TEMP/neko-quality.jks" \
+            -storepass android -keypass android -alias nekoquality \
+            -keyalg RSA -keysize 2048 -validity 2 \
+            -dname 'CN=NekoAnimes quality gate, OU=CI, O=NekoAnimes, L=CI, ST=CI, C=BR'
+
+      - name: Lint, unit tests, APK and AAB
+        env:
+          NEKO_RELEASE_STORE_FILE: ${{ runner.temp }}/neko-quality.jks
+          NEKO_RELEASE_STORE_PASSWORD: android
+          NEKO_RELEASE_KEY_ALIAS: nekoquality
+          NEKO_RELEASE_KEY_PASSWORD: android
+        run: gradle --no-daemon clean :app:lintPlayRelease :app:testPlayDebugUnitTest :app:testDirectDebugUnitTest :app:assemblePlayRelease :app:bundlePlayRelease
+
+      - name: Validate bundle and generated APK set
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/bundletool.jar" 'https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar'
+          echo 'a099cfa1543f55593bc2ed16a70a7c67fe54b1747bb7301f37dfd6d91028e29  '"$RUNNER_TEMP/bundletool.jar" | sha256sum -c -
+          java -jar "$RUNNER_TEMP/bundletool.jar" validate --bundle=app/build/outputs/bundle/playRelease/app-play-release.aab
+          java -jar "$RUNNER_TEMP/bundletool.jar" build-apks --bundle=app/build/outputs/bundle/playRelease/app-play-release.aab --output="$RUNNER_TEMP/neko-play-universal.apks" --mode=universal
+
+      - name: Archive quality reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-play-quality-reports
+          path: |
+            apps/android/app/build/reports/lint-results-playRelease.*
+            apps/android/app/build/reports/tests/**
+            apps/android/app/build/test-results/**
+          if-no-files-found: warn

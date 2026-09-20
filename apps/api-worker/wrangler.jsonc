@@ -5,6 +5,7 @@
   "compatibility_date": "2026-09-11",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
+  "triggers": { "crons": ["17 3 * * *"] },
   "browser": { "binding": "BROWSER" },
   "vars": {
     "NODE_ENV": "production",

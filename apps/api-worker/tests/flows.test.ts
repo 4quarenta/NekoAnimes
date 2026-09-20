@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import app from '../src/index';
+import { purgeExpiredReports } from '../src/index';
 import { persistIdentity, readStoredIdentity, fillMetadata, enrichProviderCatalog, CATALOG_METADATA_BATCH_SIZE } from '../src/catalog-store';
 import type { ServerAnimeMatch } from '../src/server-providers';
 import { extractProviderCategories, providerEpisodeId, browseProvider, searchProvider } from '../src/server-providers';
@@ -26,17 +27,47 @@ test('episode continuity maps equivalent season layouts by ordinal position',()=
   assert.equal(episodeAtOrdinal(split,13)?.episode.number,1);
 });
 
+test('reports retain closure timestamp and purge only after the 90-day window', async()=>{
+  sqlite.prepare("INSERT INTO reports(id,category,message,status,closed_at) VALUES(?,?,?,?,?)").run('expired','bug','old report','resolved','2000-01-01 00:00:00');
+  sqlite.prepare("INSERT INTO reports(id,category,message,status,closed_at) VALUES(?,?,?,?,?)").run('active','bug','recent report','resolved',new Date().toISOString());
+  await purgeExpiredReports(db);
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS count FROM reports WHERE id = ?').get('expired')?.count,0);
+  assert.equal(sqlite.prepare('SELECT COUNT(*) AS count FROM reports WHERE id = ?').get('active')?.count,1);
+});
+
+test('admin closing a report starts retention and reopening cancels it', async()=>{
+  sqlite.prepare("INSERT INTO reports(id,category,message) VALUES(?,?,?)").run('lifecycle','bug','lifecycle report');
+  const env={DB:db,WEB_APP_URL:'https://web.test',ADMIN_API_KEY:'admin-key'};
+  const update=async(status:string)=>app.request('https://api.test/v1/admin/reports/lifecycle',{method:'PUT',headers:{'x-admin-key':'admin-key','content-type':'application/json'},body:JSON.stringify({status})},env as never,{waitUntil:()=>undefined,passThroughOnException:()=>undefined} as never);
+  const closed=await update('resolved');
+  assert.equal(closed.status,200);
+  assert.ok((await closed.json() as {closedAt:string}).closedAt);
+  const reopened=await update('open');
+  assert.equal(reopened.status,200);
+  assert.equal((await reopened.json() as {closedAt:string|null}).closedAt,null);
+});
+
+test('curated news migration replaces staging placeholders with ten attributed articles',()=>{
+  sqlite.exec(readFileSync('migrations/0007_news_refresh.sql','utf8'));
+  const count=sqlite.prepare('SELECT COUNT(*) AS count FROM news_articles').get()?.count;
+  const invalid=sqlite.prepare("SELECT COUNT(*) AS count FROM news_articles WHERE source_name <> 'AnimeNew' OR source_url NOT LIKE 'https://animenew.com.br/%' OR image_allowed <> 0").get()?.count;
+  assert.equal(count,10);
+  assert.equal(invalid,0);
+});
+
 beforeEach(()=>{
   sqlite?.close();
   sqlite=new DatabaseSync(':memory:');
   sqlite.exec(readFileSync('migrations/0001_initial.sql','utf8'));
   sqlite.exec(readFileSync('migrations/0004_anime_metadata.sql','utf8'));
   sqlite.exec(readFileSync('migrations/0005_numeric_app_mode.sql','utf8'));
+  sqlite.exec(readFileSync('migrations/0004_admin_reports.sql','utf8'));
+  sqlite.exec(readFileSync('migrations/0006_reports_retention.sql','utf8'));
   const prepare=(sql:string,values:unknown[]=[])=>({
     bind:(...args:unknown[])=>prepare(sql,args),
     first:async()=>sqlite.prepare(sql).get(...values as never[])??null,
     all:async()=>{if(sql.includes('AS reference FROM anime_external_ids'))metadataQueries.push(values.length);return {results:sqlite.prepare(sql).all(...values as never[]),success:true};},
-    run:async()=>sqlite.prepare(sql).run(...values as never[])
+    run:async()=>{const result=sqlite.prepare(sql).run(...values as never[]);return {...result,meta:{changes:Number(result.changes)}}}
   });
   db={prepare,batch:async(statements:Array<{run:()=>Promise<unknown>}>)=>{sqlite.exec('BEGIN');try{const rows=[];for(const statement of statements)rows.push(await statement.run());sqlite.exec('COMMIT');return rows;}catch(error){sqlite.exec('ROLLBACK');throw error;}}} as unknown as D1Database;
   Object.assign(globalThis,{caches:{default:{match:async()=>undefined,put:async()=>undefined}}});

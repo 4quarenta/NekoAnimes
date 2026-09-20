@@ -294,17 +294,17 @@ app.post('/v1/reports', async (c) => {
 app.get('/v1/admin/reports', requireAdmin, async (c) => {
   const status = c.req.query('status');
   const rows = status && ['open', 'in_progress', 'resolved', 'dismissed'].includes(status)
-    ? await all<Row>(c.env.DB, 'SELECT id, user_id, email, category, message, route, app_version, status, created_at, updated_at FROM reports WHERE status = ? ORDER BY created_at DESC LIMIT 200', status)
-    : await all<Row>(c.env.DB, 'SELECT id, user_id, email, category, message, route, app_version, status, created_at, updated_at FROM reports ORDER BY created_at DESC LIMIT 200');
+    ? await all<Row>(c.env.DB, 'SELECT id, user_id, email, category, message, route, app_version, status, created_at, updated_at, closed_at FROM reports WHERE status = ? ORDER BY created_at DESC LIMIT 200', status)
+    : await all<Row>(c.env.DB, 'SELECT id, user_id, email, category, message, route, app_version, status, created_at, updated_at, closed_at FROM reports ORDER BY created_at DESC LIMIT 200');
   return c.json(rows.map(report));
 });
 
 app.put('/v1/admin/reports/:id', requireAdmin, async (c) => {
   const body = await c.req.json<{ status?: string }>().catch(() => ({} as { status?: string }));
   if (!body.status || !['open', 'in_progress', 'resolved', 'dismissed'].includes(body.status)) throw new HTTPException(400, { message: 'Status de report inválido' });
-  const result = await c.env.DB.prepare("UPDATE reports SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(body.status, c.req.param('id')).run();
+  const result = await c.env.DB.prepare("UPDATE reports SET status = ?, closed_at = CASE WHEN ? IN ('resolved', 'dismissed') THEN COALESCE(closed_at, CURRENT_TIMESTAMP) ELSE NULL END, updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(body.status, body.status, c.req.param('id')).run();
   if (!result.meta.changes) throw new HTTPException(404, { message: 'Report não encontrado' });
-  const row = await first<Row>(c.env.DB, 'SELECT id, user_id, email, category, message, route, app_version, status, created_at, updated_at FROM reports WHERE id = ?', c.req.param('id'));
+  const row = await first<Row>(c.env.DB, 'SELECT id, user_id, email, category, message, route, app_version, status, created_at, updated_at, closed_at FROM reports WHERE id = ?', c.req.param('id'));
   return c.json(row ? report(row) : { ok: true });
 });
 
@@ -839,9 +839,20 @@ function normalizeUpdateConfig(value: unknown): WorkerUpdateConfig {
   return { enabled: typeof input.enabled === 'boolean' ? input.enabled : defaults.enabled, mode: input.mode === 'play_store' ? 'play_store' : 'direct', versionCode: boundedInt(input.versionCode, 0, 2_000_000_000) ?? defaults.versionCode, versionName: typeof input.versionName === 'string' ? input.versionName.slice(0, 64) : defaults.versionName, apkUrl: typeof input.apkUrl === 'string' ? input.apkUrl.slice(0, 2048) : defaults.apkUrl, sha256: typeof input.sha256 === 'string' ? input.sha256.toLowerCase().slice(0, 64) : defaults.sha256, required: typeof input.required === 'boolean' ? input.required : defaults.required, storeUrl: typeof input.storeUrl === 'string' ? input.storeUrl.slice(0, 2048) : defaults.storeUrl };
 }
 function parseUpdateConfig(value: unknown): WorkerUpdateConfig | null { const config = normalizeUpdateConfig(value); return config.enabled ? config : null; }
-function report(row: Row) { return { id: row.id, userId: row.user_id, email: row.email, category: row.category, message: row.message, route: row.route, appVersion: row.app_version, status: row.status, createdAt: row.created_at, updatedAt: row.updated_at }; }
+function report(row: Row) { return { id: row.id, userId: row.user_id, email: row.email, category: row.category, message: row.message, route: row.route, appVersion: row.app_version, status: row.status, createdAt: row.created_at, updatedAt: row.updated_at, closedAt: row.closed_at }; }
+const REPORT_RETENTION_DAYS = 90;
+async function purgeExpiredReports(db: D1Database): Promise<void> {
+  await db.prepare("DELETE FROM reports WHERE status IN ('resolved', 'dismissed') AND closed_at IS NOT NULL AND datetime(closed_at) <= datetime('now', '-90 days')").run();
+}
 // Android classifies drawer items by route; /continuar belongs to that secondary group.
 function primaryNavigation() { return [{ id: 'home', label: 'Início', icon: 'home', route: '/' }, { id: 'search', label: 'Buscar', icon: 'search', route: '/buscar' }, { id: 'categories', label: 'Categorias', icon: 'category', route: '/categorias' }, { id: 'library', label: 'Minha lista', icon: 'library', route: '/lista' }, { id: 'continue', label: 'Continuar assistindo', icon: 'library', route: '/continuar' }, { id: 'account', label: 'Conta', icon: 'profile', route: '/conta' }, { id: 'servers', label: 'Servidores', icon: 'server', route: '/servidores' }]; }
 function secondaryNavigation() { return [{ id: 'home', label: 'Início', icon: 'home', route: '/' }, { id: 'search', label: 'Buscar', icon: 'search', route: '/buscar' }, { id: 'saved', label: 'Salvos', icon: 'bookmark', route: '/salvos' }, { id: 'account', label: 'Conta', icon: 'profile', route: '/conta' }]; }
 
-export default app;
+const worker = Object.assign(app, {
+  scheduled: async (_controller: ScheduledController, env: Env) => {
+    await purgeExpiredReports(env.DB);
+  }
+});
+
+export { purgeExpiredReports, REPORT_RETENTION_DAYS };
+export default worker;

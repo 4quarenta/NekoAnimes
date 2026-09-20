@@ -5,15 +5,54 @@ const server={id:'animesonlinecc',name:'Animes Online',baseUrl:'https://animeson
 const identity={canonicalId:'test:work',canonicalTitle:'Contract Anime',malId:912345,anilistId:912345,postType:'anime',synopsis:'Contract synopsis',titleEnglish:null,titleRomaji:null,titleNative:null,year:2025,genres:['Action'],scoreBasisPoints:850,imageUrl:'https://example.com/poster.png',backdropUrl:null,source:'mapping'};
 const episodes=Array.from({length:70},(_,i)=>({id:`test:ep:${i+1}`,number:i+1,seasonNumber:1,title:`Episódio ${i+1}`,reference:`/episodio/test-${i+1}/`,url:`https://animesonlinecc.to/episodio/test-${i+1}/`,available:true}));
 const detail={server,anime:{reference:'/anime/test/',title:'Contract Anime',url:'https://animesonlinecc.to/anime/test/'},workSlug:'work-test',identity,postType:'anime',seasons:[{id:'s1',number:1,title:'Temporada 1',episodes}],fetchedAt:new Date().toISOString()};
-const manifest=await (await fetch('https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/app-manifest')).json();
+const remoteManifest=await (await fetch('https://nekoanimes-api-staging.john-alleff01.workers.dev/v1/app-manifest')).json();
+const manifest={...remoteManifest,mode:1,features:{...remoteManifest.features,player:true,news:false}};
+const newsManifest={...remoteManifest,mode:2,navigation:[
+  {id:'home',label:'Início',icon:'home',route:'/'},
+  {id:'search',label:'Buscar',icon:'search',route:'/buscar'},
+  {id:'saved',label:'Salvos',icon:'bookmark',route:'/salvos'},
+  {id:'account',label:'Conta',icon:'profile',route:'/conta'},
+]};
 await mkdir('test-results',{recursive:true});
 const browser=await chromium.launch({channel:'chrome',headless:true});
 try {
+  const publicPage=await browser.newPage({viewport:{width:412,height:820}});
+  await publicPage.route('**/v1/app-update/android',route=>route.fulfill({json:{platform:'android',channel:'direct',updateMode:'direct',versionCode:10038,versionName:'1.0.38',apkUrl:'https://example.com/neko.apk',sha256:'test',storeUrl:'',required:false}}));
+  await publicPage.goto(base);
+  await expect(publicPage).toHaveURL(/\/app$/);
+  await expect(publicPage.getByRole('heading',{name:/Seu catálogo de animes/})).toBeVisible();
+  await expect(publicPage.getByRole('link',{name:/Google Play/})).toHaveAttribute('href',/play\.google\.com/);
+  await publicPage.goto(`${base}/buscar`);
+  await expect(publicPage).toHaveURL(/\/app$/);
+  await publicPage.goto(`${base}/privacidade`);
+  await expect(publicPage.getByRole('heading',{name:'Política de Privacidade'})).toBeVisible();
+  await publicPage.close();
+  console.log('PASS browser redirects protected routes; public app and privacy pages remain available');
+
+  const newsPage=await browser.newPage({viewport:{width:412,height:820}});
+  await newsPage.addInitScript(()=>{
+    window.NekoNativeBridge={postMessage:()=>{}};
+  });
+  await newsPage.route('**/v1/**',route=>{
+    const path=new URL(route.request().url()).pathname;
+    if(path==='/v1/app-manifest')return route.fulfill({json:newsManifest});
+    if(path==='/v1/app-update/android')return route.fulfill({json:{platform:'android',channel:'direct',updateMode:'direct',versionCode:10038,versionName:'1.0.38',apkUrl:'https://example.com/neko.apk',sha256:'test',storeUrl:'',required:false}});
+    return route.fulfill({json:{}});
+  });
+  await newsPage.goto(`${base}/conta`);
+  await expect(newsPage.getByRole('heading',{name:'Perfil'})).toBeVisible();
+  await expect(newsPage.getByRole('button',{name:/Notícias salvas/})).toBeVisible();
+  await expect(newsPage.getByText('Continuar assistindo')).toHaveCount(0);
+  await expect(newsPage.getByText('Servidor padrão')).toHaveCount(0);
+  await expect(newsPage.getByText('Minha lista')).toHaveCount(0);
+  await newsPage.close();
+  console.log('PASS mode 2 account contains no mode 1 library, progress, or server controls');
+
   const page=await browser.newPage({viewport:{width:412,height:820}});
   const pageErrors=[];page.on('pageerror',error=>pageErrors.push(error.message));
   await page.addInitScript(()=>{
     localStorage.setItem('nekoanimes.selected-server.v1','animesonlinecc');
-    localStorage.setItem('nekoanimes.local-library.v1',JSON.stringify([{animeId:'test:work',slug:'work-test',workSlug:'work-test',title:'Contract Anime',year:2025,type:'anime',genres:['Action'],scoreBasisPoints:850,imageUrl:null,releaseLabel:null,providerId:'animesonlinecc',reference:'/anime/test/',status:'watchlist',updatedAt:new Date().toISOString()}]));
+    localStorage.setItem('nekoanimes.local-library.v1',JSON.stringify([{animeId:'test:work',slug:'work-test',workSlug:'work-test',title:'Contract Anime',year:2025,type:'anime',genres:['Action'],scoreBasisPoints:850,imageUrl:'https://example.com/poster.png',releaseLabel:null,providerId:'animesonlinecc',reference:'/anime/test/',status:'watchlist',updatedAt:new Date().toISOString()}]));
     localStorage.setItem('nekoanimes.auth.session',JSON.stringify({access_token:'test-only',user:{id:'user-test',email:'test@example.invalid'},expires_in:3600,token_type:'bearer'}));
     window.testBridge=[];
     window.NekoNativeBridge={postMessage:message=>window.testBridge.push(JSON.parse(message))};
@@ -61,6 +100,7 @@ try {
     await route.fulfill({json});
   });
   await page.goto(`${base}/lista`);
+  await expect(page.locator('.neko-row-image-placeholder').first()).toBeVisible();
   await page.getByRole('button',{name:/Contract Anime/}).click();
   await expect(page.getByRole('heading',{name:'Contract Anime',exact:true})).toBeVisible();
   await page.screenshot({path:'test-results/anime-detail.png',fullPage:true});
@@ -87,7 +127,13 @@ try {
   await expect(page.getByRole('button',{name:'Próxima ›'})).toBeDisabled();
   await page.goto(`${base}/conta`);
   await expect(page.getByText('1 obra salva',{exact:true})).toBeVisible();
-  await expect(page.getByText(/Não é necessário criar uma conta/)).toBeVisible();
+  await expect(page.getByText(/O aplicativo não exige cadastro/)).toBeVisible();
+  await page.getByRole('button',{name:'Política de Privacidade'}).click();
+  await expect(page).toHaveURL(/\/privacidade$/);
+  await expect(page.getByRole('heading',{name:'Política de Privacidade'})).toBeVisible();
+  await expect(page.getByRole('link',{name:'formulário público de contato'})).toHaveAttribute('href','/reportar');
+  await page.goto(`${base}/privacidade`);
+  await expect(page.getByRole('heading',{name:'Política de Privacidade'})).toBeVisible();
   await page.goto(`${base}/continuar`);
   await expect(page.getByRole('heading',{name:'Continuar assistindo',exact:true})).toBeVisible();
   await expect(page.getByRole('button',{name:/Abrir minha lista/})).toBeVisible();

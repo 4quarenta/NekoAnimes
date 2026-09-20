@@ -5,7 +5,7 @@ import { getProviderAnime, searchProvider } from './server-providers';
 import { canonicalReference, identityFromRow, persistIdentity } from './catalog-store';
 import { resolveProviderIdentity } from './provider-identity';
 
-export async function providerWork(c: Context, serverId: string, reference: string) {
+async function providerWork(c: Context, serverId: string, reference: string) {
   const detail = await getProviderAnime(serverId, reference);
   const identity = await resolveProviderIdentity(c, { serverId, reference: detail.anime.reference, title: detail.anime.title, fallbackPostType: detail.postType });
   return { detail, identity };

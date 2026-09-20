@@ -2,8 +2,6 @@ import { currentUserId } from './auth';
 export type LocalContinueWatching = {
   userId?: string;
   workSlug?: string;
-  pendingSync?: boolean;
-  revision?: string;
   animeId: string;
   slug: string;
   title: string;
@@ -49,17 +47,13 @@ export function recordLocalProgress(episodeId: string, positionSeconds: number, 
     const duration = Math.max(0, Math.floor(durationSeconds));
     const item: LocalContinueWatching = {
       ...active,
-      pendingSync: true,
-      revision: crypto.randomUUID(),
       positionSeconds: position,
       durationSeconds: duration,
       completed: duration > 0 && position / duration >= 0.9,
       updatedAt: new Date().toISOString()
     };
-    // Retain pending episodes when viewing another episode offline.
     const items = readLocalProgressItems().filter(value => !(value.animeId === item.animeId && value.seasonNumber === item.seasonNumber && value.episodeNumber === item.episodeNumber));
-    const next = [item, ...items];
-    writeLocalProgressItems([...next.filter(value => value.pendingSync), ...next.filter(value => !value.pendingSync).slice(0,50)].sort((a,b) => b.updatedAt.localeCompare(a.updatedAt)));
+    writeLocalProgressItems([item, ...items].sort((a,b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0,50));
     window.dispatchEvent(new Event('neko-progress-updated'));
     return item;
   } catch {
@@ -84,7 +78,3 @@ export function readLocalProgressItems(): LocalContinueWatching[] {
   } catch { return []; }
 }
 function writeLocalProgressItems(items: LocalContinueWatching[]) { localStorage.setItem(`${CONTINUE_KEY}:${currentUserId()}`,JSON.stringify(items)); }
-export function markProgressSynced(item: LocalContinueWatching, saved: {animeId:string;slug:string}) {
-  if (item.userId !== currentUserId()) return;
-  writeLocalProgressItems(readLocalProgressItems().map(value => value.animeId === item.animeId ? {...value, animeId:saved.animeId, slug:saved.slug, workSlug:saved.slug, pendingSync: value.episodeId === item.episodeId && (item.revision ? value.revision === item.revision : value.updatedAt === item.updatedAt) ? false : value.pendingSync} : value));
-}

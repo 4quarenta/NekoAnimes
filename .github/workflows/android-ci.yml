@@ -36,6 +36,18 @@ jobs:
           gradle-version: '9.4.1'
           cache-provider: basic
 
+      - name: Configure Firebase for the Android build
+        env:
+          FIREBASE_JSON_B64: ${{ secrets.NEKOANIMES_FIREBASE_JSON_B64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "$FIREBASE_JSON_B64" ]; then
+            echo '::error::Configure NEKOANIMES_FIREBASE_JSON_B64 for the NekoAnimes Firebase project.'
+            exit 1
+          fi
+          printf '%s' "$FIREBASE_JSON_B64" | base64 --decode > app/google-services.json
+          test -s app/google-services.json
+
       - name: Build direct debug APK
         run: gradle --no-daemon :app:assembleDirectDebug
 

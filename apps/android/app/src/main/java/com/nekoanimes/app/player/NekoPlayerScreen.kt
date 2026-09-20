@@ -6,6 +6,7 @@ import android.net.Uri
 import android.util.Log
 import android.view.View
 import android.webkit.WebSettings
+import androidx.annotation.OptIn
 import com.nekoanimes.app.BuildConfig
 import com.nekoanimes.app.bridge.PlayerSourceOverride
 import androidx.activity.compose.BackHandler
@@ -45,6 +46,7 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
@@ -56,6 +58,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
+@OptIn(UnstableApi::class)
 @Composable
 internal fun NekoPlayerScreen(
     episodeId: String,
@@ -351,6 +354,7 @@ private fun PlayerMessage(message: String, action: String?, enabled: Boolean, on
     }
 }
 
+@OptIn(UnstableApi::class)
 private class EpisodeNavigationPlayer(
     player: Player,
     private val hasPreviousEpisode: Boolean,

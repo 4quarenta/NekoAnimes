@@ -8,8 +8,11 @@ import { releaseLabelForTitle } from '@neko/contracts';
 export function AppScreen({ children }: PropsWithChildren) {
   const navigate=useNavigate();
   const [open,setOpen]=useState(false);
+  const navigation = NekoNative.isAvailable()
+    ? ([['/','Início'],['/buscar','Buscar'],['/categorias','Categorias'],['/continuar','Continuar assistindo'],['/lista','Minha lista'],['/servidores','Servidores'],['/conta','Conta'],['/reportar','Relatar problema'],['/privacidade','Política de Privacidade']] as const)
+    : ([['/app','Sobre o aplicativo'],['/reportar','Contato'],['/privacidade','Política de Privacidade']] as const);
   return <main className="neko-screen"><div className="neko-topbar"><div className="neko-brand"><img src="/brand/nekoanimes-logo.png" alt="NekoAnimes" /></div><button className="neko-menu-launcher" aria-label="Abrir menu lateral" aria-expanded={open} onClick={()=>{if(NekoNative.isAvailable())NekoNative.appEvent('menu_open');else setOpen(value=>!value);}}>☰</button></div>
-    {open?<nav className="neko-web-shortcuts" aria-label="Navegação">{([['/','Início'],['/buscar','Buscar'],['/categorias','Categorias'],['/continuar','Continuar assistindo'],['/lista','Minha lista'],['/servidores','Servidores'],['/conta','Conta'],['/reportar','Relatar problema']] as const).map(([to,label])=><button key={to} onClick={()=>{setOpen(false);void navigate({to});}}>{label}</button>)}</nav>:null}{children}</main>;
+    {open?<nav className="neko-web-shortcuts" aria-label="Navegação">{navigation.map(([to,label])=><button key={to} onClick={()=>{setOpen(false);void navigate({to});}}>{label}</button>)}</nav>:null}{children}</main>;
 }
 
 export function Eyebrow({ children }: PropsWithChildren) {
@@ -82,10 +85,10 @@ export function PosterImage({ src, alt, className }: { src: string; alt: string;
 
   useEffect(() => setAttempt(0), [src]);
 
-  const imageUrl = attempt === 0 ? src : proxyUrl;
+  const imageUrl = attempt === 0 ? src : attempt === 1 ? proxyUrl : null;
   if (!imageUrl) return <span className={`${className} neko-row-image-placeholder`} aria-label={alt}>✦</span>;
 
-  return <img className={className} src={imageUrl} alt={alt} loading="eager" referrerPolicy="no-referrer" onError={() => setAttempt(value => value + 1)} />;
+  return <img className={className} src={imageUrl} alt={alt} loading="eager" referrerPolicy="no-referrer" onError={() => setAttempt(value => Math.min(value + 1, 2))} />;
 }
 
 export function AnimeListRow({

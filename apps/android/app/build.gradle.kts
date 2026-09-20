@@ -72,9 +72,12 @@ android {
             isShrinkResources = true
             if (hasReleaseSigning) signingConfig = signingConfigs.getByName("release")
 
-            buildConfigField("String", "WEB_APP_URL", "\"${nekoUrl("nekoWebAppUrl", "https://app.nekoanimes.com")}\"")
-            buildConfigField("String", "WEB_APP_ORIGIN", "\"${nekoUrl("nekoWebAppOrigin", "https://app.nekoanimes.com")}\"")
-            buildConfigField("String", "API_BASE_URL", "\"${nekoUrl("nekoApiBaseUrl", "https://api.nekoanimes.com")}\"")
+            // Until the production domains are provisioned and validated, release builds
+            // remain pointed at the isolated, zero-cost staging infrastructure. CI can
+            // override these values with the -Pneko* properties when production exists.
+            buildConfigField("String", "WEB_APP_URL", "\"${nekoUrl("nekoWebAppUrl", "https://nekoanimes-staging.pages.dev")}\"")
+            buildConfigField("String", "WEB_APP_ORIGIN", "\"${nekoUrl("nekoWebAppOrigin", "https://nekoanimes-staging.pages.dev")}\"")
+            buildConfigField("String", "API_BASE_URL", "\"${nekoUrl("nekoApiBaseUrl", "https://nekoanimes-api-staging.john-alleff01.workers.dev")}\"")
 
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -95,6 +98,17 @@ android {
 
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
+    }
+}
+
+// A Play bundle without the release keystore cannot be uploaded. Fail closed instead
+// of silently producing an unsigned artifact when the four signing variables are absent.
+tasks.matching { task -> task.name == "assemblePlayRelease" || task.name == "bundlePlayRelease" }.configureEach {
+    doFirst {
+        check(hasReleaseSigning) {
+            "Play Release requires NEKO_RELEASE_STORE_FILE, NEKO_RELEASE_STORE_PASSWORD, " +
+                "NEKO_RELEASE_KEY_ALIAS and NEKO_RELEASE_KEY_PASSWORD."
+        }
     }
 }
 

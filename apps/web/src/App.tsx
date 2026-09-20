@@ -7,7 +7,7 @@ import { recordLocalProgress } from './lib/local-progress';
 import { useServerPreference } from './lib/server-preference';
 import { router } from './router';
 
-const NATIVE_ROUTES = ['/', '/buscar', '/categorias', '/lista', '/continuar', '/salvos', '/conta', '/servidores', '/reportar'] as const;
+const NATIVE_ROUTES = ['/', '/buscar', '/categorias', '/lista', '/continuar', '/salvos', '/conta', '/servidores', '/reportar', '/privacidade'] as const;
 type NativeRoute = (typeof NATIVE_ROUTES)[number];
 type NavigableRoute = NativeRoute | `/anime/${string}` | `/noticias/${string}` | `/categorias/${string}`;
 function isNativeRoute(route: string): route is NativeRoute { return (NATIVE_ROUTES as readonly string[]).includes(route); }
@@ -17,21 +17,27 @@ function isNavigableRoute(route: string): route is NavigableRoute {
 function isModeOneOnly(route: string) { return route === '/categorias' || route.startsWith('/categorias/') || route === '/lista' || route === '/continuar' || route === '/servidores' || route.startsWith('/anime/'); }
 
 export function App() {
-  const servers = useQuery({ queryKey: ['servers'], queryFn: fetchServers, staleTime: 10 * 60 * 1000 });
+  if (!NekoNative.isAvailable()) return <RouterProvider router={router} />;
+  return <NativeAppRuntime />;
+}
+
+function NativeAppRuntime() {
+  const manifest = useQuery({ queryKey: ['app-manifest'], queryFn: fetchManifest });
+  const servers = useQuery({ queryKey: ['servers'], queryFn: fetchServers, enabled: manifest.data?.mode === 1, staleTime: 10 * 60 * 1000 });
   const serverId = useServerPreference((state) => state.serverId);
   const setServerId = useServerPreference((state) => state.setServerId);
 
   useEffect(() => {
-    if (!serverId && servers.data?.servers[0]) setServerId(servers.data.servers[0].id);
-  }, [serverId, servers.data, setServerId]);
+    if (manifest.data?.mode === 1 && !serverId && servers.data?.servers[0]) setServerId(servers.data.servers[0].id);
+  }, [manifest.data?.mode, serverId, servers.data, setServerId]);
+
+  useEffect(() => {
+    const route = window.location.pathname;
+    if (manifest.data?.mode === 2 && isModeOneOnly(route)) void router.navigate({ to: '/' });
+  }, [manifest.data?.mode]);
 
   useEffect(() => {
     NekoNative.handshake(import.meta.env.VITE_APP_VERSION ?? 'dev');
-
-    void fetchManifest().then((manifest) => {
-      const route = window.location.pathname;
-      if (manifest.mode === 2 && isModeOneOnly(route)) void router.navigate({ to: '/' });
-    }).catch(() => undefined);
 
     const unsubscribe = NekoNative.subscribe((event) => {
       if (event.type === 'player.closed' || event.type === 'player.progress') {
@@ -53,6 +59,7 @@ export function App() {
       if (route === `${window.location.pathname}${window.location.search}`) return;
       const parsed = parseAppRoute(route);
       if (!parsed || !isNavigableRoute(parsed.pathname)) return;
+      if (manifest.data?.mode === 2 && isModeOneOnly(parsed.pathname)) return;
       if (parsed.pathname.startsWith('/anime/')) {
         void router.navigate({ to: '/anime/$slug', params: { slug: parsed.pathname.slice('/anime/'.length) }, search: { provider: parsed.search.get('provider') ?? undefined, ref: parsed.search.get('ref') ?? undefined } });
       } else if (parsed.pathname.startsWith('/noticias/')) {
@@ -75,7 +82,7 @@ export function App() {
     const off = router.subscribe('onResolved', onResolved);
     onResolved();
     return () => { unsubscribe(); off(); };
-  }, []);
+  }, [manifest.data?.mode]);
 
   return <RouterProvider router={router} />;
 }

@@ -12,14 +12,14 @@ export interface HtmlAnchor {
   text: string;
 }
 
-export function decodeHtml(value: string): string {
+function decodeHtml(value: string): string {
   return value
     .replace(/&#x([0-9a-f]+);/gi, (_, code: string) => String.fromCodePoint(Number.parseInt(code, 16)))
     .replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number.parseInt(code, 10)))
     .replace(/&([a-z]+);/gi, (match: string, name: string) => NAMED_ENTITIES[name.toLowerCase()] ?? match);
 }
 
-export function stripTags(value: string): string {
+function stripTags(value: string): string {
   return decodeHtml(
     value
       .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')

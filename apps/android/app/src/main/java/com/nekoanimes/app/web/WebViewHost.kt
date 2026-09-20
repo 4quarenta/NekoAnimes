@@ -4,6 +4,7 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import android.view.ViewGroup
@@ -12,11 +13,13 @@ import android.webkit.WebResourceError
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.RenderProcessGoneDetail
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -66,6 +69,7 @@ fun WebViewHost(
     val recovery = remember { DocumentRecovery(url) }
     var documentError by remember { mutableStateOf<String?>(null) }
     var hostedView by remember { mutableStateOf<WebView?>(null) }
+    var webViewGeneration by remember { mutableStateOf(0) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
 
     fun recoverDocument() {
@@ -106,6 +110,7 @@ fun WebViewHost(
     }
 
     Box(modifier) {
+    key(webViewGeneration) {
     AndroidView(
         modifier = Modifier.fillMaxSize(),
         factory = { context ->
@@ -163,6 +168,24 @@ fun WebViewHost(
                     }
 
                     webViewClient = object : WebViewClient() {
+                        override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                            // A renderer-gone WebView must never be reused. Remove and
+                            // destroy it, then let Compose create a fresh instance.
+                            view.stopLoading()
+                            (view.parent as? ViewGroup)?.removeView(view)
+                            view.destroy()
+                            if (hostedView === view) hostedView = null
+                            container.hostedWebView = null
+                            recovery.failed(recovery.lastUrl)
+                            documentError = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && detail.didCrash()) {
+                                "A página encontrou um erro interno. Ela será recarregada."
+                            } else {
+                                "A página foi encerrada pelo sistema por falta de memória. Ela será recarregada."
+                            }
+                            webViewGeneration += 1
+                            return true
+                        }
+
                         override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) {
                             if (url != null && isAllowedWebAppUrl(Uri.parse(url))) {
                                 recovery.started(url)
@@ -233,8 +256,9 @@ fun WebViewHost(
                 onWebViewReady(webView)
                 // Attach the bridge before the first document can handshake.
                 if (currentNetworkAvailable) {
-                    recovery.started(url)
-                    webView.loadUrl(url)
+                    val initialDocumentUrl = recovery.recoveryUrl() ?: url
+                    recovery.started(initialDocumentUrl)
+                    webView.loadUrl(initialDocumentUrl)
                 }
             }
         },
@@ -246,6 +270,7 @@ fun WebViewHost(
             container.hostedWebView?.apply { stopLoading(); destroy() }
         }
     )
+    }
         documentError?.let { message ->
             Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).clickable { }, contentAlignment = Alignment.Center) {
                 Column(Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {

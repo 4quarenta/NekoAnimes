@@ -43,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.activity.compose.LocalActivity
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import com.nekoanimes.app.bridge.NekoBridge
@@ -121,7 +122,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
-    val activity = LocalContext.current as ComponentActivity
+    val activity = LocalActivity.current as ComponentActivity
     NekoUpdatePrompt(activity)
 
     var selectedRoute by remember(manifest.configVersion) { mutableStateOf("/") }

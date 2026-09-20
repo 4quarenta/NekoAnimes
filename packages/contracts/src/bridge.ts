@@ -40,6 +40,4 @@ export type BridgeRequest = z.infer<typeof BridgeRequestSchema>;
 export type BridgeResponse = z.infer<typeof BridgeResponseSchema>;
 export type BridgeNativeEvent = z.infer<typeof BridgeNativeEventSchema>;
 export type BridgeEvent = BridgeResponse | BridgeNativeEvent;
-export const BridgeEnvelopeSchema = BridgeRequestSchema;
-export type BridgeEnvelope = BridgeRequest;
 export const BridgeEventSchema = z.union([BridgeResponseSchema, BridgeNativeEventSchema]);

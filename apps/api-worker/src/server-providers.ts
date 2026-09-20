@@ -83,7 +83,7 @@ type ProviderConfig = ServerDescriptor & {
   cleanTitle: (title: string) => string;
 };
 
-export const ANIMES_DIGITAL: ProviderConfig = {
+const ANIMES_DIGITAL: ProviderConfig = {
   id: 'animesdigital',
   name: 'Animes Digital',
   baseUrl: 'https://animesdigital.org',
@@ -96,7 +96,7 @@ export const ANIMES_DIGITAL: ProviderConfig = {
   cleanTitle: cleanAnimeTitle
 };
 
-export const ANIMES_ONLINE_CC: ProviderConfig = {
+const ANIMES_ONLINE_CC: ProviderConfig = {
   id: 'animesonlinecc',
   name: 'Animes Online',
   baseUrl: 'https://animesonlinecc.to',
@@ -109,7 +109,7 @@ export const ANIMES_ONLINE_CC: ProviderConfig = {
   cleanTitle: (title) => cleanAnimeTitle(title).replace(/\s+todos\s+os\s+epis[oó]dios\s+online$/i, '').replace(/\s+online$/i, '').trim()
 };
 
-export const GOYABU: ProviderConfig = {
+const GOYABU: ProviderConfig = {
   id: 'goyabu',
   name: 'Goyabu',
   baseUrl: 'https://goyabu.io',
