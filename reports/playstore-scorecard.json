@@ -7,7 +7,7 @@
   "data_safety": "MANUAL_REVIEW",
   "permissions": "MANUAL_REVIEW",
   "sdk": "WARNING",
-  "aab": "BLOCKED",
+  "aab": "PASS",
   "accessibility": "MANUAL_REVIEW",
   "performance": "MANUAL_REVIEW",
   "play_policy": "BLOCKED",

@@ -9,7 +9,7 @@ Status geral: **NÃO RECOMENDADO PARA PUBLICAÇÃO**. Auditoria local atualizada
 - Direitos/licenças dos streams, imagens e metadados de provedores externos **NÃO CONFIRMADOS**. Obter documentação e revisão jurídica antes da distribuição; ver `play-policy-audit.md`.
 - Os domínios de produção `app.nekoanimes.com` e `api.nekoanimes.com` continuam sem DNS; o Play Release temporário foi corrigido para usar os hosts isolados de staging, validados publicamente. Não tratar isso como produção.
 - Política de privacidade foi criada, vinculada ao perfil e publicada em `https://nekoanimes-staging.pages.dev/privacidade`; a retenção de reports agora está definida em 90 dias após encerramento e implementada no staging, mas o texto jurídico e o Data Safety ainda exigem revisão humana.
-- O AAB Play Release atual está **sem assinatura de upload**: `jarsigner -verify` retornou `jar is unsigned`. A configuração depende das quatro variáveis `NEKO_RELEASE_*`, que não estão presentes nesta sessão. O build agora falha fechado para `assemblePlayRelease`/`bundlePlayRelease` sem elas, evitando gerar outro artefato inválido silenciosamente.
+- O AAB Play Release foi reconstruído e validado com a chave de upload em 2026-09-20. O build continua falhando fechado quando as quatro variáveis `NEKO_RELEASE_*` não são fornecidas, evitando artefatos unsigned.
 
 ## Alta prioridade
 
@@ -29,7 +29,7 @@ Status geral: **NÃO RECOMENDADO PARA PUBLICAÇÃO**. Auditoria local atualizada
 
 ## Build
 
-`lintPlayRelease` passou e o bundle foi gerado antes da inclusão do bloqueio de assinatura. A verificação posterior mostrou que esse AAB é unsigned e não pode ser enviado. O SDK local emitiu avisos de `emulator`/`platform-tools` em diretórios `-2` inconsistentes; não impediram o lint, mas convém normalizar antes dos testes instrumentados. Vite emitiu dois avisos de anotação `@__PURE__` de Zod. Não usar esse status como prova de funcionamento no aparelho.
+`lintPlayRelease`, testes Play Debug e `bundlePlayRelease` passaram no processo protegido de assinatura. O SDK local emitiu avisos de `emulator`/`platform-tools` em diretórios `-2` inconsistentes; não impediram o lint, mas convém normalizar antes dos testes instrumentados. Vite emitiu dois avisos de anotação `@__PURE__` de Zod. Não usar esse status como prova de funcionamento no aparelho.
 
 ## Android Lint
 
@@ -81,7 +81,7 @@ Sem TalkBack/escala de fonte em dispositivo. Lint acusa touch sem `performClick`
 
 ## AAB
 
-O AAB atual mede 6.774.842 bytes, mas `jarsigner -verify` confirmou que ele está unsigned. Bundletool deve ser reexecutado somente após gerar um AAB com a chave de upload. O upload e o Play App Signing ainda não foram executados. Ver `aab-validation.md`.
+O AAB atual mede **6.786.386 bytes**, possui SHA-256 `3273B4899F582C567626C23967A5351C121D64EA9C94CCA17FE406A1A413A874`, passou em `jarsigner -verify` e `bundletool validate`. O upload e o Play App Signing ainda não foram executados. Ver `aab-validation.md`.
 
 ## Firebase Test Lab
 
@@ -97,4 +97,4 @@ Comprovar direitos de conteúdo; revisar a política pública; validar Firebase/
 
 ## Recomendação final
 
-**Não enviar o AAB atual ainda.** Primeiro gerar e verificar um AAB assinado com a chave de upload, resolver direitos/licenças, revisar Data Safety, validar Firebase em sessão real e executar smoke físico do pacote assinado. O staging pode continuar sendo usado no teste; produção exige endpoints próprios. Reavaliar os avisos de WebView e segurança antes de ampliar o público.
+O bloqueio técnico de assinatura do AAB foi resolvido. Antes de enviá-lo, ainda é necessário resolver direitos/licenças, revisar Data Safety, validar Firebase em sessão real e executar smoke do pacote derivado do AAB. O staging pode continuar sendo usado no teste; produção exige endpoints próprios. Reavaliar os avisos de WebView e segurança antes de ampliar o público.

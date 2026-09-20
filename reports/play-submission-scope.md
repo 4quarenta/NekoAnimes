@@ -35,7 +35,7 @@ Mesmo assim, a Play não analisa somente bytes do AAB: a revisão pode instalar 
 
 ### Confirmado
 
-- AAB sem assinatura de upload: bloqueia o upload, independentemente de política.
+- AAB com assinatura de upload validada localmente; confirmar a adesão ao Play App Signing durante o primeiro envio.
 - Data Safety ainda não preenchido/validado no Play Console: bloqueador de declaração, não uma rejeição automática já comprovada.
 - Teste físico do pacote assinado não realizado: risco operacional real, mas não prova de rejeição.
 
