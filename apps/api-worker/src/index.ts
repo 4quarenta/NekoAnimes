@@ -40,7 +40,9 @@ type App = Hono<{ Bindings: Env; Variables: Variables }>;
 type Row = Record<string, unknown>;
 type WorkerServerConfig = { id: string; enabled: boolean; recommended: boolean };
 type WorkerUpdateConfig = { enabled: boolean; mode: 'direct' | 'play_store'; versionCode: number; versionName: string; apkUrl: string; sha256: string; required: boolean; storeUrl: string };
-type WorkerAppConfig = { mode: 1 | 2; servers: WorkerServerConfig[]; updates: WorkerUpdateConfig };
+type WorkerAdSlot = { enabled: boolean; unitId: string };
+type WorkerAdsConfig = { enabled: boolean; provider: 'admob' | 'pangle' | 'meta'; testMode: boolean; banner: WorkerAdSlot; appOpen: WorkerAdSlot; interstitial: WorkerAdSlot; appOpenMinIntervalMinutes: number; appOpenSkipFirstOpens: number; interstitialMinIntervalMinutes: number; interstitialMaxPerSession: number; interstitialPageTransitionFrequency: number; interstitialShowOnEpisodeStart: boolean };
+type WorkerAppConfig = { mode: 1 | 2; servers: WorkerServerConfig[]; updates: WorkerUpdateConfig; ads: WorkerAdsConfig };
 const MEDIA_PROXY_HOSTS = new Set(['cdn.imagesskill.com', 'goyabu.io', 'animesonlinecc.to', 'animesdigital.org']);
 
 const app: App = new Hono();
@@ -79,6 +81,7 @@ app.get('/v1/app-manifest', async (c) => {
     webAppUrl: c.env.WEB_APP_URL,
     navigation: mode === 2 ? secondaryNavigation() : primaryNavigation(),
     features: { player: mode === 1, downloads: false, notifications: true, news: mode === 2 },
+    ads: normalizeAdsConfig(payload.ads),
     servers: await enabledServerDescriptors(c.env.DB)
   }, 200, { 'Cache-Control': 'no-store' });
 });
@@ -96,7 +99,7 @@ app.put('/v1/admin/app-config', requireAdmin, async (c) => {
 
   await c.env.DB.prepare(
     `UPDATE app_config SET mode = ?, payload = ?, version = version + 1, updated_at = CURRENT_TIMESTAMP WHERE id = 1`
-  ).bind(input.mode, JSON.stringify({ servers: input.servers, updates: input.updates })).run();
+  ).bind(input.mode, JSON.stringify({ servers: input.servers, updates: input.updates, ads: input.ads })).run();
 
   const row = await first<Row>(c.env.DB, 'SELECT version, mode, payload, updated_at FROM app_config WHERE id = 1');
   if (!row) throw new HTTPException(404, { message: 'Configuração do aplicativo não encontrada' });
@@ -802,13 +805,13 @@ function constantTimeEqual(left: string, right: string): boolean {
 }
 function appConfigState(row: Row) {
   const payload = parseObject(row.payload);
-  return { version: Number(row.version ?? 1), mode: normalizeAppMode(row.mode), servers: normalizeServerConfig(payload.servers), updates: normalizeUpdateConfig(payload.updates), updatedAt: String(row.updated_at ?? new Date().toISOString()) };
+  return { version: Number(row.version ?? 1), mode: normalizeAppMode(row.mode), servers: normalizeServerConfig(payload.servers), updates: normalizeUpdateConfig(payload.updates), ads: normalizeAdsConfig(payload.ads), updatedAt: String(row.updated_at ?? new Date().toISOString()) };
 }
 function parseAdminAppConfig(value: unknown): WorkerAppConfig | null {
   if (!value || typeof value !== 'object') return null;
   const input = value as Record<string, unknown>;
   if (input.mode !== 1 && input.mode !== 2) return null;
-  return { mode: input.mode, servers: normalizeServerConfig(input.servers), updates: normalizeUpdateConfig(input.updates) };
+  return { mode: input.mode, servers: normalizeServerConfig(input.servers), updates: normalizeUpdateConfig(input.updates), ads: normalizeAdsConfig(input.ads) };
 }
 function normalizeAppMode(value: unknown): 1 | 2 { return Number(value) === 2 ? 2 : 1; }
 function boundedInt(value: unknown, min: number, max: number): number | null { return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max ? value : null; }
@@ -839,6 +842,51 @@ function normalizeUpdateConfig(value: unknown): WorkerUpdateConfig {
   return { enabled: typeof input.enabled === 'boolean' ? input.enabled : defaults.enabled, mode: input.mode === 'play_store' ? 'play_store' : 'direct', versionCode: boundedInt(input.versionCode, 0, 2_000_000_000) ?? defaults.versionCode, versionName: typeof input.versionName === 'string' ? input.versionName.slice(0, 64) : defaults.versionName, apkUrl: typeof input.apkUrl === 'string' ? input.apkUrl.slice(0, 2048) : defaults.apkUrl, sha256: typeof input.sha256 === 'string' ? input.sha256.toLowerCase().slice(0, 64) : defaults.sha256, required: typeof input.required === 'boolean' ? input.required : defaults.required, storeUrl: typeof input.storeUrl === 'string' ? input.storeUrl.slice(0, 2048) : defaults.storeUrl };
 }
 function parseUpdateConfig(value: unknown): WorkerUpdateConfig | null { const config = normalizeUpdateConfig(value); return config.enabled ? config : null; }
+function adSlot(enabled: boolean, unitId: string): WorkerAdSlot { return { enabled, unitId }; }
+function defaultAdsConfig(): WorkerAdsConfig {
+  return {
+    enabled: false,
+    provider: 'admob',
+    testMode: true,
+    banner: adSlot(true, 'ca-app-pub-9081602346377817/2542590123'),
+    appOpen: adSlot(true, 'ca-app-pub-9081602346377817/6420282075'),
+    interstitial: adSlot(true, 'ca-app-pub-9081602346377817/9046445412'),
+    appOpenMinIntervalMinutes: 60,
+    appOpenSkipFirstOpens: 0,
+    interstitialMinIntervalMinutes: 30,
+    interstitialMaxPerSession: 2,
+    interstitialPageTransitionFrequency: 3,
+    interstitialShowOnEpisodeStart: true
+  };
+}
+function normalizeAdSlot(value: unknown, fallback: WorkerAdSlot): WorkerAdSlot {
+  if (!value || typeof value !== 'object') return fallback;
+  const input = value as Record<string, unknown>;
+  return {
+    enabled: typeof input.enabled === 'boolean' ? input.enabled : fallback.enabled,
+    unitId: typeof input.unitId === 'string' ? input.unitId.trim().slice(0, 128) : fallback.unitId
+  };
+}
+function normalizeAdsConfig(value: unknown): WorkerAdsConfig {
+  const defaults = defaultAdsConfig();
+  if (!value || typeof value !== 'object') return defaults;
+  const input = value as Record<string, unknown>;
+  const provider = input.provider === 'pangle' || input.provider === 'meta' ? input.provider : 'admob';
+  return {
+    enabled: typeof input.enabled === 'boolean' ? input.enabled : defaults.enabled,
+    provider,
+    testMode: typeof input.testMode === 'boolean' ? input.testMode : defaults.testMode,
+    banner: normalizeAdSlot(input.banner, defaults.banner),
+    appOpen: normalizeAdSlot(input.appOpen, defaults.appOpen),
+    interstitial: normalizeAdSlot(input.interstitial, defaults.interstitial),
+    appOpenMinIntervalMinutes: boundedInt(input.appOpenMinIntervalMinutes, 0, 24 * 60) ?? defaults.appOpenMinIntervalMinutes,
+    appOpenSkipFirstOpens: boundedInt(input.appOpenSkipFirstOpens, 0, 100) ?? defaults.appOpenSkipFirstOpens,
+    interstitialMinIntervalMinutes: boundedInt(input.interstitialMinIntervalMinutes, 0, 24 * 60) ?? defaults.interstitialMinIntervalMinutes,
+    interstitialMaxPerSession: boundedInt(input.interstitialMaxPerSession, 0, 100) ?? defaults.interstitialMaxPerSession,
+    interstitialPageTransitionFrequency: boundedInt(input.interstitialPageTransitionFrequency, 1, 100) ?? defaults.interstitialPageTransitionFrequency,
+    interstitialShowOnEpisodeStart: typeof input.interstitialShowOnEpisodeStart === 'boolean' ? input.interstitialShowOnEpisodeStart : defaults.interstitialShowOnEpisodeStart
+  };
+}
 function report(row: Row) { return { id: row.id, userId: row.user_id, email: row.email, category: row.category, message: row.message, route: row.route, appVersion: row.app_version, status: row.status, createdAt: row.created_at, updatedAt: row.updated_at, closedAt: row.closed_at }; }
 const REPORT_RETENTION_DAYS = 90;
 async function purgeExpiredReports(db: D1Database): Promise<void> {

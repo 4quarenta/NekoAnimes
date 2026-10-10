@@ -1,6 +1,6 @@
 import { AppScreen, Eyebrow, ScreenHeader, Section } from '../components/AppScreen';
 
-const updatedAt = '19 de setembro de 2026';
+const updatedAt = '10 de outubro de 2026';
 
 export function PrivacyPage() {
   return <AppScreen>
@@ -17,7 +17,7 @@ export function PrivacyPage() {
       <p>Se você enviar um relato, guardamos a categoria, mensagem, rota da tela, versão do app e, se informado, seu e-mail em banco de dados do serviço para atendimento e investigação. Não inclua senhas nem informações sensíveis na mensagem. Reports resolvidos ou descartados são retidos por até 90 dias após o encerramento e depois excluídos automaticamente. Reports ainda em análise permanecem enquanto forem necessários para o atendimento.</p>
     </Section>
     <Section title="Medição de uso">
-      <p>O aplicativo Android usa Firebase Analytics, fornecido pelo Google, para medir abertura, telas e eventos de navegação e reprodução. Os eventos personalizados não incluem a URL do vídeo, senha ou e-mail, mas o SDK pode tratar identificadores do aplicativo/dispositivo e dados técnicos próprios. Esta versão não integra um SDK de anúncios, desativa a coleta do Advertising ID pelo Analytics e remove as permissões de Advertising ID do manifesto. A configuração efetiva do projeto Firebase e a declaração final no Play Console ainda precisam ser verificadas antes da publicação. Consulte também a <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer">política de privacidade do Google</a>.</p>
+      <p>O aplicativo Android usa Firebase Analytics, fornecido pelo Google, para medir abertura, telas e eventos de navegação e reprodução. Os eventos personalizados não incluem a URL do vídeo, senha ou e-mail, mas o SDK pode tratar identificadores do aplicativo/dispositivo e dados técnicos próprios. Quando habilitados pelo painel administrativo, os anúncios usam o Google Mobile Ads SDK (AdMob), que pode tratar identificadores do dispositivo, dados técnicos, endereço IP e informações de interação com anúncios para entrega, medição e prevenção de fraude. O aplicativo solicita as escolhas de privacidade aplicáveis antes de pedir anúncios. Consulte também a <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer">política de privacidade do Google</a>.</p>
     </Section>
     <Section title="Compartilhamento e segurança">
       <p>Os dados necessários ao funcionamento podem ser processados pela Cloudflare (hospedagem, API e banco de dados), pelo Google/Firebase (métricas) e pelos serviços externos que entregam metadados, imagens ou vídeo quando você usa essas funções. Não vendemos os relatos enviados pelo usuário. As conexões configuradas para a versão de publicação usam HTTPS; nenhum sistema conectado à internet oferece segurança absoluta.</p>
@@ -27,7 +27,7 @@ export function PrivacyPage() {
       <p>Você pode remover os dados locais limpando os dados do app ou desinstalando-o. Para pedir acesso ou exclusão antecipada de relatos que enviou, use o <a href="/reportar">formulário de contato</a>. Podemos solicitar informações suficientes para localizar o relato e confirmar sua titularidade antes de excluí-lo. Reports resolvidos ou descartados serão excluídos automaticamente após 90 dias do encerramento. Contas antigas, caso existam, também exigem atendimento individual; a interface atual não oferece criação de conta. A retenção do Firebase segue as configurações do projeto Google e deve ser conferida separadamente.</p>
     </Section>
     <Section title="Mudanças nesta política">
-      <p>Alterações relevantes no tratamento de dados serão refletidas nesta página com nova data de atualização. Esta política deve ser revisada antes de uma distribuição ampla, especialmente se forem adicionados anúncios, contas ou novos provedores.</p>
+      <p>Alterações relevantes no tratamento de dados serão refletidas nesta página com nova data de atualização. Esta política deverá ser revisada novamente se forem adicionados novos provedores de anúncios, contas ou serviços de terceiros.</p>
     </Section>
   </AppScreen>;
 }

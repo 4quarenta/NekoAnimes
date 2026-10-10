@@ -4,9 +4,11 @@ import { useCallback, useEffect, useState } from 'react';
 
 type ServerConfig = { id: string; enabled: boolean; recommended: boolean };
 type UpdateConfig = { enabled: boolean; mode: 'direct' | 'play_store'; versionCode: number; versionName: string; apkUrl: string; sha256: string; required: boolean; storeUrl: string };
-type AppConfig = { version: number; mode: 1 | 2; servers: ServerConfig[]; updates: UpdateConfig; updatedAt: string };
+type AdSlot = { enabled: boolean; unitId: string };
+type AdsConfig = { enabled: boolean; provider: 'admob' | 'pangle' | 'meta'; testMode: boolean; banner: AdSlot; appOpen: AdSlot; interstitial: AdSlot; appOpenMinIntervalMinutes: number; appOpenSkipFirstOpens: number; interstitialMinIntervalMinutes: number; interstitialMaxPerSession: number; interstitialPageTransitionFrequency: number; interstitialShowOnEpisodeStart: boolean };
+type AppConfig = { version: number; mode: 1 | 2; servers: ServerConfig[]; updates: UpdateConfig; ads: AdsConfig; updatedAt: string };
 type Report = { id: string; userId: string | null; email: string | null; category: string; message: string; route: string | null; appVersion: string | null; status: 'open' | 'in_progress' | 'resolved' | 'dismissed'; createdAt: string; updatedAt: string; closedAt: string | null };
-type Tab = 'app' | 'servers' | 'reports' | 'updates';
+type Tab = 'app' | 'servers' | 'ads' | 'reports' | 'updates';
 
 const panel: React.CSSProperties = { border: '1px solid #27272a', borderRadius: 16, padding: 20, background: '#16161d' };
 const field: React.CSSProperties = { display: 'grid', gap: 7, color: '#d4d4d8' };
@@ -86,7 +88,7 @@ export default function ConfigurationPage() {
       const response = await fetch('/api/app-config', {
         method: 'PUT',
         headers: { ...authHeaders(adminKey), 'content-type': 'application/json' },
-        body: JSON.stringify({ mode: config.mode, servers: config.servers, updates: config.updates })
+        body: JSON.stringify({ mode: config.mode, servers: config.servers, updates: config.updates, ads: config.ads })
       });
       const body = await response.json();
       if (response.status === 401) { logout(); return; }
@@ -110,7 +112,7 @@ export default function ConfigurationPage() {
   if (!adminKey) return <Login keyInput={keyInput} setKeyInput={setKeyInput} authenticate={authenticate} message={message} />;
   if (!config) return <main style={{ maxWidth: 900, margin: '0 auto', padding: '40px 20px' }}><h1>Configuração</h1><p style={{ color: '#a1a1aa' }}>{message}</p><button onClick={() => void load()} style={control}>Tentar novamente</button></main>;
 
-  const tabs: [Tab, string][] = [['app', 'Aplicativo'], ['servers', 'Servidores'], ['reports', 'Reports'], ['updates', 'Atualizações']];
+  const tabs: [Tab, string][] = [['app', 'Aplicativo'], ['servers', 'Servidores'], ['ads', 'Anúncios'], ['reports', 'Reports'], ['updates', 'Atualizações']];
   return (
     <main style={{ maxWidth: 980, margin: '0 auto', padding: '32px 20px 80px' }}>
       <a href="/" style={{ color: '#a78bfa', textDecoration: 'none' }}>← Admin</a>
@@ -123,6 +125,7 @@ export default function ConfigurationPage() {
       </nav>
       {tab === 'app' ? <AppTab config={config} setConfig={setConfig} /> : null}
       {tab === 'servers' ? <ServersTab config={config} setConfig={setConfig} /> : null}
+      {tab === 'ads' ? <AdsTab config={config} setConfig={setConfig} /> : null}
       {tab === 'updates' ? <UpdatesTab config={config} setConfig={setConfig} /> : null}
       {tab === 'reports' ? <ReportsTab reports={reports} loading={reportsLoading} onRefresh={() => void loadReports()} onUpdate={updateReport} /> : null}
       {tab !== 'reports' ? <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginTop: 24 }}><button type="button" disabled={saving} onClick={() => void save()} style={{ ...control, cursor: saving ? 'wait' : 'pointer', background: '#7c3aed', borderColor: '#7c3aed', fontWeight: 700, paddingInline: 18 }}>{saving ? 'Salvando...' : 'Publicar configuração'}</button><span style={{ color: '#a1a1aa' }}>{message}</span></div> : <p style={{ color: '#a1a1aa', marginTop: 24 }}>{message}</p>}
@@ -140,6 +143,36 @@ function AppTab({ config, setConfig }: { config: AppConfig; setConfig: (value: A
 
 function ServersTab({ config, setConfig }: { config: AppConfig; setConfig: (value: AppConfig) => void }) {
   return <section style={panel}><h2 style={{ marginTop: 0 }}>Servidores</h2><p style={{ color: '#a1a1aa' }}>Servidor desativado deixa de aparecer nas buscas, categorias, catálogo e resolução de episódios.</p><div style={{ display: 'grid', gap: 12 }}>{config.servers.map((server) => <div key={server.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 14, padding: 14, border: '1px solid #27272a', borderRadius: 12 }}><div><strong>{serverLabels[server.id] ?? server.id}</strong><span style={{ color: '#a1a1aa', marginLeft: 10 }}>{server.id}</span>{server.recommended ? <span style={{ color: '#c4b5fd', marginLeft: 10 }}>Recomendado</span> : null}</div><label style={{ display: 'flex', gap: 8, alignItems: 'center' }}><input type="checkbox" checked={server.enabled} onChange={(event) => setConfig({ ...config, servers: config.servers.map((item) => item.id === server.id ? { ...item, enabled: event.target.checked } : item) })} />Online no app</label></div>)}</div></section>;
+}
+
+function AdsTab({ config, setConfig }: { config: AppConfig; setConfig: (value: AppConfig) => void }) {
+  const ads = config.ads;
+  const setAds = (next: Partial<AdsConfig>) => setConfig({ ...config, ads: { ...ads, ...next } });
+  const setSlot = (slot: 'banner' | 'appOpen' | 'interstitial', next: Partial<AdSlot>) => setAds({ [slot]: { ...ads[slot], ...next } } as Partial<AdsConfig>);
+  return <section style={panel}>
+    <h2 style={{ marginTop: 0 }}>Anúncios</h2>
+    <p style={{ color: '#a1a1aa' }}>O SDK fica instalado no aplicativo, mas nenhuma solicitação é feita quando os anúncios estão desativados. O modo de teste usa os identificadores de teste do Google durante o desenvolvimento.</p>
+    <Toggle label="Anúncios habilitados" value={ads.enabled} onChange={(value) => setAds({ enabled: value })} />
+    <label style={{ ...field, maxWidth: 420, marginTop: 12 }}>Provedor ativo<select value={ads.provider} onChange={(event) => setAds({ provider: event.target.value as AdsConfig['provider'] })} style={control}><option value="admob">AdMob</option><option value="pangle" disabled>Pangle — disponível após integração</option><option value="meta" disabled>Meta — disponível após integração</option></select></label>
+    <Toggle label="Modo de teste" value={ads.testMode} onChange={(value) => setAds({ testMode: value })} />
+    <div style={{ display: 'grid', gap: 16, marginTop: 18 }}>
+      <AdSlotEditor title="Banner" slot={ads.banner} onChange={(next) => setSlot('banner', next)} />
+      <AdSlotEditor title="Interstitial" slot={ads.interstitial} onChange={(next) => setSlot('interstitial', next)} />
+      <AdSlotEditor title="App Open" slot={ads.appOpen} onChange={(next) => setSlot('appOpen', next)} />
+    </div>
+    <div style={{ display: 'grid', gap: 16, marginTop: 18, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+      <NumberField label="App Open: intervalo mínimo (minutos)" value={ads.appOpenMinIntervalMinutes} onChange={(value) => setAds({ appOpenMinIntervalMinutes: value })} />
+      <NumberField label="App Open: primeiras aberturas ignoradas" value={ads.appOpenSkipFirstOpens} onChange={(value) => setAds({ appOpenSkipFirstOpens: value })} />
+      <NumberField label="Interstitial: intervalo mínimo (minutos)" value={ads.interstitialMinIntervalMinutes} onChange={(value) => setAds({ interstitialMinIntervalMinutes: value })} />
+      <NumberField label="Interstitial: máximo por sessão" value={ads.interstitialMaxPerSession} onChange={(value) => setAds({ interstitialMaxPerSession: value })} />
+      <NumberField label="Interstitial: a cada N transições" value={ads.interstitialPageTransitionFrequency} onChange={(value) => setAds({ interstitialPageTransitionFrequency: Math.max(1, value) })} />
+    </div>
+    <Toggle label="Mostrar interstitial ao iniciar episódio" value={ads.interstitialShowOnEpisodeStart} onChange={(value) => setAds({ interstitialShowOnEpisodeStart: value })} />
+  </section>;
+}
+
+function AdSlotEditor({ title, slot, onChange }: { title: string; slot: AdSlot; onChange: (value: Partial<AdSlot>) => void }) {
+  return <div style={{ border: '1px solid #27272a', borderRadius: 12, padding: 14 }}><strong>{title}</strong><Toggle label={`${title} ativo`} value={slot.enabled} onChange={(value) => onChange({ enabled: value })} /><label style={field}>ID da unidade<input value={slot.unitId} onChange={(event) => onChange({ unitId: event.target.value })} style={control} autoComplete="off" /></label></div>;
 }
 
 function UpdatesTab({ config, setConfig }: { config: AppConfig; setConfig: (value: AppConfig) => void }) {

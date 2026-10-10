@@ -3,6 +3,8 @@ package com.nekoanimes.app.data
 import android.content.Context
 import android.net.Uri
 import com.nekoanimes.app.BuildConfig
+import com.nekoanimes.app.model.AdSlotConfig
+import com.nekoanimes.app.model.AdsConfig
 import com.nekoanimes.app.model.AppManifest
 import com.nekoanimes.app.model.NavigationItem
 import kotlinx.coroutines.Dispatchers
@@ -57,7 +59,31 @@ class AppManifestRepository(context: Context) {
             }
         }
 
-        return AppManifest(schemaVersion, json.getInt("configVersion"), mode, webAppUrl, navigation)
+        return AppManifest(schemaVersion, json.getInt("configVersion"), mode, webAppUrl, navigation, parseAds(json.optJSONObject("ads")))
+    }
+
+    private fun parseAds(json: JSONObject?): AdsConfig {
+        if (json == null) return AdsConfig.disabled()
+        val defaults = AdsConfig.disabled()
+        return AdsConfig(
+            enabled = json.optBoolean("enabled", defaults.enabled),
+            provider = json.optString("provider", defaults.provider),
+            testMode = json.optBoolean("testMode", defaults.testMode),
+            banner = parseSlot(json.optJSONObject("banner"), defaults.banner),
+            appOpen = parseSlot(json.optJSONObject("appOpen"), defaults.appOpen),
+            interstitial = parseSlot(json.optJSONObject("interstitial"), defaults.interstitial),
+            appOpenMinIntervalMinutes = json.optInt("appOpenMinIntervalMinutes", defaults.appOpenMinIntervalMinutes).coerceIn(0, 24 * 60),
+            appOpenSkipFirstOpens = json.optInt("appOpenSkipFirstOpens", defaults.appOpenSkipFirstOpens).coerceIn(0, 100),
+            interstitialMinIntervalMinutes = json.optInt("interstitialMinIntervalMinutes", defaults.interstitialMinIntervalMinutes).coerceIn(0, 24 * 60),
+            interstitialMaxPerSession = json.optInt("interstitialMaxPerSession", defaults.interstitialMaxPerSession).coerceIn(0, 100),
+            interstitialPageTransitionFrequency = json.optInt("interstitialPageTransitionFrequency", defaults.interstitialPageTransitionFrequency).coerceAtLeast(1).coerceAtMost(100),
+            interstitialShowOnEpisodeStart = json.optBoolean("interstitialShowOnEpisodeStart", defaults.interstitialShowOnEpisodeStart)
+        )
+    }
+
+    private fun parseSlot(json: JSONObject?, fallback: AdSlotConfig): AdSlotConfig {
+        if (json == null) return fallback
+        return AdSlotConfig(json.optBoolean("enabled", fallback.enabled), json.optString("unitId", fallback.unitId).trim().take(128))
     }
 
     private fun isTrustedWebAppUrl(url: String): Boolean {
