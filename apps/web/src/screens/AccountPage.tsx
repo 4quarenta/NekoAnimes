@@ -90,14 +90,11 @@ function ModeTwoAccount() {
 
 function ProfileActions({ reviewMessage, requestReview }: { reviewMessage: string | null; requestReview: () => void }) {
   const navigate = useNavigate();
-  const [privacyMessage, setPrivacyMessage] = useState<string | null>(null);
   return (
     <Section title="Preferências">
       <p className="neko-account-copy">O aplicativo não exige cadastro. Os dados pessoais desta tela permanecem armazenados localmente.</p>
       <button className="neko-secondary-button" type="button" onClick={() => void navigate({ to: '/reportar' })}>Relatar um problema</button>
       <button className="neko-secondary-button" type="button" onClick={() => void navigate({ to: '/privacidade' })}>Política de Privacidade</button>
-      <button className="neko-secondary-button" type="button" onClick={() => { if (!NekoNative.appEvent('privacy_options')) setPrivacyMessage('As opções de privacidade ficam disponíveis no aplicativo Android.') }}>Opções de privacidade de anúncios</button>
-      {privacyMessage ? <p className="neko-account-copy">{privacyMessage}</p> : null}
       <button className="neko-secondary-button" type="button" onClick={requestReview}>Avaliar aplicativo</button>
       {reviewMessage ? <p className="neko-account-copy">{reviewMessage}</p> : null}
     </Section>
