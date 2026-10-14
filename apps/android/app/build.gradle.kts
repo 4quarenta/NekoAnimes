@@ -19,8 +19,10 @@ android {
         applicationId = "com.nekoanimes.app"
         minSdk = 24
         targetSdk = 36
-        versionCode = 10036
-        versionName = "1.0.36"
+        // 1.0.36 is already in production on Google Play. Every Play update
+        // must use a strictly higher versionCode.
+        versionCode = 10037
+        versionName = "1.0.37"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
     }

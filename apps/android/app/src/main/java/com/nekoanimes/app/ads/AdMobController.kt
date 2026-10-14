@@ -74,6 +74,10 @@ internal class AdMobController(context: Context) {
     }
 
     fun onForeground(activity: Activity) {
+        if (isForeground) {
+            foregroundActivity = activity
+            return
+        }
         isForeground = true
         foregroundActivity = activity
         if (!canRequestAds || !config.enabled || !config.appOpen.enabled) return

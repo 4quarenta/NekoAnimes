@@ -1,5 +1,7 @@
 package com.nekoanimes.app.review
 
+import android.content.Intent
+import android.net.Uri
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.Lifecycle
@@ -44,7 +46,7 @@ class NekoReviewRequester(private val activity: ComponentActivity) {
     }
 
     private fun requestReview(force: Boolean = false) {
-        if (requestInFlight || preferences.getBoolean(KEY_FLOW_COMPLETED, false) || (!force && !isEligibleForAutomaticRequest())) return
+        if (requestInFlight || !activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) || (!force && !isEligibleForAutomaticRequest())) return
         val now = System.currentTimeMillis()
         // Failed requests (common on sideloaded debug APKs) may be retried,
         // but never on every route transition.
@@ -55,23 +57,35 @@ class NekoReviewRequester(private val activity: ComponentActivity) {
         val manager = ReviewManagerFactory.create(activity)
         manager.requestReviewFlow().addOnCompleteListener { request ->
             if (request.isSuccessful) {
-                manager.launchReviewFlow(activity, request.result).addOnCompleteListener {
+                manager.launchReviewFlow(activity, request.result).addOnCompleteListener { flow ->
                     preferences.edit()
                         .putLong(KEY_LAST_REQUEST, System.currentTimeMillis())
-                        .putBoolean(KEY_FLOW_COMPLETED, true)
                         .apply()
                     requestInFlight = false
                     Log.i(TAG, "Play in-app review flow finished")
+                    if (force && !flow.isSuccessful) openPlayStore()
                 }
             } else {
                 requestInFlight = false
-                Log.i(TAG, "Play in-app review is not available on this install")
+                Log.i(TAG, "Play in-app review is not available on this install: ${request.exception?.message}")
+                if (force) openPlayStore()
             }
         }
     }
 
     private fun isEligibleForAutomaticRequest(): Boolean {
-        return !preferences.getBoolean(KEY_FLOW_COMPLETED, false) && System.currentTimeMillis() - preferences.getLong(KEY_LAST_REQUEST, 0L) >= COOLDOWN_MS
+        return System.currentTimeMillis() - preferences.getLong(KEY_LAST_REQUEST, 0L) >= COOLDOWN_MS
+    }
+
+    private fun openPlayStore() {
+        val packageName = activity.packageName
+        val marketIntent = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=$packageName"))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$packageName"))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        runCatching { activity.startActivity(marketIntent) }
+            .recoverCatching { activity.startActivity(webIntent) }
+            .onFailure { Log.w(TAG, "Não foi possível abrir a página do app na Play Store", it) }
     }
 
     private fun isEligibleRoute(route: String): Boolean {
@@ -83,7 +97,6 @@ class NekoReviewRequester(private val activity: ComponentActivity) {
         const val KEY_TRANSITIONS = "meaningful_transitions"
         const val KEY_LAST_ATTEMPT = "last_attempt"
         const val KEY_LAST_REQUEST = "last_request"
-        const val KEY_FLOW_COMPLETED = "flow_completed"
         const val MIN_TRANSITIONS = 3
         const val AUTO_REQUEST_DELAY_MS = 700L
         const val ATTEMPT_COOLDOWN_MS = 6L * 60L * 60L * 1000L
