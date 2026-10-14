@@ -119,7 +119,7 @@ class NekoBridge(
                 "app.event" -> {
                     val name = payload.optString("name")
                     val placement = payload.optString("placement").ifBlank { null }
-                    if (!isSafeId(name) || name !in setOf("menu_open", "review_request")) replyError(replyProxy, id, "INVALID_EVENT", "Evento inválido") else { onAppEvent(name, placement); replyOk(replyProxy, id) }
+                    if (!isSafeId(name) || name !in setOf("menu_open", "review_request", "privacy_options")) replyError(replyProxy, id, "INVALID_EVENT", "Evento inválido") else { onAppEvent(name, placement); replyOk(replyProxy, id) }
                 }
                 else -> replyError(replyProxy, id, "UNKNOWN_METHOD", "Método não suportado")
             }

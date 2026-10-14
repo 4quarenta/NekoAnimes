@@ -46,7 +46,7 @@ class NekoAnalytics(context: Context) {
     }
 
     fun appEvent(name: String, placement: String?) {
-        if (name != "menu_open" && name != "review_request") return
+        if (name != "menu_open" && name != "review_request" && name != "privacy_options") return
         log("app_event", Bundle().apply {
             putString("event_name", name)
             placement?.takeIf { it.length <= 64 }?.let { putString("placement", it) }

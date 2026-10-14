@@ -48,6 +48,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import com.nekoanimes.app.bridge.NekoBridge
 import com.nekoanimes.app.bridge.PlayerSourceOverride
+import com.nekoanimes.app.ads.AdMobBanner
+import com.nekoanimes.app.ads.AdMobController
 import com.nekoanimes.app.analytics.NekoAnalytics
 import com.nekoanimes.app.data.AppManifestRepository
 import com.nekoanimes.app.model.AppManifest
@@ -64,6 +66,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.material3.rememberDrawerState
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
@@ -150,9 +153,25 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
     val currentNetworkAccess by rememberUpdatedState(networkAccess)
     val reviewRequester = remember { NekoReviewRequester(activity) }
     val analytics = remember { NekoAnalytics(activity) }
+    val ads = remember { AdMobController(activity) }
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     LaunchedEffect(manifest.configVersion) {
+        ads.configure(activity, manifest.ads)
+        if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) ads.onForeground(activity)
         analytics.appShellReady()
+    }
+
+    DisposableEffect(lifecycleOwner, ads) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> ads.onForeground(activity)
+                Lifecycle.Event.ON_STOP -> ads.onBackground()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer); ads.onBackground() }
     }
 
     val bridge = remember(manifest.configVersion) {
@@ -161,6 +180,7 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
             onRouteChanged = { route ->
                 analytics.screenViewed(route)
                 reviewRequester.onRouteChanged(route)
+                ads.onPageTransition(activity)
                 currentWebRoute = route
                 selectedRoute = route
             },
@@ -180,10 +200,12 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
                     playerReturnRoute = currentWebRouteState.takeIf { it != "/" }
                         ?: webView?.let(::routeFromWebView)
                         ?: currentWebRouteState
-                    drawerScope.launch {
-                        drawerState.close()
-                        playerRequest = PlayerRequest(episodeId, source, startPositionSeconds, animeTitle, episodeNumber, hasPreviousEpisode, hasNextEpisode)
-                        playerOpening = false
+                    ads.showEpisodeInterstitial(activity) {
+                        drawerScope.launch {
+                            drawerState.close()
+                            playerRequest = PlayerRequest(episodeId, source, startPositionSeconds, animeTitle, episodeNumber, hasPreviousEpisode, hasNextEpisode)
+                            playerOpening = false
+                        }
                     }
                 }
             },
@@ -195,6 +217,8 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
                     }
                 } else if (name == "review_request") {
                     reviewRequester.requestNow()
+                } else if (name == "privacy_options") {
+                    ads.showPrivacyOptions(activity)
                 }
             }
         )
@@ -276,11 +300,14 @@ private fun AppShell(manifest: AppManifest, networkAccess: NetworkAccessState) {
                 modifier = Modifier.fillMaxSize(),
                 bottomBar = {
                     if (navigationVisible) {
-                        NekoNavigationBar(
-                            items = primaryItems,
-                            selectedRoute = selectedRoute,
-                            onSelected = ::navigateTo
-                        )
+                        Column {
+                            AdMobBanner(ads)
+                            NekoNavigationBar(
+                                items = primaryItems,
+                                selectedRoute = selectedRoute,
+                                onSelected = ::navigateTo
+                            )
+                        }
                     }
                 }
             ) { padding ->
