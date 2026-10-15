@@ -99,7 +99,7 @@ export function mergeLoadedMetadata(base: ProviderMetadata, extra: LoadedProvide
 
 export async function resolveProviderIdentity(
   c: Context,
-  input: { serverId: string; reference: string; title: string; fallbackPostType: ProviderPostType; refresh?: boolean }
+  input: { serverId: string; reference: string; title: string; fallbackPostType: ProviderPostType; refresh?: boolean; enrich?: boolean }
 ): Promise<ProviderMetadata> {
   const stored = await readStoredIdentity(c.env.DB, input.serverId, input.reference);
   if (stored && !input.refresh) return stored;
@@ -107,6 +107,30 @@ export async function resolveProviderIdentity(
     ?? entries.find((entry) => sameTitle(entry.canonicalTitle, input.title));
   let mal: MalAnimeSummary | null = null;
   const malId = mapping?.malId ?? null;
+
+  // Opening a provider detail must not wait on optional MAL/AniList APIs. The
+  // client can load this enrichment independently; explicit data loading still
+  // uses the full resolver below.
+  if (input.enrich === false) {
+    return {
+      canonicalId: mapping?.canonicalId ?? (malId ? `mal:${malId}` : `provider:${input.serverId}:${normalizeReference(input.reference)}`),
+      canonicalTitle: mapping?.canonicalTitle ?? input.title,
+      malId,
+      anilistId: mapping?.anilistId ?? null,
+      postType: input.fallbackPostType,
+      status: null,
+      synopsis: null,
+      titleEnglish: null,
+      titleRomaji: null,
+      titleNative: null,
+      year: null,
+      genres: [],
+      scoreBasisPoints: null,
+      imageUrl: null,
+      backdropUrl: mapping?.backdropUrl ?? null,
+      source: mapping ? 'mapping' : 'none'
+    };
+  }
 
   try {
     if (malId) {

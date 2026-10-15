@@ -126,6 +126,8 @@ const PROVIDERS: ProviderConfig[] = [GOYABU, ANIMES_ONLINE_CC, ANIMES_DIGITAL];
 
 const MAX_HTML_BYTES = 4_000_000;
 const DEFAULT_TIMEOUT_MS = 12_000;
+const ANIME_PAGE_TIMEOUT_MS = 7_000;
+const SEASON_PAGE_TIMEOUT_MS = 3_000;
 
 export class ProviderError extends Error {
   constructor(message: string, readonly kind: 'timeout' | 'unavailable') {
@@ -270,10 +272,10 @@ export async function getProviderAnime(serverId: string, reference: string): Pro
   const provider = getProvider(serverId);
   const safeReference = assertReference(provider, reference, 'anime');
   const cache = (caches as unknown as { default: Cache }).default;
-  const key = new Request(`https://nekoanimes-provider-cache.local/anime/v2/${serverId}/${encodeURIComponent(safeReference.replace(/\/$/,''))}`);
+  const key = new Request(`https://nekoanimes-provider-cache.local/anime/v3/${serverId}/${encodeURIComponent(safeReference.replace(/\/$/,''))}`);
   const cached = await cache.match(key);
   if (cached) return { ...await cached.json<ServerAnimeDetail>(), server: provider };
-  const response = await getProviderHtml(provider, safeReference);
+  const response = await getProviderHtml(provider, safeReference, ANIME_PAGE_TIMEOUT_MS);
   const rawTitle = parseH1(response.html) ?? lastPathPart(safeReference) ?? 'Anime';
   const title = provider.cleanTitle(rawTitle);
   const imageUrl = extractProviderPageImage(provider, response.html);
@@ -285,7 +287,7 @@ export async function getProviderAnime(serverId: string, reference: string): Pro
   const seasonReferences = extractSeasonReferences(provider, anchors).slice(0, 12);
   const seasonPages = await Promise.allSettled(
     seasonReferences.map(async ({ reference: seasonReference, number }) => {
-      const seasonPage = await getProviderHtml(provider, seasonReference);
+      const seasonPage = await getProviderHtml(provider, seasonReference, SEASON_PAGE_TIMEOUT_MS);
       return extractEpisodeCandidates(provider, parseAnchors(seasonPage.html), 3, number);
     })
   );

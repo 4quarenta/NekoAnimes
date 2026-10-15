@@ -518,7 +518,8 @@ app.get('/v1/servers/:serverId/anime', async (c) => {
       serverId: c.req.param('serverId'),
       reference: detail.anime.reference,
       title: detail.anime.title,
-      fallbackPostType: detail.postType
+      fallbackPostType: detail.postType,
+      enrich: false
     });
     return c.json({ ...detail, postType: identity.postType, identity });
   } catch (error) {
