@@ -35,11 +35,21 @@ export async function resolveLibraryWork(c: Context, serverId: string, slug: str
   {
     const titles = [...new Set([identity.canonicalTitle, identity.titleRomaji, identity.titleEnglish].filter((x): x is string => Boolean(x)))];
     const matches = new Map<string, Awaited<ReturnType<typeof searchProvider>>[number]>();
-    for (const title of titles.slice(0, 3)) {
-      for (const match of await searchProvider(serverId, title)) {
+    const searches = await Promise.all(titles.slice(0, 3).map(async (title) => {
+      try {
+        return { matches: await searchProvider(serverId, title), error: null as unknown };
+      } catch (error) {
+        return { matches: [] as Awaited<ReturnType<typeof searchProvider>>, error };
+      }
+    }));
+    const successfulSearch = searches.some((search) => search.error === null);
+    for (const search of searches) {
+      for (const match of search.matches) {
         if (titles.some(alias => sameAnimeTitle(alias, match.title))) matches.set(canonicalReference(match.reference), match);
       }
-      if (matches.size) break;
+    }
+    if (!successfulSearch && searches[0]?.error) {
+      throw searches[0].error;
     }
     if (matches.size !== 1) throw new HTTPException(matches.size ? 409 : 404, { message: matches.size ? 'Há mais de uma edição desta obra neste servidor. Selecione a edição pela busca.' : 'Esta obra não foi encontrada no servidor selecionado. Tente outro servidor ou procure pelo título.' });
     reference = [...matches.values()][0]!.reference;

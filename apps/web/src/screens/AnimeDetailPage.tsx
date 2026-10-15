@@ -27,7 +27,7 @@ export function AnimeDetailPage() {
   const providerId = search.provider ?? defaultServerId;
   const providerReference = search.ref;
   const legacyAnime = useQuery({ queryKey: ['anime', slug], queryFn: () => fetchAnime(slug), enabled: !providerId });
-  const providerAnime = useQuery({ queryKey: ['provider-anime', providerId, providerReference, slug], queryFn: () => providerReference ? fetchServerAnime(providerId!, providerReference) : fetchSavedServerAnime(providerId!, slug), enabled: Boolean(providerId), staleTime: 2 * 60 * 1000, retry: false });
+  const providerAnime = useQuery({ queryKey: ['provider-anime', providerId, providerReference, slug], queryFn: ({ signal }) => providerReference ? fetchServerAnime(providerId!, providerReference, signal) : fetchSavedServerAnime(providerId!, slug, signal), enabled: Boolean(providerId), staleTime: 2 * 60 * 1000, retry: false });
   const providerMode = Boolean(providerAnime.data);
   const providerIdentity = providerAnime.data?.identity;
   const remoteMetadata = useQuery({ queryKey: ['anilist-metadata', providerAnime.data?.anime.title], queryFn: () => fetchAniListMetadata(providerAnime.data!.anime.title), enabled: Boolean(providerMode && providerAnime.data?.anime.title && (!providerIdentity?.imageUrl || !providerIdentity.synopsis)), staleTime: 24 * 60 * 60 * 1000, retry: 1 });

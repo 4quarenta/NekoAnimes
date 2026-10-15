@@ -15,8 +15,8 @@ export function providerImageProxyUrl(value: string | null | undefined): string 
   }
 }
 
-async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const timeout = AbortSignal.timeout(30000);
+async function getJson<T>(path: string, signal?: AbortSignal, timeoutMs = 30000): Promise<T> {
+  const timeout = AbortSignal.timeout(timeoutMs);
   const response = await fetch(`${API_URL}${path}`, { cache: 'no-store', signal: signal ? AbortSignal.any([signal, timeout]) : timeout });
   if (!response.ok) throw await responseError(response);
   return response.json() as Promise<T>;
@@ -93,7 +93,7 @@ export function fetchServers() { return getJson<{ servers: ServerDescriptor[] }>
 type ServerHealth = { server: ServerDescriptor; status: 'ok' | 'unavailable'; latencyMs: number; checkedAt: string };
 export function fetchServerHealth() { return getJson<{ servers: ServerHealth[]; checkedAt: string }>('/v1/servers/health'); }
 export function fetchProviderCatalog(serverId: string, params: { letter?: string; query?: string; genre?: string; page?: number; limit?: number } = {}, signal?: AbortSignal) { const search = new URLSearchParams(); if (params.letter) search.set('letter', params.letter); if (params.query) search.set('q', params.query); if (params.genre) search.set('genre', params.genre); if (params.page) search.set('page', String(params.page)); if (params.limit) search.set('limit', String(params.limit)); const suffix = search.size ? `?${search}` : ''; return getJson<ProviderCatalogResponse>(`/v1/servers/${encodeURIComponent(serverId)}/catalog${suffix}`,signal); }
-export function fetchServerAnime(serverId: string, reference: string) { const search = new URLSearchParams({ ref: reference }); return getJson<ServerAnimeDetail>(`/v1/servers/${encodeURIComponent(serverId)}/anime?${search}`); }
+export function fetchServerAnime(serverId: string, reference: string, signal?: AbortSignal) { const search = new URLSearchParams({ ref: reference }); return getJson<ServerAnimeDetail>(`/v1/servers/${encodeURIComponent(serverId)}/anime?${search}`, signal, 15000); }
 export async function fetchAniListMetadata(title: string): Promise<RemoteAnimeMetadata | null> {
   const query = `query($search:String){ Page(perPage:5){ media(search:$search,type:ANIME,sort:SEARCH_MATCH){ id idMal title { romaji english native } description format status seasonYear averageScore genres coverImage { large extraLarge } bannerImage } } }`;
   // Provider labels ("Dublado", "Legendado", etc.) are release variants and
@@ -140,7 +140,7 @@ async function responseError(response: Response) {
 }
 type ProviderCategory = { id: string; name: string; reference: string };
 export function fetchProviderCategories(serverId: string) { return getJson<{items:ProviderCategory[]}>(`/v1/servers/${encodeURIComponent(serverId)}/categories`); }
-export function fetchSavedServerAnime(serverId: string, slug: string) { return getJson<ServerAnimeDetail>(`/v1/servers/${encodeURIComponent(serverId)}/anime?${new URLSearchParams({slug})}`); }
+export function fetchSavedServerAnime(serverId: string, slug: string, signal?: AbortSignal) { return getJson<ServerAnimeDetail>(`/v1/servers/${encodeURIComponent(serverId)}/anime?${new URLSearchParams({slug})}`, signal, 15000); }
 export function fetchProviderRecovery(serverId: string, slug: string, signal?: AbortSignal) { return getJson<ProviderRecovery>(`/v1/servers/${encodeURIComponent(serverId)}/recovery?${new URLSearchParams({slug})}`, signal); }
 export function confirmProviderMatch(workSlug: string, serverId: string, reference: string, expectedTitle: string) {
   return authJson<ServerAnimeDetail>('/v1/me/provider-links', { method: 'POST', body: JSON.stringify({ workSlug, serverId, reference, expectedTitle, confirmed: true }) });
