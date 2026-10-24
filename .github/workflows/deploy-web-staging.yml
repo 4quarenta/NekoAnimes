@@ -23,6 +23,12 @@ jobs:
         with:
           node-version: 22
       - run: npm install --no-audit --no-fund
+      - name: Install Linux Rollup binary omitted by npm optional-dependency resolution
+        shell: bash
+        run: |
+          set -euo pipefail
+          rollup_version="$(node -p "require('./package-lock.json').packages['node_modules/rollup'].version")"
+          npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund "@rollup/rollup-linux-x64-gnu@${rollup_version}"
       - name: Validate staging configuration
         shell: bash
         run: |
